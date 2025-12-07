@@ -4,7 +4,7 @@ import datetime
 import discord
 from discord.ext import commands
 from discord.ui import Button, View
-from flask import Flask, render_template, jsonify, request, redirect, url_for
+from flask import Flask, render_template, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 
@@ -23,11 +23,11 @@ db = SQLAlchemy(app)
 # --- MODELOS DE BASE DE DATOS ---
 class Ticket(db.Model):
     id = db.Column(db.String, primary_key=True) # ID del Canal de Discord
-    user_id = db.Column(db.String, nullable=False)
-    user_name = db.Column(db.String, nullable=False)
+    user_id = db.Column(db.String, nullable=False)   # <--- La columna que faltaba
+    user_name = db.Column(db.String, nullable=False) # <--- La columna que faltaba
     status = db.Column(db.String, default="open")
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
-    messages = db.relationship('Message', backref='ticket', lazy=True)
+    messages = db.relationship('Message', backref='ticket', lazy=True, cascade="all, delete-orphan")
 
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -38,14 +38,24 @@ class Message(db.Model):
     read_by_web = db.Column(db.Boolean, default=False)
     synced_to_discord = db.Column(db.Boolean, default=True)
 
-# Crear tablas si no existen
+# --- INICIALIZACIÓN DE LA BASE DE DATOS (MODO REPARACIÓN) ---
 with app.app_context():
-    db.create_all()
+    try:
+        # ⚠️ IMPORTANTE: ESTA LÍNEA BORRA LA DB ANTIGUA PARA ARREGLAR EL ERROR DE COLUMNAS
+        # Una vez que funcione, puedes comentar o borrar la línea 'db.drop_all()'
+        print("⚠️ REINICIANDO BASE DE DATOS PARA APLICAR NUEVAS COLUMNAS...")
+        db.drop_all() 
+        
+        # Crea las tablas nuevas
+        db.create_all()
+        print("✅ Base de datos actualizada correctamente.")
+    except Exception as e:
+        print(f"❌ Error al iniciar DB: {e}")
 
 # --- DISCORD BOT SETUP ---
 intents = discord.Intents.default()
-intents.message_content = True # Necesario para leer mensajes
-intents.members = True         # Necesario para gestionar permisos de usuarios
+intents.message_content = True 
+intents.members = True         
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
@@ -62,13 +72,11 @@ class TicketLauncher(View):
             await interaction.response.send_message(f"Ya tienes un ticket abierto: {existing_channel.mention}", ephemeral=True)
             return
 
-        # 1. DEFINIR PERMISOS (SOLUCIÓN AL PROBLEMA DE VISIBILIDAD)
+        # 1. PERMISOS
         overwrites = {
             interaction.guild.default_role: discord.PermissionOverwrite(view_channel=False),
             interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
-            interaction.guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True) # ¡IMPORTANTE! El bot debe verse a sí mismo
-            # Si tienes roles de staff, añádelos aquí:
-            # discord.utils.get(interaction.guild.roles, name="Staff"): discord.PermissionOverwrite(view_channel=True)
+            interaction.guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True)
         }
 
         # 2. CREAR EL CANAL
@@ -77,7 +85,7 @@ class TicketLauncher(View):
             overwrites=overwrites
         )
 
-        # 3. GUARDAR EN LA BASE DE DATOS
+        # 3. GUARDAR EN DB
         with app.app_context():
             new_ticket = Ticket(
                 id=str(channel.id),
@@ -95,12 +103,10 @@ class TicketLauncher(View):
 @bot.event
 async def on_ready():
     print(f'✅ Bot conectado como {bot.user} (ID: {bot.user.id})')
-    # Esto mantiene el botón activo aunque reinicies el bot
     bot.add_view(TicketLauncher())
 
 @bot.command()
 async def setup(ctx):
-    """Comando para enviar el panel de tickets"""
     await ctx.send("Haz clic abajo para abrir un ticket:", view=TicketLauncher())
 
 @bot.event
@@ -108,18 +114,16 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # --- CORRECCIÓN DEL ERROR DE BASE DE DATOS ---
-    # Verificamos si el canal actual es un ticket registrado en la DB
+    # Verificar si es un ticket válido antes de guardar
     with app.app_context():
-        # Usamos Session.get para evitar warnings de legacy
         ticket_existente = db.session.get(Ticket, str(message.channel.id))
         
-        # Si NO es un ticket registrado (es un canal general o charla), ignoramos
         if not ticket_existente:
-            await bot.process_commands(message) # Procesar comandos normales (!setup, etc)
+            # Si no es un ticket, procesamos comandos normales y salimos
+            await bot.process_commands(message)
             return 
 
-        # Si SÍ es un ticket, guardamos el mensaje
+        # Si es un ticket, guardamos el mensaje
         try:
             new_msg = Message(
                 ticket_id=str(message.channel.id),
@@ -140,22 +144,20 @@ async def on_message(message):
 
 @app.route('/')
 def index():
-    return render_template('index.html') # Asegúrate de tener index.html en /templates
+    return render_template('index.html')
 
 @app.route('/api/get_tickets')
 def get_tickets():
     tickets = Ticket.query.all()
-    # Aquí solucionamos el problema de "NA", asegurándonos de enviar los datos
     return jsonify([{
         'id': t.id,
-        'user_name': t.user_name, # Asegúrate de que el JS use 'user_name'
+        'user_name': t.user_name,
         'status': t.status,
         'created_at': t.created_at.isoformat()
     } for t in tickets])
 
 @app.route('/api/get_messages/<ticket_id>')
 def get_messages(ticket_id):
-    # Ordenamos por fecha para que salgan en orden
     messages = Message.query.filter_by(ticket_id=ticket_id).order_by(Message.timestamp).all()
     return jsonify([{
         'sender': m.sender,
@@ -168,38 +170,33 @@ def send_message_web():
     data = request.json
     ticket_id = data.get('ticket_id')
     content = data.get('content')
-    sender = "Soporte Web" # O el nombre del admin logueado
+    sender = "Soporte Web" 
 
     if not ticket_id or not content:
         return jsonify({'error': 'Faltan datos'}), 400
 
-    # 1. Guardar en DB
+    # Guardar en DB
     new_msg = Message(ticket_id=ticket_id, sender=sender, content=content, synced_to_discord=True)
     db.session.add(new_msg)
     db.session.commit()
 
-    # 2. Enviar a Discord (Esto requiere ejecutar una corrutina desde Flask)
-    # Usamos run_coroutine_threadsafe para hablar con el bot desde el hilo de Flask
+    # Enviar a Discord
     channel = bot.get_channel(int(ticket_id))
     if channel:
         future = discord.run_coroutine_threadsafe(channel.send(f"**{sender}:** {content}"), bot.loop)
         try:
-            future.result(timeout=5) # Esperar confirmación opcional
+            future.result(timeout=5)
         except Exception as e:
             print(f"Error enviando a Discord: {e}")
 
     return jsonify({'status': 'success'})
 
-# --- INICIO (THREADING) ---
+# --- INICIO ---
 def run_flask():
-    # Render asigna un puerto en la variable PORT
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
 
 if __name__ == '__main__':
-    # Ejecutar Flask en un hilo separado
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.start()
-
-    # Ejecutar Bot de Discord
     bot.run(DISCORD_TOKEN)
