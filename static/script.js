@@ -14,24 +14,30 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(loadTickets, 3000); 
     setInterval(() => { if (currentTicketId) loadMessages(currentTicketId); }, 2000);
 
-    const chatInput = document.getElementById('chat-input');
+    const chatInput = document.getElementById('msg-input') || document.getElementById('chat-input');
+    
     if(chatInput){
+        // Forzar foco por si el CSS molesta
+        chatInput.onclick = () => chatInput.focus();
+        
         chatInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') sendMessage();
         });
     }
 
+    const sendBtn = document.querySelector('.btn-send');
+    if(sendBtn) {
+        sendBtn.addEventListener('click', sendMessage);
+    }
+
     // --- B. INICIO DE STATS (Restaurado) ---
-    // Cargar datos guardados si existen
     loadStats();
     
-    // Listeners para los inputs de números (stats)
     const statInputs = document.querySelectorAll('.stat-input');
     statInputs.forEach(input => {
         input.addEventListener('input', calculateStats);
     });
     
-    // Listener para guardar notas
     const notesArea = document.getElementById('notes-area');
     if(notesArea) {
         notesArea.addEventListener('input', saveStats);
@@ -42,14 +48,12 @@ document.addEventListener('DOMContentLoaded', () => {
 // 3. NAVEGACIÓN
 // ==========================================
 function switchView(viewName) {
-    // Botones
     document.querySelectorAll('.system-btn').forEach(btn => btn.classList.remove('active'));
     const activeBtn = document.getElementById(`btn-view-${viewName}`);
     if(activeBtn) activeBtn.classList.add('active');
 
-    // Contenedores
     const ticketsView = document.getElementById('view-tickets');
-    const statsView = document.getElementById('view-qualifications'); // Asegúrate que en tu HTML el ID sea este
+    const statsView = document.getElementById('view-qualifications'); 
 
     if(viewName === 'tickets') {
         if(ticketsView) ticketsView.classList.remove('hidden');
@@ -57,17 +61,17 @@ function switchView(viewName) {
     } else if (viewName === 'qualifications') {
         if(ticketsView) ticketsView.classList.add('hidden');
         if(statsView) statsView.classList.remove('hidden');
-        // Forzar repintado del gráfico al mostrar la pestaña
         if(blzChartInstance) blzChartInstance.update();
-        else calculateStats(); // Crear si no existe
+        else calculateStats(); 
     }
 }
 
 // ==========================================
-// 4. LÓGICA DE TICKETS (Backend conectado)
+// 4. LÓGICA DE TICKETS (CORREGIDO ID vs NOMBRE)
 // ==========================================
 function loadTickets() {
     const ticketView = document.getElementById('view-tickets');
+    // Si usas pestañas y está oculta, no actualizamos para ahorrar recursos
     if (ticketView && ticketView.classList.contains('hidden')) return;
 
     fetch('/api/get_tickets')
@@ -86,16 +90,27 @@ function loadTickets() {
         data.forEach(ticket => {
             const div = document.createElement('div');
             div.className = `ticket-item ${currentTicketId === ticket.id ? 'active' : ''}`;
-            div.onclick = () => selectTicket(ticket.id, ticket.channel_name); 
+            
+            // --- AQUÍ ESTÁ EL FIX ---
+            // Si ticket.channel_name viene vacío o es null, creamos uno bonito
+            let displayName = ticket.channel_name;
+            if (!displayName || displayName === 'null' || displayName === 'undefined') {
+                // Genera "ticket-pepito" limpiando espacios
+                const cleanUser = ticket.user_name ? ticket.user_name.replace(/\s+/g, '').toLowerCase() : 'unknown';
+                displayName = `ticket-${cleanUser}`;
+            }
+            // ------------------------
+
+            div.onclick = () => selectTicket(ticket.id, displayName); 
 
             let statusBadge = ticket.status === 'open' 
-                ? `<span class="badge" style="background:var(--neon-blue); box-shadow:0 0 5px var(--neon-blue); color:black;">OP</span>` 
-                : `<span class="badge" style="background:var(--text-grey); box-shadow:none;">CL</span>`;
+                ? `<span class="badge" style="background:var(--neon-blue); box-shadow:0 0 5px var(--neon-blue); color:black; padding: 2px 5px; border-radius: 4px; font-size: 0.7em;">OP</span>` 
+                : `<span class="badge" style="background:var(--text-grey); box-shadow:none; padding: 2px 5px; border-radius: 4px; font-size: 0.7em;">CL</span>`;
 
             div.innerHTML = `
                 <div style="display:flex; flex-direction:column;">
-                    <span class="ticket-name" style="font-size:0.85rem; font-family:monospace; color:var(--neon-blue); letter-spacing:1px;">${ticket.channel_name}</span> 
-                    <span style="font-size:0.7em; color:var(--text-grey); margin-top:2px;">User: <span style="color:white;">${ticket.user_name}</span></span>
+                    <span class="ticket-name" style="font-size:0.9rem; font-family:monospace; color:var(--neon-blue); letter-spacing:1px; font-weight:bold;"># ${displayName}</span> 
+                    <span style="font-size:0.75em; color:var(--text-grey); margin-top:4px;">User: <span style="color:white;">${ticket.user_name}</span></span>
                 </div>
                 ${statusBadge}
             `;
@@ -108,7 +123,11 @@ function loadTickets() {
 function selectTicket(id, name) {
     currentTicketId = id;
     const header = document.getElementById('chat-header-title');
-    if(header) header.innerText = name || id;
+    
+    // Si el nombre llega vacío, mostramos el ID cortado como último recurso
+    if(header) header.innerText = name || `Ticket ${id.substring(0,6)}...`;
+    
+    // Refrescamos la lista para pintar el borde naranja de "activo"
     loadTickets(); 
     loadMessages(id);
 }
@@ -123,13 +142,20 @@ function loadMessages(ticketId) {
         chatBody.innerHTML = ''; 
         msgs.forEach(msg => {
             const div = document.createElement('div');
+            // Ajusta 'BLZ-T' al nombre de tu bot si es diferente
             const isMe = (msg.sender === 'BLZ-T');
-            div.className = `message ${isMe ? 'sent' : 'received'}`;
+            div.className = `message ${isMe ? 'agent' : 'discord'}`; // Usamos agent/discord para coincidir con CSS típico
+            
+            // Fallback por si classes son sent/received
+            if (!div.className.includes('agent') && !div.className.includes('discord')) {
+                 div.className = `message ${isMe ? 'sent' : 'received'}`;
+            }
+
             const timeString = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             div.innerHTML = `
                 <div class="msg-content">${msg.content}</div>
-                <div class="msg-meta">
-                    <span style="color:${isMe ? 'var(--neon-blue)' : 'var(--neon-orange)'}">${msg.sender}</span> • ${timeString}
+                <div class="msg-meta" style="font-size: 0.7em; opacity: 0.7; margin-top: 5px; text-align: ${isMe ? 'right' : 'left'}">
+                    <span style="color:${isMe ? 'var(--neon-orange)' : 'var(--neon-blue)'}">${msg.sender}</span> • ${timeString}
                 </div>
             `;
             chatBody.appendChild(div);
@@ -139,7 +165,9 @@ function loadMessages(ticketId) {
 }
 
 function sendMessage() {
-    const input = document.getElementById('chat-input');
+    const input = document.getElementById('msg-input') || document.getElementById('chat-input');
+    if(!input) return;
+
     const content = input.value.trim();
     if (!content || !currentTicketId) return; 
 
@@ -155,32 +183,36 @@ function sendMessage() {
     })
     .then(r => r.json())
     .then(data => {
-        if(data.status === 'success') loadMessages(currentTicketId); 
+        if(data.status === 'success') {
+            loadMessages(currentTicketId); 
+        } else {
+            console.error("Error sending:", data);
+        }
     });
 }
 
 // ==========================================
-// 5. LÓGICA DE STATS Y GRÁFICO (Restaurada)
+// 5. LÓGICA DE STATS Y GRÁFICO
 // ==========================================
 
 function calculateStats() {
-    // 1. Obtener valores de los inputs
     const ids = ['offense', 'shoot', 'dribble', 'pass', 'defense', 'speed'];
     let total = 0;
     let values = [];
 
     ids.forEach(id => {
-        let val = parseFloat(document.getElementById(id).value) || 0;
-        if (val > 100) val = 100; // Límite 100
+        const el = document.getElementById(id);
+        if(!el) return;
+        let val = parseFloat(el.value) || 0;
+        if (val > 100) val = 100; 
         values.push(val);
         total += val;
     });
 
-    // 2. Calcular media y actualizar DOM
     const avg = total / 6;
-    document.getElementById('result-total').innerText = Math.round(avg);
+    const totalEl = document.getElementById('result-total');
+    if(totalEl) totalEl.innerText = Math.round(avg);
     
-    // Calcular Rango y Tier
     let rank = 'C';
     let tier = 'III';
     
@@ -191,15 +223,12 @@ function calculateStats() {
     const rankEl = document.getElementById('result-rank');
     if(rankEl) {
         rankEl.innerText = rank;
-        // Cambio de color según rango
         rankEl.style.color = (rank === 'S' || rank === 'A') ? 'var(--neon-blue)' : 'white';
     }
-    document.getElementById('result-tier').innerText = tier;
+    const tierEl = document.getElementById('result-tier');
+    if(tierEl) tierEl.innerText = tier;
 
-    // 3. Actualizar Gráfico
     updateChart(values);
-    
-    // 4. Guardar
     saveStats();
 }
 
@@ -218,7 +247,7 @@ function updateChart(dataValues) {
                 datasets: [{
                     label: 'Player Stats',
                     data: dataValues,
-                    backgroundColor: 'rgba(0, 240, 255, 0.2)', // Neon Blue transparente
+                    backgroundColor: 'rgba(0, 240, 255, 0.2)', 
                     borderColor: '#00f0ff',
                     pointBackgroundColor: '#fff',
                     pointBorderColor: '#00f0ff',
@@ -232,8 +261,8 @@ function updateChart(dataValues) {
                         grid: { color: 'rgba(255, 255, 255, 0.1)' },
                         pointLabels: { color: '#00f0ff', font: { size: 12, weight: 'bold' } },
                         suggestedMin: 0,
-                        suggestedMax: 100, // Escala de 0 a 100
-                        ticks: { display: false } // Ocultar números del eje
+                        suggestedMax: 100, 
+                        ticks: { display: false } 
                     }
                 },
                 plugins: { legend: { display: false } }
@@ -242,7 +271,6 @@ function updateChart(dataValues) {
     }
 }
 
-// Función para guardar en LocalStorage (persistencia básica)
 function saveStats() {
     const data = {
         inputs: {},
@@ -250,7 +278,8 @@ function saveStats() {
     };
     
     ['offense', 'shoot', 'dribble', 'pass', 'defense', 'speed'].forEach(id => {
-        data.inputs[id] = document.getElementById(id).value;
+        const el = document.getElementById(id);
+        if(el) data.inputs[id] = el.value;
     });
 
     localStorage.setItem('blz_stats_data', JSON.stringify(data));
@@ -265,30 +294,29 @@ function saveStats() {
 function loadStats() {
     const saved = localStorage.getItem('blz_stats_data');
     if (saved) {
-        const data = JSON.parse(saved);
-        if(data.inputs) {
-            for (const [key, val] of Object.entries(data.inputs)) {
-                const el = document.getElementById(key);
-                if(el) el.value = val;
+        try {
+            const data = JSON.parse(saved);
+            if(data.inputs) {
+                for (const [key, val] of Object.entries(data.inputs)) {
+                    const el = document.getElementById(key);
+                    if(el) el.value = val;
+                }
             }
-        }
-        if(data.notes) {
-            const notes = document.getElementById('notes-area');
-            if(notes) notes.value = data.notes;
-        }
-        // Recalcular gráfico con los datos cargados
-        calculateStats();
+            if(data.notes) {
+                const notes = document.getElementById('notes-area');
+                if(notes) notes.value = data.notes;
+            }
+            calculateStats();
+        } catch(e) { console.error("Error reading stats", e); }
     }
 }
 
 // ==========================================
-// 6. FUNCIONES DEL MODAL Y COPIAR
+// 6. MODALES Y COPY
 // ==========================================
-
 function openStatsModal() {
     const modal = document.getElementById('stats-modal');
     if(modal) modal.classList.remove('hidden');
-    // Forzamos update del gráfico al abrir modal por si acaso
     if(blzChartInstance) blzChartInstance.update();
 }
 
@@ -297,38 +325,31 @@ function closeStatsModal() {
     if(modal) modal.classList.add('hidden');
 }
 
-// --- LA FUNCIÓN QUE PEDISTE ---
 async function copyChartToClipboard() {
     const canvas = document.getElementById('blzChart');
     if(!canvas) return;
 
-    // Convertir el canvas a un Blob (imagen)
     canvas.toBlob(async (blob) => {
         try {
-            // Crear item para el portapapeles
             const data = [new ClipboardItem({ [blob.type]: blob })];
-            // Escribir en portapapeles
             await navigator.clipboard.write(data);
             
-            // Feedback visual en el botón
             const btn = document.querySelector('.btn-copy');
-            const originalText = btn.innerText;
-            
-            btn.innerText = "COPIED!";
-            btn.style.borderColor = "var(--neon-orange)";
-            btn.style.color = "var(--neon-orange)";
-            btn.style.boxShadow = "0 0 15px var(--neon-orange)";
-            
-            setTimeout(() => {
-                btn.innerText = originalText;
-                btn.style.borderColor = "white";
-                btn.style.color = "white";
-                btn.style.boxShadow = "none";
-            }, 2000);
-            
+            if(btn) {
+                const originalText = btn.innerText;
+                btn.innerText = "COPIED!";
+                btn.style.borderColor = "var(--neon-orange)";
+                btn.style.color = "var(--neon-orange)";
+                
+                setTimeout(() => {
+                    btn.innerText = originalText;
+                    btn.style.borderColor = "white";
+                    btn.style.color = "white";
+                }, 2000);
+            }
         } catch (err) {
             console.error("Error copiando:", err);
-            alert("No se pudo copiar. Asegúrate de usar HTTPS o localhost.");
+            alert("No se pudo copiar (Requiere HTTPS o Localhost).");
         }
     });
 }
