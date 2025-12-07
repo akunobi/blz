@@ -37,9 +37,9 @@ class Message(db.Model):
     read_by_web = db.Column(db.Boolean, default=False)     # Para notificaciones en web
     synced_to_discord = db.Column(db.Boolean, default=True) # True si viene de Discord, False si la web lo escribió
 
-# Crear tablas si no existen
-with app.app_context():
-    db.create_all()
+# --- NOTA IMPORTANTE ---
+# Hemos quitado 'db.create_all()' de aquí para evitar el error de "Race Condition".
+# Ahora las tablas se crean mediante 'init_db.py' en el arranque.
 
 # --- RUTAS WEB (ENDPOINTS) ---
 
@@ -49,12 +49,10 @@ def index():
 
 @app.route('/api/get_tickets')
 def get_tickets():
-    # Obtener solo tickets abiertos
     tickets = Ticket.query.filter_by(status='open').all()
     ticket_list = []
     
     for t in tickets:
-        # Contar mensajes no leídos
         unread_count = Message.query.filter(
             Message.ticket_id == t.id, 
             Message.read_by_web == False,
@@ -71,7 +69,6 @@ def get_tickets():
 
 @app.route('/api/get_messages/<ticket_id>')
 def get_messages(ticket_id):
-    # 1. Marcar mensajes de Discord como leídos al abrir el chat
     unread_msgs = Message.query.filter(
         Message.ticket_id == ticket_id, 
         Message.read_by_web == False,
@@ -82,7 +79,6 @@ def get_messages(ticket_id):
         msg.read_by_web = True
     db.session.commit()
     
-    # 2. Obtener historial
     messages = Message.query.filter_by(ticket_id=ticket_id).order_by(Message.timestamp).all()
     
     return jsonify([{
@@ -94,16 +90,13 @@ def get_messages(ticket_id):
 @app.route('/api/send_message', methods=['POST'])
 def send_message():
     data = request.json
-    
-    # Crear mensaje
     new_msg = Message(
         ticket_id=data['ticket_id'],
-        sender='WebAgent',     # Identificador de la web
+        sender='WebAgent',
         content=data['content'],
-        read_by_web=True,      # Ya está leído porque lo escribimos nosotros
-        synced_to_discord=False # IMPORTANTE: Esto le dice al Bot que debe enviarlo a Discord
+        read_by_web=True,
+        synced_to_discord=False
     )
-    
     db.session.add(new_msg)
     db.session.commit()
     return jsonify({'status': 'sent'})
