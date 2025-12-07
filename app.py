@@ -37,7 +37,7 @@ class Message(db.Model):
     read_by_web = db.Column(db.Boolean, default=False)     # Para notificaciones en web
     synced_to_discord = db.Column(db.Boolean, default=True) # True si viene de Discord, False si la web lo escribió
 
-# Crear tablas si no existen (Solo necesario en Local/SQLite, en Postgres es automático tras deploy)
+# Crear tablas si no existen
 with app.app_context():
     db.create_all()
 
@@ -54,8 +54,7 @@ def get_tickets():
     ticket_list = []
     
     for t in tickets:
-        # Contar mensajes no leídos (donde el sender NO es WebAgent y no ha sido leído)
-        # Asumimos que si sender != WebAgent, es un usuario de Discord
+        # Contar mensajes no leídos
         unread_count = Message.query.filter(
             Message.ticket_id == t.id, 
             Message.read_by_web == False,
@@ -117,10 +116,8 @@ def complete_ticket():
     if ticket:
         ticket.status = 'completed'
         db.session.commit()
-        # Aquí podrías añadir lógica para que el bot también cierre el canal o cambie nombre
         
     return jsonify({'status': 'completed'})
 
 if __name__ == '__main__':
-    # En local usa debug=True. En Render, gunicorn se encarga de esto.
     app.run(debug=True)

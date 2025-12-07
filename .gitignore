@@ -1,0 +1,38 @@
+# -----------------------------------
+# BASE DE PYTHON (La mayoría de estos vienen con la plantilla Python)
+# -----------------------------------
+# Ignora la carpeta del entorno virtual de Python
+venv/
+.venv/
+env/
+
+# Archivos de caché de Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Archivos de dependencias si usas herramientas como poetry o pipenv
+*.lock
+/dist/
+
+# -----------------------------------
+# ESPECÍFICO PARA FLASK Y DATOS SENSIBLES
+# -----------------------------------
+# Base de datos SQLite local y su carpeta de instancia (CRUCIAL)
+instance/
+*.sqlite
+*.db
+# Específicamente el archivo que tienes en la raíz:
+database.db 
+
+# Archivos de entorno local si usas dotenv
+.env
+
+# -----------------------------------
+# ARCHIVOS TEMPORALES DE SISTEMA
+# -----------------------------------
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
