@@ -1,12 +1,5 @@
-<<<<<<< HEAD
 flask
 flask-sqlalchemy
 discord.py
 gunicorn
-=======
-flask
-flask-sqlalchemy
-discord.py
-gunicorn
->>>>>>> bae36f0892b103e8cbce445dfd8c3f2623d2d5ec
 psycopg2-binary
