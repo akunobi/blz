@@ -1,147 +1,205 @@
-import discord
-from discord.ext import tasks
 import os
-import asyncio
-
-# --- IMPORTACIÓN HÍBRIDA ---
-from app import app, db, Ticket, Message
+import threading
+import datetime
+import discord
+from discord.ext import commands
+from discord.ui import Button, View
+from flask import Flask, render_template, jsonify, request, redirect, url_for
+from flask_sqlalchemy import SQLAlchemy
+from flask_cors import CORS
 
 # --- CONFIGURACIÓN ---
-TOKEN = os.environ.get('DISCORD_TOKEN')
+DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
+# Fix para Render: postgres:// debe ser postgresql://
+DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///tickets.db').replace("postgres://", "postgresql://")
 
-# ID de la Categoría
-try:
-    CATEGORY_ID = int(os.environ.get('CATEGORY_ID', '1355062396322058287'))
-except ValueError:
-    CATEGORY_ID = 1355062396322058287
+# --- FLASK APP Y DB SETUP ---
+app = Flask(__name__, static_folder='static', template_folder='templates')
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+CORS(app)
+db = SQLAlchemy(app)
 
-# --- CONFIGURACIÓN DE ROLES DE REGIÓN ---
-# Estos son los IDs que el bot buscará para asignar la región
-ROLE_EU_ID = 1355062394547736673
-ROLE_ASIA_ID = 1355062394547736674
-ROLE_NA_ID = 1355062394547736675
+# --- MODELOS DE BASE DE DATOS ---
+class Ticket(db.Model):
+    id = db.Column(db.String, primary_key=True) # ID del Canal de Discord
+    user_id = db.Column(db.String, nullable=False)
+    user_name = db.Column(db.String, nullable=False)
+    status = db.Column(db.String, default="open")
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    messages = db.relationship('Message', backref='ticket', lazy=True)
 
-print(f"Bot config loaded. Category: {CATEGORY_ID}")
+class Message(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    ticket_id = db.Column(db.String, db.ForeignKey('ticket.id'), nullable=False)
+    sender = db.Column(db.String, nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    read_by_web = db.Column(db.Boolean, default=False)
+    synced_to_discord = db.Column(db.Boolean, default=True)
 
+# Crear tablas si no existen
+with app.app_context():
+    db.create_all()
+
+# --- DISCORD BOT SETUP ---
 intents = discord.Intents.default()
-intents.message_content = True
-intents.guilds = True
-client = discord.Client(intents=intents)
+intents.message_content = True # Necesario para leer mensajes
+intents.members = True         # Necesario para gestionar permisos de usuarios
 
-# Función auxiliar para determinar región según menciones de rol
-def detect_region_from_mentions(message_mentions, role_mentions, default="NA"):
-    # Juntamos todas las menciones de roles (directas o via mensaje)
-    all_role_ids = [r.id for r in role_mentions]
-    
-    if ROLE_EU_ID in all_role_ids:
-        return "EU"
-    elif ROLE_ASIA_ID in all_role_ids:
-        return "ASIA"
-    elif ROLE_NA_ID in all_role_ids:
-        return "NA"
-    return default
+bot = commands.Bot(command_prefix='!', intents=intents)
 
-@client.event
+# --- CLASE PARA EL BOTÓN DE CREAR TICKET ---
+class TicketLauncher(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Crear Ticket", style=discord.ButtonStyle.green, custom_id="create_ticket_btn")
+    async def create_ticket(self, interaction: discord.Interaction, button: Button):
+        # Evitar duplicados simples
+        existing_channel = discord.utils.get(interaction.guild.text_channels, name=f"ticket-{interaction.user.name.lower()}")
+        if existing_channel:
+            await interaction.response.send_message(f"Ya tienes un ticket abierto: {existing_channel.mention}", ephemeral=True)
+            return
+
+        # 1. DEFINIR PERMISOS (SOLUCIÓN AL PROBLEMA DE VISIBILIDAD)
+        overwrites = {
+            interaction.guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+            interaction.guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True) # ¡IMPORTANTE! El bot debe verse a sí mismo
+            # Si tienes roles de staff, añádelos aquí:
+            # discord.utils.get(interaction.guild.roles, name="Staff"): discord.PermissionOverwrite(view_channel=True)
+        }
+
+        # 2. CREAR EL CANAL
+        channel = await interaction.guild.create_text_channel(
+            name=f"ticket-{interaction.user.name}",
+            overwrites=overwrites
+        )
+
+        # 3. GUARDAR EN LA BASE DE DATOS
+        with app.app_context():
+            new_ticket = Ticket(
+                id=str(channel.id),
+                user_id=str(interaction.user.id),
+                user_name=interaction.user.name,
+                status="open"
+            )
+            db.session.add(new_ticket)
+            db.session.commit()
+
+        await channel.send(f"¡Hola {interaction.user.mention}! Un miembro del staff te atenderá pronto.")
+        await interaction.response.send_message(f"Ticket creado: {channel.mention}", ephemeral=True)
+
+# --- EVENTOS DEL BOT ---
+@bot.event
 async def on_ready():
-    print(f'Logged in as {client.user}')
-    print("Starting Ticket Sync & Role Scan...")
+    print(f'✅ Bot conectado como {bot.user} (ID: {bot.user.id})')
+    # Esto mantiene el botón activo aunque reinicies el bot
+    bot.add_view(TicketLauncher())
 
-    with app.app_context():
-        found_count = 0
-        for guild in client.guilds:
-            for channel in guild.channels:
-                if isinstance(channel, discord.TextChannel) and channel.category_id == CATEGORY_ID:
-                    
-                    # 1. Determinar Región: Escaneamos los últimos 10 mensajes para buscar el ping del rol
-                    region = "NA" # Valor por defecto si no hay ping
-                    try:
-                        # Leemos historial breve para encontrar el ping de bienvenida
-                        async for msg in channel.history(limit=10, oldest_first=True):
-                            found_region = detect_region_from_mentions(msg.mentions, msg.role_mentions, default=None)
-                            if found_region:
-                                region = found_region
-                                break # Encontramos la región, dejamos de buscar
-                    except Exception as e:
-                        print(f"Could not read history for {channel.name}: {e}")
+@bot.command()
+async def setup(ctx):
+    """Comando para enviar el panel de tickets"""
+    await ctx.send("Haz clic abajo para abrir un ticket:", view=TicketLauncher())
 
-                    # 2. Sincronizar con DB
-                    existing_ticket = Ticket.query.get(str(channel.id))
-                    
-                    if not existing_ticket:
-                        # Si no existe, lo creamos con la región detectada
-                        new_ticket = Ticket(id=str(channel.id), name=channel.name, region=region, status='open')
-                        db.session.add(new_ticket)
-                        found_count += 1
-                    else:
-                        # Si ya existe, ACTUALIZAMOS la región por si cambió el ping
-                        if existing_ticket.region != region:
-                            existing_ticket.region = region
-                            db.session.add(existing_ticket) # Marcar para update
-        
-        db.session.commit()
-        print(f"Sync complete. Updated/Created {found_count} tickets.")
-    
-    if not check_web_messages.is_running():
-        check_web_messages.start()
-
-@client.event
+@bot.event
 async def on_message(message):
-    if message.author == client.user:
+    if message.author.bot:
         return
 
-    if hasattr(message.channel, 'category_id') and message.channel.category_id == CATEGORY_ID:
+    # --- CORRECCIÓN DEL ERROR DE BASE DE DATOS ---
+    # Verificamos si el canal actual es un ticket registrado en la DB
+    with app.app_context():
+        # Usamos Session.get para evitar warnings de legacy
+        ticket_existente = db.session.get(Ticket, str(message.channel.id))
         
-        with app.app_context():
-            # 1. Buscar o Crear Ticket
-            ticket = Ticket.query.get(str(message.channel.id))
-            
-            # Detectar si este mensaje contiene un ping de región para actualizar el ticket
-            new_region = detect_region_from_mentions(message.mentions, message.role_mentions, default=None)
+        # Si NO es un ticket registrado (es un canal general o charla), ignoramos
+        if not ticket_existente:
+            await bot.process_commands(message) # Procesar comandos normales (!setup, etc)
+            return 
 
-            if not ticket:
-                # Si es un ticket nuevo, usamos la región del ping (o NA por defecto)
-                final_region = new_region if new_region else "NA"
-                ticket = Ticket(id=str(message.channel.id), name=message.channel.name, region=final_region, status='open')
-                db.session.add(ticket)
-            elif new_region:
-                # Si el ticket ya existe Y este mensaje tiene un ping de región, ACTUALIZAMOS la región
-                # Esto es útil si se pinguea al rol después de crear el canal
-                if ticket.region != new_region:
-                    ticket.region = new_region
-                    db.session.add(ticket) # Guardar cambio de región
-
-            # 2. Guardar Mensaje
+        # Si SÍ es un ticket, guardamos el mensaje
+        try:
             new_msg = Message(
                 ticket_id=str(message.channel.id),
                 sender=message.author.name,
                 content=message.content,
-                read_by_web=False,
                 synced_to_discord=True
             )
             db.session.add(new_msg)
             db.session.commit()
-
-@tasks.loop(seconds=3)
-async def check_web_messages():
-    with app.app_context():
-        try:
-            msgs_to_send = Message.query.filter_by(sender='WebAgent', synced_to_discord=False).all()
-            
-            for msg in msgs_to_send:
-                try:
-                    channel = client.get_channel(int(msg.ticket_id))
-                    if channel:
-                        embed_text = f"**[STAFF]:** {msg.content}"
-                        await channel.send(embed_text)
-                        msg.synced_to_discord = True
-                        db.session.commit()
-                except Exception as e:
-                    print(f"Error sending to Discord {msg.ticket_id}: {e}")
+            print(f"📩 Mensaje guardado en ticket {message.channel.id}")
         except Exception as e:
-            print(f"DB polling error: {e}")
+            print(f"❌ Error guardando mensaje: {e}")
+            db.session.rollback()
+
+    await bot.process_commands(message)
+
+# --- RUTAS DE FLASK (API) ---
+
+@app.route('/')
+def index():
+    return render_template('index.html') # Asegúrate de tener index.html en /templates
+
+@app.route('/api/get_tickets')
+def get_tickets():
+    tickets = Ticket.query.all()
+    # Aquí solucionamos el problema de "NA", asegurándonos de enviar los datos
+    return jsonify([{
+        'id': t.id,
+        'user_name': t.user_name, # Asegúrate de que el JS use 'user_name'
+        'status': t.status,
+        'created_at': t.created_at.isoformat()
+    } for t in tickets])
+
+@app.route('/api/get_messages/<ticket_id>')
+def get_messages(ticket_id):
+    # Ordenamos por fecha para que salgan en orden
+    messages = Message.query.filter_by(ticket_id=ticket_id).order_by(Message.timestamp).all()
+    return jsonify([{
+        'sender': m.sender,
+        'content': m.content,
+        'timestamp': m.timestamp.isoformat()
+    } for m in messages])
+
+@app.route('/api/send_message', methods=['POST'])
+def send_message_web():
+    data = request.json
+    ticket_id = data.get('ticket_id')
+    content = data.get('content')
+    sender = "Soporte Web" # O el nombre del admin logueado
+
+    if not ticket_id or not content:
+        return jsonify({'error': 'Faltan datos'}), 400
+
+    # 1. Guardar en DB
+    new_msg = Message(ticket_id=ticket_id, sender=sender, content=content, synced_to_discord=True)
+    db.session.add(new_msg)
+    db.session.commit()
+
+    # 2. Enviar a Discord (Esto requiere ejecutar una corrutina desde Flask)
+    # Usamos run_coroutine_threadsafe para hablar con el bot desde el hilo de Flask
+    channel = bot.get_channel(int(ticket_id))
+    if channel:
+        future = discord.run_coroutine_threadsafe(channel.send(f"**{sender}:** {content}"), bot.loop)
+        try:
+            future.result(timeout=5) # Esperar confirmación opcional
+        except Exception as e:
+            print(f"Error enviando a Discord: {e}")
+
+    return jsonify({'status': 'success'})
+
+# --- INICIO (THREADING) ---
+def run_flask():
+    # Render asigna un puerto en la variable PORT
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
 
 if __name__ == '__main__':
-    if not TOKEN:
-        print("ERROR: DISCORD_TOKEN not set in Environment.")
-    else:
-        client.run(TOKEN)
+    # Ejecutar Flask en un hilo separado
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.start()
+
+    # Ejecutar Bot de Discord
+    bot.run(DISCORD_TOKEN)

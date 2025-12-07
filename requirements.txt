@@ -1,5 +1,5 @@
+discord.py
 flask
 flask-sqlalchemy
-discord.py
-gunicorn
+flask-cors
 psycopg2-binary
