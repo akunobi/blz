@@ -1,9 +1,8 @@
 from bot import app, db
 
-# Este script borra todo y lo crea de nuevo
 with app.app_context():
-    print("Eliminando tablas antiguas...")
+    print("⚠️ Deleting old tables...")
     db.drop_all()
-    print("Creando tablas nuevas con columnas actualizadas...")
+    print("✅ Creating new tables with correct columns...")
     db.create_all()
-    print("¡Base de datos reiniciada con éxito!")
+    print("🚀 Database reset complete!")
