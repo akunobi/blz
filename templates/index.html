@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLZ SYSTEM</title>
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="bg-chaos"></div>
+
+    <div class="main-wrapper">
+        
+        <div class="sidebar-container">
+            <div class="sidebar-content">
+                <div class="logo">
+                    <h1>BLZ-<span class="orange glow-text">SYSTEM</span></h1>
+                </div>
+                
+                <div class="menu-section">
+                    <label>MODULE SELECTION</label>
+                    <div class="menu-row">
+                        <button onclick="switchView('tickets')" id="btn-view-tickets" class="system-btn active">TICKETS</button>
+                        <button onclick="switchView('qualifications')" id="btn-view-qualifications" class="system-btn">STATS</button>
+                    </div>
+                </div>
+
+                <div id="ticket-controls" class="region-selector">
+                    <div class="separator"></div>
+                    <label>SERVER BLOCK</label>
+                    <button onclick="filterRegion('EU')" class="btn-region eu" data-region="EU">EU BLOCK</button>
+                    <button onclick="filterRegion('NA')" class="btn-region na" data-region="NA">NA BLOCK</button>
+                    <button onclick="filterRegion('ASIA')" class="btn-region asia" data-region="ASIA">ASIA BLOCK</button>
+                </div>
+
+                <div id="ticket-list-container" class="ticket-list-wrapper">
+                    <div id="ticket-list" class="ticket-list custom-scroll">
+                        </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-tickets" class="content-view">
+            <div class="chat-container">
+                <div class="chat-header">
+                    <h2 id="current-ticket-name">AWAITING TARGET SELECTION...</h2>
+                    <div class="actions">
+                        <button onclick="completeTicket()" class="btn-complete pulsing">COMPLETE TRYOUT</button>
+                    </div>
+                </div>
+                
+                <div id="chat-box" class="chat-box custom-scroll">
+                    <div class="empty-state">SELECT A TICKET TO INITIATE LINK</div>
+                </div>
+
+                <div class="input-area-wrapper">
+                    <div class="input-area">
+                        <input type="text" id="msg-input" placeholder="Enter command protocol..." onkeypress="handleEnter(event)">
+                        <button onclick="sendMessage()" class="btn-send">DEPLOY</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-qualifications" class="content-view hidden">
+            <div class="stats-panel">
+                
+                <div class="panel-header-row">
+                    <h2 class="panel-title">PLAYER EVALUATION PROTOCOL</h2>
+                    <button onclick="openStatsModal()" class="btn-ui-stats">
+                        <span class="icon">⬡</span> VIEW UI STATS
+                    </button>
+                </div>
+                
+                <div class="stats-grid">
+                    <div class="stat-category-container">
+                        <h3 class="category-header">
+                            <span class="role-badge">FW / MF</span> 
+                            OFFENSIVE PROTOCOL
+                        </h3>
+                        <div class="stat-group">
+                            <div class="stat-box"><label>SHT</label><input type="number" step="0.1" id="sht" class="stat-input" placeholder="-"></div>
+                            <div class="stat-box"><label>DBL</label><input type="number" step="0.1" id="dbl" class="stat-input" placeholder="-"></div>
+                            <div class="stat-box"><label>STL</label><input type="number" step="0.1" id="stl" class="stat-input" placeholder="-"></div>
+                            <div class="stat-box"><label>PSN</label><input type="number" step="0.1" id="psn" class="stat-input" placeholder="-"></div>
+                            <div class="stat-box"><label>DFD</label><input type="number" step="0.1" id="dfd" class="stat-input" placeholder="-"></div>
+                        </div>
+                    </div>
+
+                    <div class="tech-separator"></div>
+
+                    <div class="stat-category-container">
+                        <h3 class="category-header">
+                            <span class="role-badge gk">GK</span> 
+                            GOALKEEPER PROTOCOL
+                        </h3>
+                        <div class="stat-group">
+                            <div class="stat-box"><label>DVG</label><input type="number" step="0.1" id="dvg" class="stat-input" placeholder="-"></div>
+                            <div class="stat-box"><label>BIQ</label><input type="number" step="0.1" id="biq" class="stat-input" placeholder="-"></div>
+                            <div class="stat-box"><label>RFX</label><input type="number" step="0.1" id="rfx" class="stat-input" placeholder="-"></div>
+                            <div class="stat-box"><label>DTG</label><input type="number" step="0.1" id="dtg" class="stat-input" placeholder="-"></div>
+                            <div class="stat-box empty"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="results-dashboard">
+                    <div class="result-card">
+                        <span class="res-label">AVERAGE</span>
+                        <span id="result-avg" class="res-value">0.0</span>
+                    </div>
+                    <div class="result-card main">
+                        <span class="res-label">ASSIGNED TITLE</span>
+                        <span id="result-rank" class="res-value-rank">N/A</span>
+                    </div>
+                    <div class="result-card">
+                        <span class="res-label">TIER</span>
+                        <span id="result-tier" class="res-value-tier">-</span>
+                    </div>
+                </div>
+
+                <div class="notes-section">
+                    <label>EVALUATION NOTES</label>
+                    <textarea id="notes-area" class="custom-scroll" placeholder="Enter scout observations..."></textarea>
+                </div>
+                
+                <div class="save-indicator" id="save-status">DATA SAVED LOCALLY</div>
+            </div>
+        </div>
+
+    </div>
+
+    <div id="stats-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>VISUAL DATA ANALYSIS</h3>
+                <button onclick="closeStatsModal()" class="close-btn">×</button>
+            </div>
+            
+            <div class="chart-container-wrapper">
+                <canvas id="blzChart"></canvas>
+            </div>
+
+            <div class="modal-footer">
+                <button onclick="copyChartToClipboard()" class="btn-copy">
+                    COPY CHART IMAGE
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='main.js') }}"></script>
+</body>
+</html>

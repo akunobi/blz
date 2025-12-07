@@ -1,0 +1,5 @@
+flask
+flask-sqlalchemy
+discord.py
+gunicorn
+psycopg2-binary
