@@ -23,8 +23,8 @@ db = SQLAlchemy(app)
 # --- MODELOS DE BASE DE DATOS ---
 class Ticket(db.Model):
     id = db.Column(db.String, primary_key=True) # ID del Canal de Discord
-    user_id = db.Column(db.String, nullable=False)   # <--- La columna que faltaba
-    user_name = db.Column(db.String, nullable=False) # <--- La columna que faltaba
+    user_id = db.Column(db.String, nullable=False)   
+    user_name = db.Column(db.String, nullable=False) 
     status = db.Column(db.String, default="open")
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
     messages = db.relationship('Message', backref='ticket', lazy=True, cascade="all, delete-orphan")
@@ -38,19 +38,15 @@ class Message(db.Model):
     read_by_web = db.Column(db.Boolean, default=False)
     synced_to_discord = db.Column(db.Boolean, default=True)
 
-# --- INICIALIZACIÓN DE LA BASE DE DATOS (MODO REPARACIÓN) ---
+# --- INICIALIZACIÓN DE LA BASE DE DATOS (VERSIÓN SEGURA) ---
 with app.app_context():
     try:
-        # ⚠️ IMPORTANTE: ESTA LÍNEA BORRA LA DB ANTIGUA PARA ARREGLAR EL ERROR DE COLUMNAS
-        # Una vez que funcione, puedes comentar o borrar la línea 'db.drop_all()'
-        print("⚠️ REINICIANDO BASE DE DATOS PARA APLICAR NUEVAS COLUMNAS...")
-        db.drop_all() 
-        
-        # Crea las tablas nuevas
+        # 🟢 ESTA VERSIÓN SOLO CREA LAS TABLAS SI NO EXISTEN.
+        # ¡NO BORRARÁ LOS DATOS EXISTENTES!
         db.create_all()
-        print("✅ Base de datos actualizada correctamente.")
+        print("✅ Base de datos inicializada/verificada correctamente (Modo Seguro).")
     except Exception as e:
-        print(f"❌ Error al iniciar DB: {e}")
+        print(f"❌ Error al inicializar DB: {e}")
 
 # --- DISCORD BOT SETUP ---
 intents = discord.Intents.default()
