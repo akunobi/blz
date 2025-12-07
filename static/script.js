@@ -1,14 +1,13 @@
 // --- CONFIGURACIÓN GLOBAL ---
 let currentTicketId = null;
-let currentRegion = 'EU';
-let blzChartInstance = null; // Instancia del gráfico para poder destruirla y crear nueva
+let blzChartInstance = null; // Instancia del gráfico
 
 // --- INICIALIZACIÓN ---
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Cargar datos guardados del evaluador
     loadStats();
     
-    // 2. Listeners para inputs de estadísticas (Recalcular al escribir)
+    // 2. Listeners para inputs de estadísticas
     const statInputs = document.querySelectorAll('.stat-input');
     statInputs.forEach(input => {
         input.addEventListener('input', calculateStats);
@@ -19,14 +18,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if(notesArea) {
         notesArea.addEventListener('input', saveStats);
     }
-    
-    // 4. Activar botón de región por defecto (EU)
-    const defaultBtn = document.querySelector(`.btn-region.eu`);
-    if(defaultBtn) defaultBtn.classList.add('active');
 
-    // 5. Iniciar polling de tickets
-    setInterval(loadTickets, 3000); // Recargar lista de tickets cada 3s
-    setInterval(() => { if (currentTicketId) loadMessages(currentTicketId); }, 2000); // Recargar chat cada 2s
+    // 4. Iniciar polling de tickets
+    loadTickets();
+    setInterval(loadTickets, 3000); 
+    setInterval(() => { if (currentTicketId) loadMessages(currentTicketId); }, 2000);
 });
 
 // --- LÓGICA DE NAVEGACIÓN (VISTAS) ---
@@ -41,38 +37,22 @@ function switchView(viewName) {
     const activeView = document.getElementById(`view-${viewName}`);
     if(activeView) activeView.classList.remove('hidden');
 
-    // Manejar visibilidad de la barra lateral (Tickets vs Stats)
-    const ticketControls = document.getElementById('ticket-controls');
+    // Manejar visibilidad de la barra lateral
     const ticketList = document.getElementById('ticket-list-container');
     
+    // Si estamos en qualifications, ocultamos la lista para dar foco al panel central
+    // Si prefieres que la lista se vea siempre, borra este if/else
     if (viewName === 'qualifications') {
-        if(ticketControls) ticketControls.classList.add('hidden');
         if(ticketList) ticketList.classList.add('hidden');
     } else {
-        if(ticketControls) ticketControls.classList.remove('hidden');
         if(ticketList) ticketList.classList.remove('hidden');
     }
 }
 
 // --- LÓGICA DE TICKETS (BACKEND API) ---
 
-function filterRegion(region) {
-    currentRegion = region;
-    // Actualizar botones visuales
-    document.querySelectorAll('.btn-region').forEach(btn => btn.classList.remove('active'));
-    const btn = document.querySelector(`.btn-region.${region.toLowerCase()}`);
-    if(btn) btn.classList.add('active');
-    
-    // Reiniciar vista de chat
-    currentTicketId = null;
-    document.getElementById('current-ticket-name').innerText = 'AWAITING TARGET SELECTION...';
-    document.getElementById('chat-box').innerHTML = '<div class="empty-state">SELECT A TICKET TO INITIATE LINK</div>';
-    
-    loadTickets();
-}
-
 function loadTickets() {
-    // Si no estamos en la vista de tickets, no hacemos llamadas a la API
+    // Si no estamos en la vista de tickets, opcionalmente podemos pausar la carga
     const ticketView = document.getElementById('view-tickets');
     if (ticketView && ticketView.classList.contains('hidden')) return;
 
@@ -82,23 +62,31 @@ function loadTickets() {
         const list = document.getElementById('ticket-list');
         list.innerHTML = ''; // Limpiar lista
         
-        let hasTickets = false;
-        data.forEach(ticket => {
-            if(ticket.region !== currentRegion) return;
-            hasTickets = true;
+        if (data.length === 0) {
+            list.innerHTML = '<div style="padding:20px; color:#555; text-align:center;">NO SIGNALS DETECTED</div>';
+            return;
+        }
 
+        data.forEach(ticket => {
             const div = document.createElement('div');
+            // Mantenemos la clase 'ticket-item' y 'active' original
             div.className = `ticket-item ${currentTicketId === ticket.id ? 'active' : ''}`;
-            div.onclick = () => selectTicket(ticket.id, ticket.name);
+            div.onclick = () => selectTicket(ticket.id, ticket.user_name); // Asegúrate que el backend envía user_name
             
-            let badge = ticket.unread > 0 ? `<span class="badge">${ticket.unread}</span>` : '';
-            div.innerHTML = `<span class="ticket-name">#${ticket.name}</span> ${badge}`;
+            // Usamos 'status' para colorear o un badge si lo deseas
+            let statusBadge = ticket.status === 'open' 
+                ? `<span class="badge" style="background:var(--neon-blue); box-shadow:0 0 5px var(--neon-blue);">OP</span>` 
+                : `<span class="badge" style="background:var(--text-grey); box-shadow:none;">CL</span>`;
+
+            div.innerHTML = `
+                <div style="display:flex; flex-direction:column;">
+                    <span class="ticket-name" style="font-size:0.9rem;">${ticket.user_name}</span>
+                    <span style="font-size:0.7em; color:var(--text-grey);">ID: ${ticket.id.substring(0,6)}...</span>
+                </div>
+                ${statusBadge}
+            `;
             list.appendChild(div);
         });
-
-        if (!hasTickets) {
-            list.innerHTML = '<div style="padding:20px; color:#555; text-align:center;">NO SIGNALS DETECTED</div>';
-        }
     })
     .catch(err => console.error("Error loading tickets:", err));
 }
@@ -106,8 +94,13 @@ function loadTickets() {
 function selectTicket(id, name) {
     currentTicketId = id;
     document.getElementById('current-ticket-name').innerText = `TARGET ACQUIRED: ${name}`;
+    
+    // Habilitar controles
+    document.getElementById('msg-input').disabled = false;
+    document.getElementById('send-btn').disabled = false;
+
     loadMessages(id);
-    loadTickets(); // Para actualizar estado activo inmediatamente
+    loadTickets(); // Para actualizar estado activo visualmente
 }
 
 function loadMessages(id) {
@@ -121,16 +114,17 @@ function loadMessages(id) {
             return;
         }
         
-        // Renderizado simple (en producción usarías diffing para no parpadear)
         box.innerHTML = ''; 
         msgs.forEach(m => {
             const div = document.createElement('div');
-            div.className = `message ${m.sender === 'WebAgent' ? 'agent' : 'discord'}`;
+            // Diferenciamos mensajes del 'Soporte Web' vs Usuario
+            const isAgent = m.sender === 'Soporte Web'; 
+            
+            div.className = `message ${isAgent ? 'agent' : 'discord'}`;
             div.innerHTML = `<small>${m.sender}</small><div class="msg-content">${m.content}</div>`;
             box.appendChild(div);
         });
         
-        // Auto-scroll al final
         box.scrollTop = box.scrollHeight;
     });
 }
@@ -154,25 +148,18 @@ function sendMessage() {
 function completeTicket() {
     if (!currentTicketId) return;
     if(confirm('CONFIRM: Mark TRYOUT as COMPLETE? This will archive the data link.')) {
-        fetch('/api/complete_ticket', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ ticket_id: currentTicketId })
-        }).then(() => {
-            currentTicketId = null;
-            document.getElementById('current-ticket-name').innerText = 'AWAITING TARGET SELECTION...';
-            document.getElementById('chat-box').innerHTML = '<div class="empty-state">SELECT A TICKET TO INITIATE LINK</div>';
-            loadTickets();
-        });
+        // Aquí asumimos que tienes un endpoint para cerrar/archivar, si no, puedes quitar esta función
+        // o simplemente limpiar la UI
+        alert("Functionality to close ticket pending implementation in backend.");
     }
 }
 
 function handleEnter(e) { if (e.key === 'Enter') sendMessage(); }
 
 
-// --- LÓGICA DE STATS / QUALIFICATIONS (LOCAL) ---
+// --- LÓGICA DE STATS / QUALIFICATIONS (INTACTA) ---
 
 function calculateStats() {
-    // Definimos los grupos de IDs
     const offensiveIds = ['sht', 'dbl', 'stl', 'psn', 'dfd'];
     const gkIds = ['dvg', 'biq', 'rfx', 'dtg'];
     
@@ -180,7 +167,6 @@ function calculateStats() {
     let count = 0;
     let valuesObj = {};
 
-    // Helper para procesar un grupo de inputs
     const processGroup = (ids) => {
         let localSum = 0;
         let localCount = 0;
@@ -198,11 +184,9 @@ function calculateStats() {
         return { sum: localSum, count: localCount };
     };
 
-    // Procesar datos
     const offData = processGroup(offensiveIds);
     const gkData = processGroup(gkIds);
 
-    // Lógica de separación: Si hay datos en la fila de arriba (FW), ignoramos la de abajo (GK) para el promedio
     if (offData.count > 0) {
         sum = offData.sum;
         count = offData.count;
@@ -211,17 +195,12 @@ function calculateStats() {
         count = gkData.count;
     }
 
-    // Calcular promedio
     let average = count > 0 ? (sum / count).toFixed(1) : 0;
     
-    // Actualizar UI
     const avgEl = document.getElementById('result-avg');
     if(avgEl) avgEl.innerText = average;
     
-    // Calcular Rango y Tier
     updateRankAndTier(parseFloat(average));
-    
-    // Guardar
     saveStats(valuesObj);
 }
 
@@ -229,7 +208,6 @@ function updateRankAndTier(avg) {
     let titleHTML = `<span style="color:#555">N/A</span>`;
     let tier = "-";
     
-    // --- LÓGICA DE TIERS ---
     if (avg >= 9.5) tier = "S+";
     else if (avg >= 9.0) tier = "S";
     else if (avg >= 8.5) tier = "A";
@@ -237,8 +215,6 @@ function updateRankAndTier(avg) {
     else if (avg >= 7.0) tier = "C";
     else if (avg >= 0.1) tier = "D";
 
-    // --- LÓGICA DE RANGOS Y ESTRELLAS ---
-    // Helper para estrellas: Low(1), Mid(2), High(3)
     const getStars = (val, min, mid, high) => {
         if (val >= high) return "⭐⭐⭐";
         if (val >= mid) return "⭐⭐";
@@ -267,7 +243,6 @@ function updateRankAndTier(avg) {
         titleHTML = `<span style="color:#333">UNRANKED</span>`;
     }
 
-    // Actualizar UI
     const rankEl = document.getElementById('result-rank');
     if(rankEl) rankEl.innerHTML = titleHTML;
     
@@ -280,7 +255,6 @@ function updateRankAndTier(avg) {
 }
 
 function saveStats(valuesObj) {
-    // Si la función se llama desde un evento, valuesObj no es el objeto de datos, así que lo reconstruimos
     if(!valuesObj || valuesObj instanceof Event) {
         valuesObj = {};
         ['sht', 'dbl', 'stl', 'psn', 'dfd', 'dvg', 'biq', 'rfx', 'dtg'].forEach(id => {
@@ -318,11 +292,11 @@ function loadStats() {
             const notesEl = document.getElementById('notes-area');
             if(notesEl) notesEl.value = data.notes;
         }
-        calculateStats(); // Recalcular UI al cargar
+        calculateStats();
     }
 }
 
-// --- GRÁFICOS (CHART.JS) & MODAL ---
+// --- GRÁFICOS (CHART.JS) & MODAL (INTACTO) ---
 
 function openStatsModal() {
     const modal = document.getElementById('stats-modal');
@@ -339,32 +313,25 @@ function closeStatsModal() {
 
 function renderChart() {
     const ctx = document.getElementById('blzChart').getContext('2d');
-    
-    // Obtener valores (default 0 si está vacío)
     const getVal = (id) => parseFloat(document.getElementById(id).value) || 0;
-
-    // Detectar si es Portero (GK): Si la suma de stats GK > 0
     const isGK = (getVal('dvg') + getVal('biq') + getVal('rfx') + getVal('dtg')) > 0;
     
-    // Destruir gráfico anterior si existe para evitar superposiciones
     if (blzChartInstance) {
         blzChartInstance.destroy();
     }
 
-    // Estilos globales Chart.js
     Chart.defaults.font.family = "'Orbitron', sans-serif";
     Chart.defaults.color = '#fff';
 
     if (isGK) {
-        // --- GRÁFICO CIRCULAR (Polar Area) PARA GK ---
         const data = {
             labels: ['DIVING', 'BIQ', 'REFLEXES', 'DISTRIB.'],
             datasets: [{
                 data: [getVal('dvg'), getVal('biq'), getVal('rfx'), getVal('dtg')],
                 backgroundColor: [
-                    'rgba(255, 102, 0, 0.7)', // Naranja
-                    'rgba(0, 240, 255, 0.7)', // Azul
-                    'rgba(255, 255, 255, 0.7)', // Blanco
+                    'rgba(255, 102, 0, 0.7)',
+                    'rgba(0, 240, 255, 0.7)',
+                    'rgba(255, 255, 255, 0.7)',
                     'rgba(255, 102, 0, 0.4)'
                 ],
                 borderColor: '#0a0a0f',
@@ -383,26 +350,23 @@ function renderChart() {
                         grid: { color: 'rgba(255,255,255,0.1)' },
                         angleLines: { color: 'rgba(255,255,255,0.1)' },
                         suggestedMin: 0,
-                        suggestedMax: 10, // Escala de 0 a 10
+                        suggestedMax: 10,
                         ticks: { backdropColor: 'transparent', color: '#fff', z: 1 }
                     }
                 },
-                plugins: {
-                    legend: { position: 'bottom', labels: { color: '#fff' } }
-                }
+                plugins: { legend: { position: 'bottom', labels: { color: '#fff' } } }
             }
         });
 
     } else {
-        // --- GRÁFICO PENTAGONAL (Radar) PARA FW/MF ---
         const data = {
             labels: ['SHOOTING', 'DRIBBLING', 'STEALING', 'PASSING', 'DEFENDING'],
             datasets: [{
                 label: 'PLAYER STATS',
                 data: [getVal('sht'), getVal('dbl'), getVal('stl'), getVal('psn'), getVal('dfd')],
                 fill: true,
-                backgroundColor: 'rgba(0, 240, 255, 0.2)', // Relleno Azul
-                borderColor: '#00f0ff', // Borde Azul Neón
+                backgroundColor: 'rgba(0, 240, 255, 0.2)',
+                borderColor: '#00f0ff',
                 pointBackgroundColor: '#fff',
                 pointBorderColor: '#fff',
                 pointHoverBackgroundColor: '#fff',
@@ -424,31 +388,24 @@ function renderChart() {
                         pointLabels: { color: '#00f0ff', font: { size: 12, weight: 'bold' } },
                         suggestedMin: 0,
                         suggestedMax: 10,
-                        ticks: { display: false } // Ocultar números del eje para limpieza visual
+                        ticks: { display: false }
                     }
                 },
-                plugins: {
-                    legend: { display: false } // Ocultar leyenda
-                }
+                plugins: { legend: { display: false } }
             }
         });
     }
 }
 
-// --- FUNCIÓN DE COPIAR IMAGEN ---
 async function copyChartToClipboard() {
     const canvas = document.getElementById('blzChart');
-    
-    // Convertir canvas a Blob (imagen)
     canvas.toBlob(async (blob) => {
         try {
             const data = [new ClipboardItem({ [blob.type]: blob })];
             await navigator.clipboard.write(data);
             
-            // Feedback Visual en el botón
             const btn = document.querySelector('.btn-copy');
             const originalText = btn.innerText;
-            
             btn.innerText = "CHART COPIED!";
             btn.style.borderColor = "var(--neon-orange)";
             btn.style.color = "var(--neon-orange)";
@@ -463,7 +420,7 @@ async function copyChartToClipboard() {
             
         } catch (err) {
             console.error('Error copying image: ', err);
-            alert('Clipboard access denied. Try right-click on the chart -> Copy Image.');
+            alert('Clipboard access denied.');
         }
     });
 }

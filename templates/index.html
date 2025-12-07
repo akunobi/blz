@@ -30,17 +30,15 @@
                     </div>
                 </div>
 
-                <div id="ticket-controls" class="region-selector">
+                <div class="region-selector">
                     <div class="separator"></div>
-                    <label>SERVER BLOCK</label>
-                    <button onclick="filterRegion('EU')" class="btn-region eu" data-region="EU">EU BLOCK</button>
-                    <button onclick="filterRegion('NA')" class="btn-region na" data-region="NA">NA BLOCK</button>
-                    <button onclick="filterRegion('ASIA')" class="btn-region asia" data-region="ASIA">ASIA BLOCK</button>
+                    <label style="color: var(--neon-blue); opacity: 0.8; letter-spacing: 2px;">INCOMING SIGNALS</label>
                 </div>
 
                 <div id="ticket-list-container" class="ticket-list-wrapper">
                     <div id="ticket-list" class="ticket-list custom-scroll">
-                        </div>
+                        <div style="padding:20px; color:#555; text-align:center;">INITIALIZING...</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -60,8 +58,8 @@
 
                 <div class="input-area-wrapper">
                     <div class="input-area">
-                        <input type="text" id="msg-input" placeholder="Enter command protocol..." onkeypress="handleEnter(event)">
-                        <button onclick="sendMessage()" class="btn-send">DEPLOY</button>
+                        <input type="text" id="msg-input" placeholder="Enter command protocol..." onkeypress="handleEnter(event)" disabled>
+                        <button onclick="sendMessage()" id="send-btn" class="btn-send" disabled>DEPLOY</button>
                     </div>
                 </div>
             </div>
