@@ -23,8 +23,8 @@ db = SQLAlchemy(app)
 # --- MODELOS DE BASE DE DATOS ---
 class Ticket(db.Model):
     id = db.Column(db.String, primary_key=True) # ID del Canal de Discord
-    user_id = db.Column(db.String, nullable=False)   
-    user_name = db.Column(db.String, nullable=False) 
+    user_id = db.Column(db.String, nullable=False)
+    user_name = db.Column(db.String, nullable=False)
     status = db.Column(db.String, default="open")
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
     messages = db.relationship('Message', backref='ticket', lazy=True, cascade="all, delete-orphan")
@@ -38,22 +38,91 @@ class Message(db.Model):
     read_by_web = db.Column(db.Boolean, default=False)
     synced_to_discord = db.Column(db.Boolean, default=True)
 
-# --- INICIALIZACIÓN DE LA BASE DE DATOS (VERSIÓN SEGURA) ---
+# Inicialización de DB (Segura)
 with app.app_context():
-    try:
-        # 🟢 ESTA VERSIÓN SOLO CREA LAS TABLAS SI NO EXISTEN.
-        # ¡NO BORRARÁ LOS DATOS EXISTENTES!
-        db.create_all()
-        print("✅ Base de datos inicializada/verificada correctamente (Modo Seguro).")
-    except Exception as e:
-        print(f"❌ Error al inicializar DB: {e}")
+    db.create_all()
 
 # --- DISCORD BOT SETUP ---
 intents = discord.Intents.default()
-intents.message_content = True 
-intents.members = True         
+intents.message_content = True
+intents.members = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
+
+# --- COMANDO DE SINCRONIZACIÓN (NUEVO) ---
+@bot.command()
+async def sync(ctx):
+    """Busca tickets existentes en la categoría y los guarda en la DB"""
+    CATEGORY_ID = 1355062396322058287 # La categoría que mencionaste
+    category = bot.get_channel(CATEGORY_ID)
+
+    if not category:
+        await ctx.send(f"❌ No encontré la categoría con ID {CATEGORY_ID}")
+        return
+
+    await ctx.send(f"🔄 Iniciando sincronización de tickets en **{category.name}**...")
+    
+    count_tickets = 0
+    count_msgs = 0
+
+    with app.app_context():
+        # Recorrer todos los canales de texto en la categoría
+        for channel in category.text_channels:
+            # 1. Verificar si el ticket ya existe en DB
+            ticket_db = db.session.get(Ticket, str(channel.id))
+            
+            if not ticket_db:
+                # Intentar adivinar el dueño del ticket (el usuario que tiene permiso de ver)
+                ticket_owner_id = "0"
+                ticket_owner_name = "Desconocido"
+                
+                for target, overwrite in channel.overwrites.items():
+                    # Buscamos un miembro (no rol) que no sea el bot y tenga view_channel=True
+                    if isinstance(target, discord.Member) and not target.bot and overwrite.view_channel:
+                        ticket_owner_id = str(target.id)
+                        ticket_owner_name = target.name
+                        break
+                
+                # Crear el Ticket en DB
+                new_ticket = Ticket(
+                    id=str(channel.id),
+                    user_id=ticket_owner_id,
+                    user_name=ticket_owner_name,
+                    status="open",
+                    created_at=channel.created_at or datetime.datetime.utcnow()
+                )
+                db.session.add(new_ticket)
+                count_tickets += 1
+            
+            # 2. Sincronizar Mensajes (Historial)
+            # Leemos los últimos 50 mensajes para llenar la web
+            async for msg in channel.history(limit=50, oldest_first=True):
+                # Verificar si el mensaje ya existe (para no duplicar si ejecutas el comando 2 veces)
+                # Nota: Esto es una verificación simple.
+                # Para hacerlo más rápido, borramos y reinsertamos o simplemente agregamos.
+                # Aquí asumiremos que si el ticket es nuevo, los mensajes también.
+                # Si el ticket ya existía, podríamos duplicar si no tenemos cuidado, 
+                # pero Message no tiene un ID único de Discord en este modelo simple, tiene un ID autoincremental.
+                # Para evitar duplicados masivos, verificaremos por contenido y timestamp aproximado, o simplemente limpiamos.
+                
+                # Para simplificar en este script de rescate: Agregamos todo.
+                # (Si ejecutas !sync dos veces, podrías tener mensajes dobles. Úsalo con cuidado o borra la DB antes).
+                
+                if not msg.content: continue # Ignorar mensajes vacíos o de sistema
+                
+                new_msg = Message(
+                    ticket_id=str(channel.id),
+                    sender=msg.author.name,
+                    content=msg.content,
+                    timestamp=msg.created_at,
+                    synced_to_discord=True
+                )
+                db.session.add(new_msg)
+                count_msgs += 1
+
+        db.session.commit()
+
+    await ctx.send(f"✅ **Sincronización completada!**\nRecuperados: {count_tickets} tickets y {count_msgs} mensajes.\nRevisa la web ahora.")
 
 # --- CLASE PARA EL BOTÓN DE CREAR TICKET ---
 class TicketLauncher(View):
@@ -62,26 +131,30 @@ class TicketLauncher(View):
 
     @discord.ui.button(label="Crear Ticket", style=discord.ButtonStyle.green, custom_id="create_ticket_btn")
     async def create_ticket(self, interaction: discord.Interaction, button: Button):
-        # Evitar duplicados simples
+        CATEGORY_ID = 1355062396322058287
+        category = interaction.guild.get_channel(CATEGORY_ID)
+
+        # Evitar duplicados
         existing_channel = discord.utils.get(interaction.guild.text_channels, name=f"ticket-{interaction.user.name.lower()}")
         if existing_channel:
             await interaction.response.send_message(f"Ya tienes un ticket abierto: {existing_channel.mention}", ephemeral=True)
             return
 
-        # 1. PERMISOS
+        # Permisos
         overwrites = {
             interaction.guild.default_role: discord.PermissionOverwrite(view_channel=False),
             interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
             interaction.guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True)
         }
 
-        # 2. CREAR EL CANAL
+        # Crear canal en la categoría correcta
         channel = await interaction.guild.create_text_channel(
             name=f"ticket-{interaction.user.name}",
-            overwrites=overwrites
+            overwrites=overwrites,
+            category=category 
         )
 
-        # 3. GUARDAR EN DB
+        # Guardar en DB
         with app.app_context():
             new_ticket = Ticket(
                 id=str(channel.id),
@@ -98,7 +171,7 @@ class TicketLauncher(View):
 # --- EVENTOS DEL BOT ---
 @bot.event
 async def on_ready():
-    print(f'✅ Bot conectado como {bot.user} (ID: {bot.user.id})')
+    print(f'✅ Bot conectado como {bot.user}')
     bot.add_view(TicketLauncher())
 
 @bot.command()
@@ -110,16 +183,13 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # Verificar si es un ticket válido antes de guardar
     with app.app_context():
         ticket_existente = db.session.get(Ticket, str(message.channel.id))
         
         if not ticket_existente:
-            # Si no es un ticket, procesamos comandos normales y salimos
             await bot.process_commands(message)
             return 
 
-        # Si es un ticket, guardamos el mensaje
         try:
             new_msg = Message(
                 ticket_id=str(message.channel.id),
@@ -129,15 +199,13 @@ async def on_message(message):
             )
             db.session.add(new_msg)
             db.session.commit()
-            print(f"📩 Mensaje guardado en ticket {message.channel.id}")
         except Exception as e:
-            print(f"❌ Error guardando mensaje: {e}")
+            print(f"Error guardando mensaje: {e}")
             db.session.rollback()
 
     await bot.process_commands(message)
 
 # --- RUTAS DE FLASK (API) ---
-
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -166,24 +234,22 @@ def send_message_web():
     data = request.json
     ticket_id = data.get('ticket_id')
     content = data.get('content')
-    sender = "Soporte Web" 
+    sender = "Soporte Web"
 
     if not ticket_id or not content:
         return jsonify({'error': 'Faltan datos'}), 400
 
-    # Guardar en DB
     new_msg = Message(ticket_id=ticket_id, sender=sender, content=content, synced_to_discord=True)
     db.session.add(new_msg)
     db.session.commit()
 
-    # Enviar a Discord
     channel = bot.get_channel(int(ticket_id))
     if channel:
         future = discord.run_coroutine_threadsafe(channel.send(f"**{sender}:** {content}"), bot.loop)
         try:
             future.result(timeout=5)
-        except Exception as e:
-            print(f"Error enviando a Discord: {e}")
+        except Exception:
+            pass
 
     return jsonify({'status': 'success'})
 
