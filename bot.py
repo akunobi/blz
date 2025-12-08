@@ -6,7 +6,6 @@ import asyncio
 from flask import Flask, render_template, jsonify, request
 from dotenv import load_dotenv
 
-# Cargar variables
 load_dotenv()
 
 # --- CONFIGURACIÓN ---
@@ -15,7 +14,7 @@ app.secret_key = os.urandom(24)
 
 TOKEN = os.getenv("DISCORD_TOKEN") 
 
-# Configuración de Categoría (Render vs Local)
+# Configuración de Categoría (Prioridad: Render > Local > Default)
 try:
     raw_id = os.getenv("CATEGORY_ID")
     if not raw_id:
@@ -57,7 +56,7 @@ def init_db():
         conn.commit()
         conn.close()
     except Exception as e:
-        print(f"!!! [DB ERROR]: {e}")
+        print(f"[DB ERROR]: {e}")
 
 # --- EVENTOS DEL BOT ---
 @client.event
@@ -79,10 +78,10 @@ async def on_message(message):
                     INSERT INTO messages (channel_id, channel_name, author_name, author_avatar, content)
                     VALUES (?, ?, ?, ?, ?)
                 ''', (
-                    message.channel.id,
-                    message.channel.name,
-                    message.author.name,
-                    str(message.author.avatar.url) if message.author.avatar else "https://cdn.discordapp.com/embed/avatars/0.png",
+                    message.channel.id, 
+                    message.channel.name, 
+                    message.author.name, 
+                    str(message.author.avatar.url) if message.author.avatar else "https://cdn.discordapp.com/embed/avatars/0.png", 
                     message.content
                 ))
                 conn.commit()
@@ -98,33 +97,25 @@ def index():
 
 @app.route('/api/admin/reset')
 def reset_database():
-    """Limpia la base de datos sin borrar el archivo físico (más seguro)."""
+    """Limpia la base de datos de canales antiguos."""
     try:
         conn = get_db_connection()
-        # Usamos DELETE en lugar de DROP para evitar bloqueos de archivo
-        cursor = conn.execute('DELETE FROM messages')
-        deleted_count = cursor.rowcount
-        
-        # VACUUM reduce el tamaño del archivo tras borrar
+        conn.execute('DELETE FROM messages') # Usamos DELETE para no bloquear el archivo
         conn.execute('VACUUM')
         conn.commit()
         conn.close()
-        
-        return jsonify({
-            "status": "SUCCESS", 
-            "message": f"Base de datos limpiada. {deleted_count} mensajes eliminados."
-        })
+        return jsonify({"status": "SUCCESS", "message": "Base de datos purgada."})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/channels')
 def get_channels():
     if not bot_ready_event.is_set():
-        return jsonify({"error": "Bot iniciando..."}), 503
+        return jsonify([]), 503
 
     async def get_channels_async():
         try:
-            # 1. Intentar obtener canales EN VIVO desde Discord
+            # Intentar obtener la categoría (API o Caché)
             category = client.get_channel(TARGET_CATEGORY_ID)
             if not category:
                 try:
@@ -136,10 +127,8 @@ def get_channels():
                 text_channels = [c for c in category.channels if isinstance(c, discord.TextChannel)]
                 text_channels.sort(key=lambda x: x.position)
                 return [{"id": c.id, "name": c.name} for c in text_channels]
-            
             return []
-        except Exception as e:
-            print(f"Error channels: {e}")
+        except:
             return []
 
     try:
@@ -149,12 +138,11 @@ def get_channels():
         if channels:
             return jsonify(channels)
         
-        # 2. Fallback: Si Discord falla, leer de la DB
+        # Fallback a DB si Discord falla
         conn = get_db_connection()
         db_chans = conn.execute('SELECT DISTINCT channel_name as name, channel_id as id FROM messages').fetchall()
         conn.close()
         return jsonify([dict(row) for row in db_chans])
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -170,14 +158,18 @@ def get_messages():
 
 @app.route('/api/send', methods=['POST'])
 def send_message():
+    """
+    Ruta CRÍTICA de envío. Maneja errores para evitar el 500.
+    """
     data = request.json
     channel_id = data.get('channel_id')
     content = data.get('content')
     
+    # Log para ver qué llega
     print(f"\n>>> [WEB SEND] ID: {channel_id} | Msg: {content}")
     
     if not channel_id or not content:
-        return jsonify({"error": "Datos incompletos"}), 400
+        return jsonify({"error": "Faltan datos"}), 400
 
     if not bot_loop or not bot_ready_event.is_set():
         return jsonify({"error": "Bot desconectado"}), 503
@@ -185,30 +177,33 @@ def send_message():
     async def send_async():
         try:
             c_id = int(channel_id)
+            # Usamos fetch_channel para asegurar que el canal existe REALMENTE
             channel = await client.fetch_channel(c_id)
             await channel.send(content)
             return {"success": True}
         except discord.NotFound:
-            print(f"!!! [ERROR] Canal {c_id} NO EXISTE.")
-            return {"success": False, "error": "Canal no encontrado (Borrado o ID vieja)."}
+            print(f"!!! [ERROR] Canal {c_id} NO EXISTE en Discord.")
+            return {"success": False, "error": "Canal no encontrado (ID inválida/Borrado)."}
         except discord.Forbidden:
             print(f"!!! [ERROR] SIN PERMISOS en {c_id}.")
-            return {"success": False, "error": "Sin permisos."}
+            return {"success": False, "error": "Bot sin permisos."}
         except Exception as e:
-            print(f"!!! [ERROR]: {e}")
+            print(f"!!! [ERROR CRÍTICO]: {e}")
             return {"success": False, "error": str(e)}
 
     try:
+        # Ejecutar en el hilo del bot
         future = asyncio.run_coroutine_threadsafe(send_async(), bot_loop)
-        result = future.result(timeout=10)
+        result = future.result(timeout=8) # Timeout seguro
         
         if result["success"]:
             return jsonify({"status": "OK"})
         else:
-            return jsonify({"error": result["error"]}), 500
+            # Aquí evitamos el 500 devolviendo el error controlado
+            return jsonify({"error": result["error"]}), 404 # 404 o 400 según el error
             
     except Exception as e:
-        return jsonify({"error": f"Internal: {e}"}), 500
+        return jsonify({"error": f"Internal Error: {e}"}), 500
 
 # --- ARRANQUE ---
 def run_discord_bot():
@@ -229,5 +224,6 @@ if __name__ == '__main__':
     init_db()
     t = threading.Thread(target=run_discord_bot, daemon=True)
     t.start()
+    
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
