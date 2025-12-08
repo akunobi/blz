@@ -6,40 +6,42 @@ import asyncio
 from flask import Flask, render_template, jsonify, request
 from dotenv import load_dotenv
 
-# Cargar variables de entorno
+# Cargar variables locales
 load_dotenv()
 
 # --- CONFIGURACIÓN ---
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
-# TOKEN: Asegúrate de tenerlo en tu .env o variables de Render
 TOKEN = os.getenv("DISCORD_TOKEN") 
 
-# ID de la categoría (Intenta convertirlo a int, si falla usa el default)
+# CORRECCIÓN IMPORTANTE: Leemos 'CATEGORY_ID'
 try:
-    TARGET_CATEGORY_ID = int(os.getenv("TARGET_CATEGORY_ID", 1355062396322058287))
+    raw_id = os.getenv("CATEGORY_ID")
+    if not raw_id:
+        print("!!! [CRITICAL] FALTAN VARIABLES EN RENDER: Asegúrate de tener 'CATEGORY_ID' y 'DISCORD_TOKEN'")
+        TARGET_CATEGORY_ID = 0
+    else:
+        TARGET_CATEGORY_ID = int(raw_id)
 except ValueError:
-    TARGET_CATEGORY_ID = 1355062396322058287 
+    print("!!! [ERROR] CATEGORY_ID no es un número válido.")
+    TARGET_CATEGORY_ID = 0
 
 # --- SETUP DISCORD ---
 intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
 
-# Variables globales para el hilo del bot
 bot_loop = None
 bot_ready_event = threading.Event()
 
 # --- BASE DE DATOS ---
 def get_db_connection():
-    # check_same_thread=False es vital para SQLite con hilos
     conn = sqlite3.connect('database.db', check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
 def init_db():
-    """Crea la tabla de mensajes si no existe."""
     try:
         conn = get_db_connection()
         conn.execute('''
@@ -55,7 +57,7 @@ def init_db():
         ''')
         conn.commit()
         conn.close()
-        print(">>> [DB]: Base de datos lista.")
+        print(">>> [DB]: Lista.")
     except Exception as e:
         print(f"!!! [DB ERROR]: {e}")
 
@@ -63,7 +65,19 @@ def init_db():
 @client.event
 async def on_ready():
     print(f'>>> [DISCORD]: Conectado como {client.user}')
-    print(f'>>> [DISCORD]: ID Categoría Objetivo: {TARGET_CATEGORY_ID}')
+    print(f'>>> [DISCORD]: Usando CATEGORY_ID: {TARGET_CATEGORY_ID}')
+    
+    # Diagnóstico rápido al arrancar
+    if TARGET_CATEGORY_ID == 0:
+        print("!!! [ALERTA]: TARGET_CATEGORY_ID es 0. El bot NO funcionará.")
+    else:
+        try:
+            # Intentar ver si tenemos acceso a la categoría
+            category = client.get_channel(TARGET_CATEGORY_ID) or await client.fetch_channel(TARGET_CATEGORY_ID)
+            print(f">>> [EXITO]: Categoría '{category.name}' detectada correctamente.")
+        except Exception as e:
+            print(f"!!! [ALERTA]: El bot no puede ver la categoría {TARGET_CATEGORY_ID}. Error: {e}")
+
     bot_ready_event.set()
 
 @client.event
@@ -71,7 +85,6 @@ async def on_message(message):
     if message.author == client.user:
         return
 
-    # Guardar mensaje solo si pertenece a la categoría correcta
     if hasattr(message.channel, 'category') and message.channel.category:
         if message.channel.category.id == TARGET_CATEGORY_ID:
             try:
@@ -106,7 +119,6 @@ def get_channels():
     async def get_channels_async():
         try:
             category = client.get_channel(TARGET_CATEGORY_ID)
-            # Si no está en caché, intentar fetch
             if not category:
                 try:
                     category = await client.fetch_channel(TARGET_CATEGORY_ID)
@@ -141,17 +153,12 @@ def get_messages():
 
 @app.route('/api/send', methods=['POST'])
 def send_message():
-    """
-    Ruta con depuración detallada para diagnosticar errores de envío.
-    """
     data = request.json
     channel_id = data.get('channel_id')
     content = data.get('content')
     
-    # --- LOGS DE DEPURACIÓN ---
-    print(f"\n>>> [WEB REQUEST] Enviar mensaje:")
-    print(f"    - Canal ID Raw: {channel_id} ({type(channel_id)})")
-    print(f"    - Contenido: {content}")
+    # LOG DEBUG
+    print(f"\n>>> [WEB REQUEST] ID Solicitada: {channel_id} | Configurada: {TARGET_CATEGORY_ID}")
     
     if not channel_id or not content:
         return jsonify({"error": "Faltan datos"}), 400
@@ -162,23 +169,21 @@ def send_message():
     async def send_async():
         try:
             c_id = int(channel_id)
-            # Usamos fetch_channel para forzar validación con la API de Discord
             channel = await client.fetch_channel(c_id)
-            print(f"    - Canal encontrado: #{channel.name} (ID: {channel.id})")
+            
+            # Verificación extra de seguridad (opcional, pero recomendada)
+            if channel.category and channel.category.id != TARGET_CATEGORY_ID:
+                 print(f"!!! [ALERTA] Intento de envío a categoría incorrecta ({channel.category.id})")
             
             await channel.send(content)
-            print(f"    - ¡Mensaje enviado con éxito!")
             return {"success": True}
         
-        except ValueError:
-            print("!!! [ERROR] ID no es un entero válido.")
-            return {"success": False, "error": "ID de canal inválida."}
         except discord.NotFound:
-            print(f"!!! [ERROR] Discord: Canal {channel_id} NO ENCONTRADO.")
-            return {"success": False, "error": "Canal no encontrado o borrado."}
+            print(f"!!! [ERROR] Canal {c_id} NO ENCONTRADO.")
+            return {"success": False, "error": "Canal no encontrado."}
         except discord.Forbidden:
-            print(f"!!! [ERROR] Discord: SIN PERMISOS en canal {channel_id}.")
-            return {"success": False, "error": "Bot sin permisos para escribir."}
+            print(f"!!! [ERROR] SIN PERMISOS en canal {c_id}.")
+            return {"success": False, "error": "Sin permisos."}
         except Exception as e:
             print(f"!!! [ERROR CRÍTICO]: {e}")
             return {"success": False, "error": str(e)}
@@ -211,14 +216,9 @@ def run_discord_bot():
         print(f"!!! [BOT CRASH]: {e}")
 
 if __name__ == '__main__':
-    # 1. DB
     init_db()
-    
-    # 2. Hilo Bot
     t = threading.Thread(target=run_discord_bot, daemon=True)
     t.start()
     
-    # 3. Web
     port = int(os.environ.get("PORT", 5000))
-    print(f">>> [WEB]: Iniciando en puerto {port}...")
     app.run(host='0.0.0.0', port=port, debug=False)
