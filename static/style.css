@@ -1,13 +1,13 @@
 :root {
-    /* COLORES FUSIÓN */
+    /* --- PALETA DE FUSIÓN --- */
     --cyan: #00f2ff;
     --cyan-dark: rgba(0, 242, 255, 0.1);
     --orange: #ff5e00;
     --red: #ff002f;
     --void: #050505;
-    --glass: rgba(20, 20, 20, 0.8);
+    --glass: rgba(20, 20, 20, 0.85);
     
-    /* FUENTES */
+    /* --- TIPOGRAFÍA --- */
     --font-code: 'Share Tech Mono', monospace;
     --font-display: 'Teko', sans-serif;
 }
@@ -24,7 +24,7 @@ body {
 }
 
 /* =========================================
-   AMBIENTE (Fondo Roto)
+   AMBIENTE (FONDO Y PARTÍCULAS)
    ========================================= */
 .void-layer {
     position: fixed; inset: 0;
@@ -46,7 +46,7 @@ body {
 @keyframes plane-fly { 0% { background-position: 0 0; } 100% { background-position: 100px 100px; } }
 
 /* =========================================
-   ANTI-LAYOUT (Contenedor 3D)
+   ANTI-LAYOUT (CONTENEDOR 3D)
    ========================================= */
 .anti-layout {
     display: flex;
@@ -58,25 +58,56 @@ body {
 
 /* --- 1. SIDEBAR (FRAGMENTO FLOTANTE) --- */
 .shard-sidebar {
-    width: 260px;
-    /* Inclinación 3D hacia el usuario */
-    transform: rotateY(15deg) translateZ(-50px);
+    width: 280px;
+    /* FIX: translateZ(0px) para que esté al frente y sea clickable */
+    transform: rotateY(15deg) translateZ(0px);
     background: var(--glass);
     border-right: 2px solid var(--orange);
-    /* Clip Path Irregular */
+    /* Forma irregular */
     clip-path: polygon(0 0, 100% 5%, 95% 100%, 0 95%);
-    display: flex; flex-direction: column;
+    display: flex; 
+    flex-direction: column;
     padding: 20px;
     backdrop-filter: blur(10px);
+    
+    /* FIX: Z-index alto para estar encima del chat */
+    position: relative;
+    z-index: 50;
+    box-shadow: -10px 0 30px rgba(0,0,0,0.5);
 }
 
-.shard-header { margin-bottom: 20px; text-align: right; border-bottom: 1px dashed var(--orange); padding-bottom: 10px; }
-.glitch-title { font-family: var(--font-display); font-size: 3rem; margin: 0; line-height: 1; color: #fff; text-shadow: 2px 2px var(--cyan); }
+.shard-header { 
+    margin-bottom: 20px; 
+    text-align: right; 
+    border-bottom: 1px dashed var(--orange); 
+    padding-bottom: 10px; 
+}
+.glitch-title { 
+    font-family: var(--font-display); 
+    font-size: 3rem; 
+    margin: 0; 
+    line-height: 1; 
+    color: #fff; 
+    text-shadow: 2px 2px var(--cyan); 
+}
 .sys-status { font-size: 0.8rem; color: #888; }
 .blink { color: var(--red); animation: blink 1s infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 
-.channel-void { flex: 1; overflow-y: auto; padding-right: 10px; }
+.channel-void { 
+    flex: 1; 
+    overflow-y: auto; 
+    padding-right: 10px;
+    
+    /* FIX: Necesario para scroll en flexbox */
+    min-height: 0; 
+    pointer-events: auto;
+}
+
+/* Estilo de Scrollbar Cyberpunk */
+.channel-void::-webkit-scrollbar { width: 4px; }
+.channel-void::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
+.channel-void::-webkit-scrollbar-thumb { background: var(--orange); }
 
 /* Botones de canal rotos */
 .channel-btn {
@@ -103,8 +134,9 @@ body {
     flex: 1;
     display: flex; flex-direction: column;
     position: relative;
-    /* Inclinación opuesta para crear tensión visual */
+    /* Inclinación opuesta */
     transform: rotateY(-5deg); 
+    z-index: 1; /* Menor que sidebar */
 }
 
 .construct-header {
@@ -113,8 +145,9 @@ body {
     border-bottom: 2px solid var(--cyan);
     padding-bottom: 5px;
 }
+.construct-header span { color: var(--cyan); font-size: 0.9rem; }
 
-/* Stats Button (Estilo Texto Crudo) */
+/* Botón flotante de Stats */
 .stats-trigger {
     background: transparent; border: 1px solid var(--cyan); color: var(--cyan);
     font-family: var(--font-code); padding: 5px 15px; cursor: pointer;
@@ -133,20 +166,28 @@ body {
     margin-bottom: 30px; /* Espacio para el input parásito */
 }
 
+.empty-feed { 
+    height: 100%; display: flex; flex-direction: column; 
+    justify-content: center; align-items: center; 
+    color: #444; font-size: 1.2rem; 
+}
+.eye-icon { font-size: 3rem; margin-bottom: 10px; animation: pulse 2s infinite; }
+@keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; text-shadow: 0 0 20px var(--red); } 100% { opacity: 0.5; } }
+
 /* Mensajes como fragmentos */
 .msg-card {
     background: linear-gradient(90deg, rgba(255,255,255,0.05), transparent);
     border-left: 3px solid var(--orange);
     padding: 15px; margin-bottom: 15px;
-    clip-path: polygon(0 0, 100% 0, 98% 100%, 0 100%); /* Ligera distorsión */
+    clip-path: polygon(0 0, 100% 0, 98% 100%, 0 100%);
     animation: slideIn 0.3s ease-out;
 }
 @keyframes slideIn { from{ opacity:0; transform:translateX(-20px); } to{ opacity:1; transform:translateX(0); } }
 
 .msg-header { color: var(--orange); font-size: 0.9rem; margin-bottom: 5px; display: flex; align-items: center; gap: 10px; }
 .msg-avatar { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--cyan); }
-.msg-body { color: #ddd; font-size: 1.1rem; }
-.msg-body a { color: var(--cyan); }
+.msg-body { color: #ddd; font-size: 1.1rem; line-height: 1.4; }
+.msg-body a { color: var(--cyan); text-decoration: none; border-bottom: 1px solid var(--cyan); }
 
 /* --- 3. INPUT PARÁSITO (FLOTANTE) --- */
 .parasite-input {
@@ -187,7 +228,7 @@ body {
 #send-btn:hover { background: #fff; letter-spacing: 2px; }
 
 /* =========================================
-   DRAWER CAÓTICO (Overlay)
+   DRAWER CAÓTICO (OVERLAY)
    ========================================= */
 .chaos-drawer {
     position: fixed; inset: 0;
@@ -201,6 +242,7 @@ body {
 
 .drawer-inner {
     width: 800px;
+    max-width: 90%;
     background: #080808;
     border: 2px solid var(--cyan);
     padding: 30px;
@@ -239,7 +281,7 @@ body {
 #ui-stats-btn:hover { filter: brightness(1.2); letter-spacing: 5px; }
 
 /* =========================================
-   MODAL PRISMA
+   MODAL PRISMA (GRÁFICO FINAL)
    ========================================= */
 .modal-void { display: none; position: fixed; inset: 0; background: #000; z-index: 200; justify-content: center; align-items: center; }
 .modal-prism {
