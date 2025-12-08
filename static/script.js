@@ -1,5 +1,4 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // --- REFERENCIAS ---
     const channelList = document.getElementById('channel-list');
     const chatFeed = document.getElementById('chat-feed');
     const msgInput = document.getElementById('msg-input');
@@ -14,16 +13,17 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchChannels();
     setInterval(() => {
         if (!isFetching && currentChannelId) fetchMessages();
-    }, 1000); 
+    }, 1000);
 
     if(msgInput) {
         msgInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') window.sendMessage();
         });
-        document.getElementById('send-btn').onclick = window.sendMessage;
+        const sendBtn = document.getElementById('send-btn');
+        if(sendBtn) sendBtn.onclick = window.sendMessage;
     }
 
-    // --- CANALES (ORBITALES) ---
+    // --- CANALES (SHARDS) ---
     async function fetchChannels() {
         try {
             const res = await fetch('/api/channels');
@@ -35,28 +35,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 const cName = ch.name || "Unknown";
                 const cId = ch.id; 
 
-                // Creamos un NODO en lugar de un botón simple
-                const node = document.createElement('div');
-                node.className = 'channel-node';
-                node.innerText = cName.toUpperCase(); // Todo en mayúsculas estilo técnico
+                // Creamos un FRAGMENTO
+                const shard = document.createElement('div');
+                shard.className = 'channel-shard';
+                shard.innerText = `${cName.toUpperCase()}`; 
                 
-                node.onclick = () => {
+                shard.onclick = () => {
                     currentChannelId = cId;
-                    document.querySelectorAll('.channel-node').forEach(b => b.classList.remove('active'));
-                    node.classList.add('active');
-                    chatFeed.innerHTML = '<div class="system-msg"><span class="pulse-icon">⚡</span>ESTABLISHING LINK...</div>';
+                    document.querySelectorAll('.channel-shard').forEach(b => b.classList.remove('active'));
+                    shard.classList.add('active');
+                    chatFeed.innerHTML = '<div style="text-align:center; margin-top:50px; color:var(--bl-cyan); font-family:\'Koulen\'">CONNECTING TO TARGET...</div>';
                     fetchMessages();
                 };
                 
-                channelList.appendChild(node);
+                channelList.appendChild(shard);
             });
         } catch(e) { 
-            console.error("Error", e);
-            channelList.innerHTML = '<div style="color:var(--neon-blue); padding:20px; text-align:right;">[OFFLINE]</div>';
+            console.error("Chan Error", e);
+            channelList.innerHTML = '<div style="color:#666; padding:20px;">[SYSTEM OFFLINE]</div>';
         }
     }
 
-    // --- MENSAJES (BLOQUES) ---
+    // --- MENSAJES (FRAGMENTS) ---
     async function fetchMessages() {
         if (!currentChannelId) return;
         isFetching = true;
@@ -70,17 +70,16 @@ document.addEventListener('DOMContentLoaded', () => {
             chatFeed.innerHTML = '';
             
             if (msgs.length === 0) {
-                chatFeed.innerHTML = '<div class="system-msg">NO DATA FRAGMENTS</div>';
+                chatFeed.innerHTML = '<div class="initial-lock"><div class="lock-icon">👁‍🗨</div><p>VOID</p></div>';
             } else {
                 msgs.forEach(msg => {
-                    const block = document.createElement('div');
-                    block.className = 'msg-block';
-                    // Avatar opcional, aquí solo nombre y texto para limpieza
-                    block.innerHTML = `
-                        <div class="msg-author">${msg.author_name}</div>
-                        <div class="msg-content">${formatLinks(msg.content)}</div>
+                    const frag = document.createElement('div');
+                    frag.className = 'msg-fragment';
+                    frag.innerHTML = `
+                        <div class="msg-meta">${msg.author_name}</div>
+                        <div class="msg-text">${formatLinks(msg.content)}</div>
                     `;
-                    chatFeed.appendChild(block);
+                    chatFeed.appendChild(frag);
                 });
             }
 
@@ -101,7 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const originalPlaceholder = msgInput.placeholder;
         msgInput.value = '';
-        msgInput.placeholder = "TRANSMITTING...";
+        msgInput.placeholder = "SYNCING...";
         msgInput.disabled = true;
 
         try {
@@ -123,7 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- GRÁFICOS (ESTILO NEÓN) ---
+    // --- ESTADÍSTICAS (Tu lógica intacta) ---
     window.generateStats = () => {
         let type = 'offensive';
         if (document.getElementById('dvg').value.trim() !== "") type = 'gk';
@@ -146,27 +145,44 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('stats-drawer').classList.remove('active');
     };
 
-    // (Tus funciones de rango getOffensiveRank y getGKRank van aquí, iguales que antes)
     function getOffensiveRank(s) {
         if (s < 4.6) return "N/A";
         if (s <= 4.8) return "ROOKIE 🥉 - ⭐";
-        // ... (resto de tus rangos) ...
+        if (s <= 5.1) return "ROOKIE 🥉 - ⭐⭐";
+        if (s <= 5.4) return "ROOKIE 🥉 - ⭐⭐⭐";
+        if (s <= 5.7) return "AMATEUR ⚽ - ⭐";
+        if (s <= 6.0) return "AMATEUR ⚽ - ⭐⭐";
+        if (s <= 6.3) return "AMATEUR ⚽ - ⭐⭐⭐";
+        if (s <= 6.6) return "ELITE ⚡ - ⭐";
+        if (s <= 6.9) return "ELITE ⚡ - ⭐⭐";
+        if (s <= 7.2) return "ELITE ⚡ - ⭐⭐⭐";
+        if (s <= 7.5) return "PRODIGY 🏅 - ⭐";
+        if (s <= 7.8) return "PRODIGY 🏅 - ⭐⭐";
+        if (s <= 8.1) return "PRODIGY 🏅 - ⭐⭐⭐";
+        if (s <= 8.4) return "NEW GEN XI - ⭐";
+        if (s <= 8.7) return "NEW GEN XI - ⭐⭐";
+        if (s <= 9.0) return "NEW GEN XI - ⭐⭐⭐";
+        if (s <= 9.3) return "WORLD CLASS 👑 - ⭐";
+        if (s <= 9.6) return "WORLD CLASS 👑 - ⭐⭐";
         return "WORLD CLASS 👑 - ⭐⭐⭐";
     }
+
     function getGKRank(s) {
         if (s <= 6.9) return "D TIER";
-        // ... (resto de tus rangos) ...
+        if (s <= 7.9) return "C TIER";
+        if (s <= 8.4) return "B TIER";
+        if (s <= 8.9) return "A TIER";
+        if (s <= 9.4) return "S TIER";
         return "S+ TIER";
     }
 
     function drawGraph(type, data, avg, rank) {
         ctx.clearRect(0,0,500,500);
-        ctx.fillStyle = "#020205"; ctx.fillRect(0,0,500,500); // Fondo negro profundo
-        
+        ctx.fillStyle = "#000"; ctx.fillRect(0,0,500,500);
         const cx = 250, cy = 250, r = 140;
-        const color = type === 'offensive' ? '#00f2ff' : '#0066ff'; // Cian vs Azul Eléctrico
+        const color = type === 'offensive' ? '#00f2ff' : '#0066ff'; // Cian vs Azul puro
 
-        ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.shadowBlur = 20; ctx.shadowColor = color;
+        ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.shadowBlur = 0; // Estilo plano más agresivo
         const keys = Object.keys(data), total = keys.length, angleStep = (Math.PI * 2) / total;
 
         ctx.beginPath();
@@ -180,8 +196,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         }
-        ctx.strokeStyle = "rgba(0, 242, 255, 0.2)"; 
-        ctx.stroke();
+        ctx.strokeStyle = "#333"; ctx.stroke(); // Grid gris oscuro
 
         ctx.beginPath();
         keys.forEach((k, i) => {
@@ -190,20 +205,21 @@ document.addEventListener('DOMContentLoaded', () => {
             i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
         });
         ctx.closePath();
-        ctx.fillStyle = type==='offensive'?"rgba(0, 242, 255, 0.3)":"rgba(0, 102, 255, 0.3)";
-        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = type==='offensive'?"rgba(0,242,255,0.5)":"rgba(0,102,255,0.5)"; // Más opacidad
+        ctx.fill(); 
+        ctx.strokeStyle = "#fff"; ctx.stroke(); // Borde blanco para contraste
 
         keys.forEach((k, i) => {
             let a = i*angleStep-Math.PI/2, labelR = r+40, x=cx+Math.cos(a)*labelR, y=cy+Math.sin(a)*labelR;
-            ctx.save(); ctx.fillStyle = "#fff"; ctx.font = "bold 16px 'Orbitron'"; 
-            ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.shadowBlur = 0;
+            ctx.save(); ctx.fillStyle = "#fff"; ctx.font = "bold 20px 'Koulen'"; 
+            ctx.textAlign = "center"; ctx.textBaseline = "middle";
             ctx.fillText(k.toUpperCase(), x, y); ctx.restore();
         });
 
-        ctx.shadowBlur = 0; ctx.fillStyle = "#fff"; ctx.font = "14px 'Rajdhani'"; ctx.textAlign = "center";
+        ctx.fillStyle = "#fff"; ctx.font = "16px 'Rajdhani'"; ctx.textAlign = "center";
         ctx.fillText(`AVG: ${avg.toFixed(1)} / 10`, cx, 440);
-        ctx.font = "bold 24px 'Orbitron'"; ctx.fillStyle = color; ctx.shadowBlur = 10; ctx.shadowColor = color;
-        ctx.fillText(rank, cx, 475);
+        ctx.font = "bold 30px 'Koulen'"; ctx.fillStyle = color;
+        ctx.fillText(rank, cx, 480);
     }
 
     const closeBtn = document.getElementById('close-modal');
@@ -214,7 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const item = new ClipboardItem({ "image/png": blob });
                 navigator.clipboard.write([item]).then(() => {
-                    const p = copyBtn.innerText; copyBtn.innerText = "SAVED!";
+                    const p = copyBtn.innerText; copyBtn.innerText = "CAPTURED";
                     setTimeout(() => copyBtn.innerText = p, 2000);
                 });
             } catch (e) { alert("Right click to save"); }

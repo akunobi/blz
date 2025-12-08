@@ -1,274 +1,224 @@
 :root {
-    --neon-cyan: #00f2ff;
-    --neon-blue: #0066ff;
-    --deep-void: #020205;
-    --glass-panel: rgba(10, 20, 30, 0.85);
+    --bl-cyan: #00f2ff;
+    --bl-dark: #020203;
+    --bl-glass: rgba(0, 242, 255, 0.05);
+    --text-main: #fff;
     
-    --font-head: 'Orbitron', sans-serif;
-    --font-ui: 'Rajdhani', sans-serif;
+    --font-impact: 'Koulen', sans-serif;
+    --font-tech: 'Rajdhani', sans-serif;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-    background-color: var(--deep-void);
-    color: #fff;
-    font-family: var(--font-ui);
+    background-color: var(--bl-dark);
+    color: var(--text-main);
+    font-family: var(--font-tech);
     height: 100vh;
     overflow: hidden;
-    /* Perspectiva isométrica sutil */
-    perspective: 1200px;
 }
 
-/* === AMBIENTE CIBERNÉTICO === */
-.cyber-grid {
-    position: fixed; inset: -50%;
-    background-image: 
-        linear-gradient(var(--neon-blue) 1px, transparent 1px),
-        linear-gradient(90deg, var(--neon-blue) 1px, transparent 1px);
+/* === AMBIENTE (Puzzle & Chains) === */
+.chaos-bg {
+    position: fixed; inset: 0; z-index: -2;
+    background: radial-gradient(circle at 80% 20%, #0a0a1a 0%, #000 70%);
+}
+.puzzle-overlay {
+    position: fixed; inset: 0; z-index: -1; opacity: 0.1;
+    background-image: linear-gradient(45deg, #111 25%, transparent 25%, transparent 75%, #111 75%, #111),
+                      linear-gradient(45deg, #111 25%, transparent 25%, transparent 75%, #111 75%, #111);
     background-size: 60px 60px;
-    opacity: 0.1;
-    transform: rotateX(60deg) rotateZ(15deg);
-    animation: grid-move 20s linear infinite;
-    z-index: -1;
+    background-position: 0 0, 30px 30px;
+    animation: puzzle-shift 60s linear infinite;
 }
-@keyframes grid-move { 0% { background-position: 0 0; } 100% { background-position: 60px 60px; } }
+@keyframes puzzle-shift { from { background-position: 0 0, 30px 30px; } to { background-position: 60px 60px, 90px 90px; } }
 
-.scanline {
-    position: fixed; inset: 0; pointer-events: none; z-index: 1000;
-    background: linear-gradient(to bottom, transparent 50%, rgba(0, 242, 255, 0.02) 51%);
-    background-size: 100% 4px;
-}
-
-/* === LAYOUT CENTRAL (NEXUS) === */
-.nexus-core {
-    display: flex;
-    height: 100vh;
-    padding: 40px;
-    gap: 40px;
-    align-items: center;
-}
-
-/* === 1. ORBITAL NAV (CANALES) === */
-.orbital-nav {
-    width: 250px;
-    height: 90%;
-    display: flex; flex-direction: column;
-    /* Rotación 3D para romper el plano */
-    transform: rotateY(15deg);
-    border-right: 2px solid var(--neon-cyan);
-    padding-right: 20px;
-    /* Importante para clicks */
-    position: relative; z-index: 10;
-}
-
-.nav-title {
-    font-family: var(--font-head);
-    color: var(--neon-cyan);
-    margin-bottom: 30px;
-    text-align: right;
-    font-weight: 900;
-    letter-spacing: 2px;
-    text-shadow: 0 0 10px var(--neon-cyan);
-}
-
-.orbit-container {
-    flex: 1;
-    overflow-y: auto;
-    display: flex; flex-direction: column;
-    gap: 15px;
-    align-items: flex-end; /* Alineado a la derecha */
-}
-/* Scroll invisible */
-.orbit-container::-webkit-scrollbar { display: none; }
-
-.channel-node {
-    background: linear-gradient(90deg, transparent, rgba(0, 242, 255, 0.1));
-    border: 1px solid var(--neon-blue);
-    border-left: none;
-    color: #888;
-    padding: 15px 25px;
-    font-family: var(--font-head);
-    cursor: pointer;
-    transition: 0.3s;
-    /* Forma tecnológica */
-    clip-path: polygon(10% 0, 100% 0, 100% 100%, 0 100%);
-    width: 100%;
-    text-align: right;
+/* === LAYOUT FRAGMENTADO === */
+.fragmented-layout {
     position: relative;
+    width: 100vw; height: 100vh;
+    overflow: hidden;
 }
 
-.channel-node:hover {
-    width: 110%; /* Efecto "salir" al hover */
-    color: #fff;
-    background: linear-gradient(90deg, transparent, rgba(0, 242, 255, 0.3));
-    text-shadow: 0 0 5px #fff;
+/* === 1. COLUMNA DE CANALES (ILÓGICA) === */
+.shard-column {
+    position: absolute;
+    left: 40px; top: 100px; bottom: 100px;
+    width: 250px;
+    display: flex; flex-direction: column;
+    /* Sin borde visible, solo elementos flotando */
 }
 
-.channel-node.active {
-    width: 115%;
-    background: var(--neon-cyan);
-    color: #000;
-    font-weight: bold;
-    box-shadow: 0 0 30px var(--neon-cyan);
+.shard-title {
+    font-family: var(--font-impact);
+    font-size: 3rem; color: rgba(255,255,255,0.1);
+    transform: rotate(-90deg) translateX(-100px);
+    position: absolute; left: -120px; top: 50%;
+    white-space: nowrap; pointer-events: none;
+}
+
+.shard-container {
+    flex: 1; overflow-y: auto; overflow-x: visible;
+    padding: 20px 0;
+    /* Scroll oculto */
+    scrollbar-width: none;
+}
+.shard-container::-webkit-scrollbar { display: none; }
+
+/* ESTILO DE LOS CANALES: CAOS ORGANIZADO */
+.channel-shard {
+    display: block; width: 100%;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #888;
+    padding: 15px; margin-bottom: 20px;
+    font-family: var(--font-impact); letter-spacing: 1px;
+    cursor: pointer; position: relative;
+    transition: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    backdrop-filter: blur(5px);
+}
+
+/* AQUÍ ESTÁ LA ILÓGICA: Cada elemento tiene un desplazamiento diferente */
+.channel-shard:nth-child(odd) { transform: translateX(0px) skewX(-10deg); width: 90%; }
+.channel-shard:nth-child(even) { transform: translateX(30px) skewX(10deg); width: 80%; text-align: right; }
+.channel-shard:nth-child(3n) { transform: translateX(10px) rotate(-2deg); border-color: var(--bl-cyan); }
+
+.channel-shard:hover {
+    background: var(--bl-cyan); color: #000;
+    transform: scale(1.1) translateX(10px) !important; /* Rompe el patrón al hover */
+    z-index: 10;
+    box-shadow: 0 0 30px var(--bl-cyan);
     border: none;
 }
+.channel-shard.active {
+    background: #fff; color: #000;
+    transform: scale(1.05);
+    box-shadow: 0 0 50px rgba(255,255,255,0.5);
+    z-index: 5;
+}
 
-/* === 2. DATA VISOR (CHAT) === */
-.data-visor {
-    flex: 1;
-    height: 100%;
+/* === 2. CHAT (EL VACÍO CENTRAL) === */
+.void-chat-area {
+    position: absolute;
+    top: 100px; bottom: 50px;
+    left: 350px; right: 50px; /* Deja espacio a la derecha */
+    /* Sin fondo, flotando en el espacio */
+}
+
+.floating-feed {
+    height: 100%; overflow-y: auto;
+    padding-right: 20px;
     display: flex; flex-direction: column;
-    justify-content: center;
-    /* Efecto flotante */
-    animation: float 6s ease-in-out infinite;
+    gap: 30px;
 }
-@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
 
-.visor-frame {
-    height: 90%;
-    background: var(--glass-panel);
-    border: 1px solid var(--neon-blue);
-    /* Forma de pantalla HUD compleja */
-    clip-path: polygon(
-        50px 0, 100% 0, 100% calc(100% - 50px), 
-        calc(100% - 50px) 100%, 0 100%, 0 50px
-    );
-    display: flex; flex-direction: column;
-    backdrop-filter: blur(10px);
-    box-shadow: 0 0 50px rgba(0, 102, 255, 0.1);
+.initial-lock {
+    margin: auto; text-align: center; opacity: 0.3;
+}
+.lock-icon { font-size: 5rem; margin-bottom: 20px; animation: pulse 2s infinite; }
+
+/* MENSAJES FLOTANTES */
+.msg-fragment {
+    max-width: 70%;
+    background: linear-gradient(90deg, rgba(0,0,0,0.8), rgba(0, 242, 255, 0.05));
+    border-left: 2px solid var(--bl-cyan);
+    padding: 15px 25px;
     position: relative;
+    /* Efecto de cristal roto */
+    clip-path: polygon(0 0, 100% 0, 98% 100%, 0 100%);
+    transition: 0.3s;
 }
+.msg-fragment:hover { transform: translateX(10px); border-left-width: 5px; }
 
-/* Decoraciones en esquinas */
-.visor-frame::before {
-    content: ''; position: absolute; top: 0; left: 0;
-    width: 50px; height: 50px;
-    border-top: 3px solid var(--neon-cyan);
-    border-left: 3px solid var(--neon-cyan);
-}
-.visor-frame::after {
-    content: ''; position: absolute; bottom: 0; right: 0;
-    width: 50px; height: 50px;
-    border-bottom: 3px solid var(--neon-cyan);
-    border-right: 3px solid var(--neon-cyan);
-}
+.msg-meta { font-size: 0.8rem; color: var(--bl-cyan); margin-bottom: 5px; font-weight: 700; text-transform: uppercase; }
+.msg-text { font-size: 1.1rem; line-height: 1.5; color: #eee; }
+.msg-text a { color: #fff; text-decoration: underline; text-decoration-color: var(--bl-cyan); }
 
-.visor-glass {
-    flex: 1;
-    overflow-y: auto;
-    padding: 40px;
-    /* Fondo de líneas de datos */
-    background: repeating-linear-gradient(0deg, transparent 0px, transparent 19px, rgba(0, 242, 255, 0.05) 20px);
-}
-
-.system-msg {
-    text-align: center; color: #555; margin-top: 20%;
-    font-family: var(--font-head); font-size: 1.5rem;
-    letter-spacing: 5px;
-}
-.pulse-icon { display: block; font-size: 3rem; margin-bottom: 20px; animation: pulse 1s infinite; color: var(--neon-cyan); }
-
-/* Mensajes Bloque */
-.msg-block {
-    background: rgba(0,0,0,0.5);
-    border-left: 4px solid var(--neon-blue);
-    padding: 15px; margin-bottom: 15px;
-    font-family: var(--font-ui);
-    position: relative;
-}
-.msg-block::after { /* Efecto esquina */
-    content: ''; position: absolute; top: 0; right: 0;
-    width: 10px; height: 10px; border-top: 1px solid var(--neon-blue); border-right: 1px solid var(--neon-blue);
-}
-.msg-author { color: var(--neon-cyan); font-weight: bold; font-size: 0.9rem; margin-bottom: 5px; text-transform: uppercase; }
-.msg-content { color: #eee; font-size: 1.1rem; line-height: 1.4; }
-.msg-content a { color: var(--neon-blue); text-decoration: none; border-bottom: 1px dotted; }
-
-/* === HUD CONTROLS (INPUT) === */
-.hud-controls {
-    height: 80px;
-    background: rgba(0,0,0,0.8);
-    display: flex; align-items: center;
-    padding: 0 30px; gap: 20px;
-    border-top: 1px solid var(--neon-blue);
-}
-
-.input-module {
-    flex: 1; display: flex;
-    background: #050505;
-    border: 1px solid #333;
-    transform: skewX(-20deg); /* Input inclinado radical */
+/* === 3. INPUT (EL DETONADOR) === */
+/* ESTO ES LO RADICAL: El input está ARRIBA A LA DERECHA, no abajo */
+.trigger-input {
+    position: absolute;
+    top: 30px; right: 40px;
+    width: 400px;
+    display: flex;
+    z-index: 100;
+    transform: rotate(1deg); /* Ligera incomodidad visual intencional */
 }
 
 #msg-input {
-    flex: 1; background: transparent; border: none;
-    color: #fff; padding: 0 20px; font-family: var(--font-head); font-size: 1.1rem;
-    transform: skewX(20deg); /* Corregir texto */
+    flex: 1;
+    background: rgba(0,0,0,0.8);
+    border: 1px solid #fff;
+    color: #fff; padding: 15px;
+    font-family: var(--font-tech); font-size: 1.2rem;
     outline: none;
 }
-#msg-input::placeholder { color: #444; }
+#msg-input:focus { border-color: var(--bl-cyan); box-shadow: 0 0 20px rgba(0,242,255,0.2); }
 
 #send-btn {
-    width: 120px; background: var(--neon-blue); color: #fff;
-    border: none; font-family: var(--font-head); font-weight: bold; cursor: pointer;
-    font-size: 1.1rem; transition: 0.2s;
+    background: #fff; color: #000;
+    border: none; padding: 0 25px;
+    font-family: var(--font-impact); font-size: 1.2rem;
+    cursor: pointer; transition: 0.2s;
 }
-#send-btn:hover { background: #fff; color: #000; box-shadow: 0 0 20px #fff; }
-#send-btn span { display: block; transform: skewX(20deg); } /* Corrección visual si tuviera span */
+#send-btn:hover { background: var(--bl-cyan); letter-spacing: 2px; }
 
-.stats-hex-btn {
-    width: 60px; height: 60px;
-    background: transparent; border: 2px solid var(--neon-cyan);
-    color: var(--neon-cyan); font-weight: bold; cursor: pointer;
-    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); /* Hexágono */
-    transition: 0.3s; display: flex; align-items: center; justify-content: center;
-    font-family: var(--font-head); font-size: 0.8rem;
+/* === 4. STATS (EL NÚCLEO) === */
+/* Un botón circular flotando abajo a la izquierda */
+.ego-core-btn {
+    position: absolute;
+    bottom: 40px; left: 40px;
+    width: 80px; height: 80px;
+    background: #000;
+    border: 2px solid var(--bl-cyan);
+    border-radius: 50%;
+    color: var(--bl-cyan);
+    font-family: var(--font-impact);
+    cursor: pointer;
+    box-shadow: 0 0 30px rgba(0, 242, 255, 0.1);
+    transition: 0.5s;
+    z-index: 50;
+    animation: core-pulse 3s infinite;
 }
-.stats-hex-btn:hover { background: var(--neon-cyan); color: #000; transform: rotate(180deg); }
+.ego-core-btn:hover { transform: scale(1.2); background: var(--bl-cyan); color: #000; }
+@keyframes core-pulse { 0% { box-shadow: 0 0 0 0 rgba(0,242,255,0.4); } 70% { box-shadow: 0 0 0 20px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
 
-/* === HOLO DRAWER === */
-.holo-drawer {
-    position: fixed; top: 0; right: 0; width: 400px; height: 100vh;
-    background: rgba(5, 5, 10, 0.95);
-    border-left: 2px solid var(--neon-cyan);
-    transform: translateX(100%);
-    transition: 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55); /* Rebote */
-    z-index: 200; padding: 40px;
-    display: flex; flex-direction: column;
+/* === DRAWER (EVOLUTION) === */
+.evolution-drawer {
+    position: fixed; inset: 0; 
+    background: rgba(0,0,0,0.95);
+    z-index: 200;
+    clip-path: circle(0% at 0% 100%); /* Efecto de apertura circular desde el botón */
+    transition: 0.6s cubic-bezier(0.87, 0, 0.13, 1);
+    display: flex; align-items: center; justify-content: center;
 }
-.holo-drawer.active { transform: translateX(0); }
+.evolution-drawer.active { clip-path: circle(150% at 0% 100%); }
 
-.holo-header { display: flex; justify-content: space-between; margin-bottom: 40px; border-bottom: 2px solid #333; padding-bottom: 10px; }
-.holo-header h2 { color: #fff; font-family: var(--font-head); margin: 0; }
-.close-holo { background: none; border: none; color: var(--neon-cyan); font-size: 2rem; cursor: pointer; }
+.evo-content { width: 800px; max-width: 90%; }
+.evo-header { display: flex; justify-content: space-between; margin-bottom: 50px; border-bottom: 4px solid #fff; }
+.evo-header h2 { font-family: var(--font-impact); font-size: 3rem; color: #fff; margin: 0; }
+.close-evo { background: none; border: none; color: var(--bl-cyan); font-size: 3rem; cursor: pointer; }
 
-.stats-matrix { flex: 1; overflow-y: auto; }
-.matrix-col h3 { color: var(--neon-blue); font-family: var(--font-head); margin-bottom: 15px; font-size: 1rem; }
+.evo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 50px; }
+.evo-col h3 { font-family: var(--font-impact); color: var(--bl-cyan); font-size: 1.5rem; margin-bottom: 20px; }
 
-.cyber-inp { display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid #222; }
-.cyber-inp label { color: #666; font-weight: bold; }
-.cyber-inp input { 
-    background: transparent; border: none; color: #fff; text-align: right; 
-    font-family: var(--font-ui); font-size: 1.2rem; outline: none; width: 60px;
-}
-.cyber-inp input:focus { color: var(--neon-cyan); }
+.skill-row { display: flex; justify-content: space-between; margin-bottom: 15px; border-bottom: 1px solid #333; }
+.skill-row label { font-weight: bold; color: #666; }
+.skill-row input { background: transparent; border: none; color: #fff; text-align: right; font-family: var(--font-tech); font-size: 1.5rem; width: 80px; outline: none; }
+.skill-row input:focus { color: var(--bl-cyan); }
 
 #ui-stats-btn {
-    width: 100%; padding: 15px; margin-top: 20px;
-    background: transparent; border: 2px solid var(--neon-cyan);
-    color: var(--neon-cyan); font-family: var(--font-head); font-size: 1.2rem;
-    cursor: pointer; transition: 0.2s;
-    position: relative; overflow: hidden;
+    width: 100%; margin-top: 40px; padding: 20px;
+    background: transparent; border: 2px solid #fff; color: #fff;
+    font-family: var(--font-impact); font-size: 2rem; cursor: pointer;
+    transition: 0.3s;
 }
-#ui-stats-btn:hover { background: var(--neon-cyan); color: #000; letter-spacing: 3px; }
+#ui-stats-btn:hover { background: #fff; color: #000; letter-spacing: 5px; }
 
 /* === MODAL === */
-.modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 300; justify-content: center; align-items: center; }
-.modal-prisma {
-    padding: 20px; background: #000; border: 1px solid var(--neon-cyan);
-    box-shadow: 0 0 100px rgba(0, 242, 255, 0.2);
-}
-.modal-ui { display: flex; gap: 10px; margin-top: 20px; }
-.ui-btn { flex: 1; padding: 10px; background: #111; border: none; color: #fff; font-family: var(--font-head); cursor: pointer; }
-.ui-btn.save { background: var(--neon-cyan); color: #000; font-weight: bold; }
+.modal-limbo { display: none; position: fixed; inset: 0; background: #000; z-index: 300; justify-content: center; align-items: center; }
+.modal-prism { border: 1px solid var(--bl-cyan); padding: 10px; box-shadow: 0 0 100px var(--bl-cyan); }
+.modal-controls { display: flex; gap: 20px; margin-top: 20px; }
+.modal-controls button { flex: 1; padding: 15px; border: none; font-family: var(--font-impact); font-size: 1.2rem; cursor: pointer; }
+#close-modal { background: #222; color: #fff; }
+#copy-stats-btn { background: var(--bl-cyan); color: #000; }
