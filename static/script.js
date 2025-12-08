@@ -29,7 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('send-btn').onclick = window.sendMessage;
     }
 
-    // --- CANALES ---
+    // --- CANALES (CADENAS) ---
     async function fetchChannels() {
         try {
             const res = await fetch('/api/channels');
@@ -41,31 +41,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 const cName = ch.name || "Unknown";
                 const cId = ch.id; 
 
-                // Creamos el fragmento de datos (Shard)
-                const shard = document.createElement('div');
-                shard.className = 'data-shard';
-                shard.innerText = `// ${cName}`; 
+                // Creamos el ESLABÓN DE LA CADENA
+                const link = document.createElement('div');
+                link.className = 'chain-link';
+                link.innerText = cName.toUpperCase(); 
                 
-                shard.onclick = () => {
+                link.onclick = () => {
                     currentChannelId = cId;
-                    document.querySelectorAll('.data-shard').forEach(b => b.classList.remove('active'));
-                    shard.classList.add('active');
+                    document.querySelectorAll('.chain-link').forEach(b => b.classList.remove('active'));
+                    link.classList.add('active');
                     
                     // HUD UPDATE
                     hudPanel.classList.add('visible');
                     hudName.innerText = cName.toUpperCase();
                     startTimer();
 
-                    chatFeed.innerHTML = '<div style="text-align:center; padding-top:50px; color:var(--neon); font-family:\'Teko\'">INITIALIZING LINK...</div>';
+                    chatFeed.innerHTML = '<div style="text-align:center; padding-top:50px; color:var(--lock-blue); font-family:\'Orbitron\'">BREAKING SEAL...</div>';
                     fetchMessages();
                 };
                 
-                channelList.appendChild(shard);
+                channelList.appendChild(link);
             });
-        } catch(e) { 
-            console.error(e);
-            channelList.innerHTML = '<div style="color:#444; padding:20px;">[NO_SIGNAL]</div>';
-        }
+        } catch(e) { console.error(e); }
     }
 
     function startTimer() {
@@ -80,7 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 1000);
     }
 
-    // --- MENSAJES ---
+    // --- MENSAJES (FUSED) ---
     async function fetchMessages() {
         if (!currentChannelId) return;
         isFetching = true;
@@ -94,16 +91,16 @@ document.addEventListener('DOMContentLoaded', () => {
             chatFeed.innerHTML = '';
             
             if (msgs.length === 0) {
-                chatFeed.innerHTML = '<div class="system-idle"><span class="blink">_VOID</span></div>';
+                chatFeed.innerHTML = '<div class="seal-mark"><div class="mark-symbol">封</div><p>EMPTY VESSEL</p></div>';
             } else {
                 msgs.forEach(msg => {
-                    const rawMsg = document.createElement('div');
-                    rawMsg.className = 'msg-raw';
-                    rawMsg.innerHTML = `
-                        <div class="msg-header">>${msg.author_name}</div>
-                        <div class="msg-content">${formatLinks(msg.content)}</div>
+                    const fused = document.createElement('div');
+                    fused.className = 'msg-fused';
+                    fused.innerHTML = `
+                        <div class="msg-auth">${msg.author_name}</div>
+                        <div class="msg-body">${formatLinks(msg.content)}</div>
                     `;
-                    chatFeed.appendChild(rawMsg);
+                    chatFeed.appendChild(fused);
                 });
             }
 
@@ -124,7 +121,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const originalPlaceholder = msgInput.placeholder;
         msgInput.value = '';
-        msgInput.placeholder = "SENDING...";
+        msgInput.placeholder = "ROARING...";
         msgInput.disabled = true;
 
         try {
@@ -137,7 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!res.ok) throw new Error(data.error || "Server Reject");
             setTimeout(fetchMessages, 200);
         } catch(e) {
-            alert("ERR: " + e.message);
+            alert("SEAL ERROR: " + e.message);
             msgInput.value = content;
         } finally {
             msgInput.placeholder = originalPlaceholder;
@@ -202,11 +199,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function drawGraph(type, data, avg, rank) {
         ctx.clearRect(0,0,500,500);
-        ctx.fillStyle = "#050505"; ctx.fillRect(0,0,500,500);
+        
+        // FONDO NEGRO Y FUEGO
+        ctx.fillStyle = "#000"; ctx.fillRect(0,0,500,500);
+        
         const cx = 250, cy = 250, r = 140;
-        const color = type === 'offensive' ? '#00f2ff' : '#0066ff';
+        
+        // COLOR: Si es ofensivo = Cian (Blue Lock), si es GK = Naranja (Kurama)
+        const color = type === 'offensive' ? '#00f2ff' : '#ff5e00';
 
-        ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.shadowBlur = 0;
+        ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.shadowBlur = 20; ctx.shadowColor = color;
         const keys = Object.keys(data), total = keys.length, angleStep = (Math.PI * 2) / total;
 
         ctx.beginPath();
@@ -229,27 +231,28 @@ document.addEventListener('DOMContentLoaded', () => {
             i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
         });
         ctx.closePath();
-        ctx.fillStyle = type==='offensive'?"rgba(0,242,255,0.5)":"rgba(0,102,255,0.5)"; 
+        // Relleno transparente
+        ctx.fillStyle = type==='offensive'?"rgba(0,242,255,0.4)":"rgba(255, 94, 0, 0.4)"; 
         ctx.fill(); 
         ctx.strokeStyle = "#fff"; ctx.stroke();
 
         keys.forEach((k, i) => {
             let a = i*angleStep-Math.PI/2, labelR = r+40, x=cx+Math.cos(a)*labelR, y=cy+Math.sin(a)*labelR;
-            ctx.save(); ctx.fillStyle = "#fff"; ctx.font = "bold 20px 'Teko'"; 
+            ctx.save(); ctx.fillStyle = "#fff"; ctx.font = "bold 20px 'Bebas Neue'"; 
             ctx.textAlign = "center"; ctx.textBaseline = "middle";
             ctx.fillText(k.toUpperCase(), x, y); ctx.restore();
         });
 
-        ctx.fillStyle = "#fff"; ctx.font = "16px 'JetBrains Mono'"; ctx.textAlign = "center";
+        ctx.fillStyle = "#fff"; ctx.font = "16px 'Orbitron'"; ctx.textAlign = "center";
         ctx.fillText(`AVG: ${avg.toFixed(1)} / 10`, cx, 440);
-        ctx.font = "bold 30px 'Teko'"; ctx.fillStyle = color;
+        ctx.font = "bold 30px 'Bebas Neue'"; ctx.fillStyle = color;
         ctx.fillText(rank, cx, 480);
     }
 
     const closeBtn = document.getElementById('close-modal');
     if(closeBtn) closeBtn.onclick = () => {
         modal.style.display = 'none';
-        document.getElementById('stats-drawer').classList.add('active'); // Volver al panel de stats
+        document.getElementById('stats-drawer').classList.add('active');
     };
 
     const copyBtn = document.getElementById('copy-stats-btn');
@@ -258,7 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const item = new ClipboardItem({ "image/png": blob });
                 navigator.clipboard.write([item]).then(() => {
-                    const p = copyBtn.innerText; copyBtn.innerText = "SAVED";
+                    const p = copyBtn.innerText; copyBtn.innerText = "SEALED";
                     setTimeout(() => copyBtn.innerText = p, 2000);
                 });
             } catch (e) { alert("Right click to save"); }
