@@ -20,7 +20,6 @@ document.addEventListener('DOMContentLoaded', () => {
         msgInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') window.sendMessage();
         });
-        // Soporte para botón si existe
         const sendBtn = document.getElementById('send-btn');
         if(sendBtn) sendBtn.onclick = window.sendMessage;
     }
@@ -34,8 +33,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (channels.length > 0) channelList.innerHTML = '';
             
             channels.forEach(ch => {
-                const cName = ch.name || ch.channel_name || "Unknown";
-                const cId = ch.id || ch.channel_id;
+                const cName = ch.name || "Unknown";
+                const cId = ch.id; // ES UN STRING, NO TOCAR
 
                 const btn = document.createElement('button');
                 btn.className = 'channel-btn';
@@ -65,7 +64,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await fetch('/api/messages');
             const allMsgs = await res.json();
-            const msgs = allMsgs.filter(m => m.channel_id == currentChannelId).reverse();
+            // Comparación de Strings
+            const msgs = allMsgs.filter(m => m.channel_id === currentChannelId).reverse();
             const isScrolledToBottom = (chatFeed.scrollHeight - chatFeed.scrollTop - chatFeed.clientHeight) < 150;
 
             chatFeed.innerHTML = '';
@@ -119,7 +119,6 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const data = await res.json();
 
-            // Si falla, lanzamos error con el mensaje del servidor
             if (!res.ok) {
                 throw new Error(data.error || "Server Reject");
             }
@@ -143,7 +142,6 @@ document.addEventListener('DOMContentLoaded', () => {
         let type = 'offensive';
         const gkInput = document.getElementById('dvg');
         
-        // Detección automática de tipo
         if (gkInput && gkInput.value.trim() !== "") {
             type = 'gk';
         }
@@ -186,10 +184,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if(drawer) drawer.classList.remove('active');
     };
 
-    // --- RANGOS OFFENSIVE EXACTOS ---
     function getOffensiveRank(s) {
         if (s < 4.6) return "N/A";
-        
         if (s <= 4.8) return "ROOKIE STRIKERS 🥉 - ⭐";
         if (s <= 5.1) return "ROOKIE STRIKERS 🥉 - ⭐⭐";
         if (s <= 5.4) return "ROOKIE STRIKERS 🥉 - ⭐⭐⭐";
@@ -215,17 +211,15 @@ document.addEventListener('DOMContentLoaded', () => {
         return "WORLD CLASS 👑 - ⭐⭐⭐";
     }
 
-    // --- RANGOS GK EXACTOS ---
     function getGKRank(s) {
-        if (s <= 6.9) return "D TIER";      
-        if (s <= 7.9) return "C TIER";     
-        if (s <= 8.4) return "B TIER";     
-        if (s <= 8.9) return "A TIER";     
-        if (s <= 9.4) return "S TIER";     
-        return "S+ TIER";                  
+        if (s <= 6.9) return "D TIER";
+        if (s <= 7.9) return "C TIER";
+        if (s <= 8.4) return "B TIER";
+        if (s <= 8.9) return "A TIER";
+        if (s <= 9.4) return "S TIER";
+        return "S+ TIER";
     }
 
-    // --- DIBUJADO DE GRÁFICO ---
     function drawGraph(type, data, avg, rank) {
         ctx.clearRect(0,0,500,500);
         ctx.fillStyle = "#050505";
@@ -244,17 +238,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const total = keys.length;
         const angleStep = (Math.PI * 2) / total;
 
-        // GRID DE FONDO
         ctx.beginPath();
         for(let level=1; level<=4; level++) {
             let r = (maxRadius/4)*level;
             
             if (type === 'gk') {
-                // Círculos para GK
                 ctx.moveTo(cx + r, cy);
                 ctx.arc(cx, cy, r, 0, Math.PI * 2);
             } else {
-                // Polígonos para Offensive
                 for(let i=0; i<=total; i++) {
                     let a = i * angleStep - Math.PI/2;
                     let x = cx + Math.cos(a) * r;
@@ -267,7 +258,6 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.shadowBlur = 0;
         ctx.stroke();
 
-        // Radios
         ctx.beginPath();
         for(let i=0; i<total; i++) {
             let a = i * angleStep - Math.PI/2;
@@ -276,7 +266,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         ctx.stroke();
 
-        // FORMA DE DATOS
         ctx.beginPath();
         keys.forEach((k, i) => {
             let val = data[k];
@@ -294,7 +283,6 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.shadowBlur = 20;
         ctx.stroke();
 
-        // ETIQUETAS
         keys.forEach((k, i) => {
             let a = i * angleStep - Math.PI/2;
             let labelR = maxRadius + 35;
@@ -311,7 +299,6 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.restore();
         });
 
-        // RESULTADOS
         ctx.shadowBlur = 0;
         ctx.fillStyle = "#fff";
         ctx.font = "14px 'Courier New'";

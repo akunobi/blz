@@ -14,11 +14,10 @@ app.secret_key = os.urandom(24)
 
 TOKEN = os.getenv("DISCORD_TOKEN") 
 
-# Configuración de Categoría
 try:
     raw_id = os.getenv("CATEGORY_ID")
     if not raw_id:
-        print("!!! [ALERTA] Variable CATEGORY_ID no encontrada en Render. Usando 0.")
+        print("!!! [ALERTA] Variable CATEGORY_ID no encontrada. Usando 0.")
         TARGET_CATEGORY_ID = 0
     else:
         TARGET_CATEGORY_ID = int(raw_id)
@@ -57,20 +56,19 @@ def init_db():
         conn.commit()
         conn.close()
     except Exception as e:
-        print(f"!!! [DB ERROR]: {e}")
+        print(f"[DB ERROR]: {e}")
 
 # --- EVENTOS DEL BOT ---
 @client.event
 async def on_ready():
     print(f'>>> [DISCORD]: Conectado como {client.user}')
-    print(f'>>> [DISCORD]: ID Categoría Objetivo: {TARGET_CATEGORY_ID}')
+    print(f'>>> [DISCORD]: ID Categoría: {TARGET_CATEGORY_ID}')
     bot_ready_event.set()
 
 @client.event
 async def on_message(message):
     if message.author == client.user: return
 
-    # Guardar solo mensajes de la categoría correcta
     if hasattr(message.channel, 'category') and message.channel.category:
         if message.channel.category.id == TARGET_CATEGORY_ID:
             try:
@@ -98,52 +96,48 @@ def index():
 
 @app.route('/api/admin/reset')
 def reset_database():
-    """Limpia la base de datos (Use esto si los canales dan error 404)."""
+    """Limpia la base de datos."""
     try:
         conn = get_db_connection()
-        conn.execute('DELETE FROM messages') 
+        conn.execute('DELETE FROM messages')
         conn.execute('VACUUM')
         conn.commit()
         conn.close()
-        return jsonify({"status": "SUCCESS", "message": "Base de datos purgada. Escribe en Discord para recargar canales."})
+        return jsonify({"status": "SUCCESS", "message": "Base de datos purgada."})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/channels')
 def get_channels():
-    if not bot_ready_event.is_set():
-        return jsonify([]), 503
+    if not bot_ready_event.is_set(): return jsonify([]), 503
 
     async def get_channels_async():
         try:
-            # Prioridad: API Discord
             category = client.get_channel(TARGET_CATEGORY_ID)
             if not category:
-                try:
-                    category = await client.fetch_channel(TARGET_CATEGORY_ID)
-                except:
-                    pass
+                try: category = await client.fetch_channel(TARGET_CATEGORY_ID)
+                except: pass
             
             if category:
                 text_channels = [c for c in category.channels if isinstance(c, discord.TextChannel)]
                 text_channels.sort(key=lambda x: x.position)
-                return [{"id": c.id, "name": c.name} for c in text_channels]
+                # IMPORTANTE: Convertimos ID a string para evitar errores de JS
+                return [{"id": str(c.id), "name": c.name} for c in text_channels]
             return []
-        except:
-            return []
+        except: return []
 
     try:
         future = asyncio.run_coroutine_threadsafe(get_channels_async(), bot_loop)
         channels = future.result(timeout=5)
         
-        if channels:
-            return jsonify(channels)
+        if channels: return jsonify(channels)
         
-        # Fallback: DB
         conn = get_db_connection()
+        # ID a String también aquí
         db_chans = conn.execute('SELECT DISTINCT channel_name as name, channel_id as id FROM messages').fetchall()
         conn.close()
-        return jsonify([dict(row) for row in db_chans])
+        return jsonify([{"id": str(row["id"]), "name": row["name"]} for row in db_chans])
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -153,76 +147,66 @@ def get_messages():
         conn = get_db_connection()
         msgs = conn.execute('SELECT * FROM messages ORDER BY timestamp DESC LIMIT 50').fetchall()
         conn.close()
-        return jsonify([dict(row) for row in msgs])
+        # Convertimos channel_id a string
+        results = []
+        for row in msgs:
+            d = dict(row)
+            d['channel_id'] = str(d['channel_id'])
+            results.append(d)
+        return jsonify(results)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/send', methods=['POST'])
 def send_message():
-    """
-    Envía mensajes. Devuelve 400 si el canal no existe, 500 si falla el server.
-    """
     data = request.json
-    channel_id = data.get('channel_id')
+    channel_id = data.get('channel_id') # Llega como string
     content = data.get('content')
     
     print(f"\n>>> [WEB SEND] ID: {channel_id} | Msg: {content}")
     
-    if not channel_id or not content:
-        return jsonify({"error": "Faltan datos"}), 400
-
-    if not bot_loop or not bot_ready_event.is_set():
-        return jsonify({"error": "Bot desconectado"}), 503
+    if not channel_id or not content: return jsonify({"error": "Faltan datos"}), 400
+    if not bot_loop or not bot_ready_event.is_set(): return jsonify({"error": "Bot desconectado"}), 503
 
     async def send_async():
         try:
+            # Convertimos String a Int para Discord
             c_id = int(channel_id)
-            # Fetch channel fuerza la comprobación real con Discord
             channel = await client.fetch_channel(c_id)
             await channel.send(content)
             return {"success": True}
         except discord.NotFound:
-            print(f"!!! [ERROR] Canal {c_id} NO ENCONTRADO.")
-            return {"success": False, "error": "Canal no encontrado en Discord (ID vieja)."}
+            print(f"!!! [ERROR] Canal {channel_id} NO EXISTE.")
+            return {"success": False, "error": "Canal no encontrado en Discord."}
         except discord.Forbidden:
-            print(f"!!! [ERROR] SIN PERMISOS en {c_id}.")
-            return {"success": False, "error": "Bot sin permisos para escribir."}
+            print(f"!!! [ERROR] SIN PERMISOS en {channel_id}.")
+            return {"success": False, "error": "Sin permisos."}
         except Exception as e:
-            print(f"!!! [ERROR CRÍTICO]: {e}")
+            print(f"!!! [ERROR]: {e}")
             return {"success": False, "error": str(e)}
 
     try:
         future = asyncio.run_coroutine_threadsafe(send_async(), bot_loop)
         result = future.result(timeout=10)
         
-        if result["success"]:
-            return jsonify({"status": "OK"})
-        else:
-            # Devolvemos 400 Bad Request porque el error es del cliente (ID mala o permisos)
-            return jsonify({"error": result["error"]}), 400 
+        if result["success"]: return jsonify({"status": "OK"})
+        else: return jsonify({"error": result["error"]}), 400
             
     except Exception as e:
-        return jsonify({"error": f"Internal Error: {e}"}), 500
+        return jsonify({"error": f"Internal: {e}"}), 500
 
 # --- ARRANQUE ---
 def run_discord_bot():
     global bot_loop
     bot_loop = asyncio.new_event_loop()
     asyncio.set_event_loop(bot_loop)
-    
-    if not TOKEN:
-        print("!!! [ERROR]: Falta DISCORD_TOKEN.")
-        return
-
-    try:
-        bot_loop.run_until_complete(client.start(TOKEN))
-    except Exception as e:
-        print(f"!!! [BOT CRASH]: {e}")
+    if TOKEN:
+        try: bot_loop.run_until_complete(client.start(TOKEN))
+        except Exception as e: print(f"!!! [BOT CRASH]: {e}")
 
 if __name__ == '__main__':
     init_db()
     t = threading.Thread(target=run_discord_bot, daemon=True)
     t.start()
-    
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
