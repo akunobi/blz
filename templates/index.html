@@ -3,104 +3,103 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EGO-CHAKRA // OVERFLOW</title>
+    <title>NEXUS: BLUE // KURAMA</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 </head>
 <body>
 
-    <div class="bg-layer kurama-fire"></div>
-    <div class="bg-layer bluelock-grid"></div>
-    <div class="screen-glitch-overlay"></div>
+    <div class="void-bg"></div>
+    <div class="chakra-particles"></div>
+    <div class="grid-floor"></div>
 
-    <main class="chaos-container">
+    <main class="hud-container">
 
-        <aside class="chakra-seal-sidebar">
-            <div class="seal-header">
-                <span class="glitch-text" data-text="EGO">EGO</span>
-                <span class="seal-divider">⚡🏮</span>
-                <span class="burn-text">BEAST</span>
+        <aside class="side-panel">
+            <div class="panel-header">
+                <div class="system-id">SYS.ID: <span class="highlight-orange">KURAMA_V9</span></div>
+                <h1 class="brand-title">BLUE LOCK</h1>
             </div>
             
-            <div class="channel-scroll-area" id="channel-list">
-                <div class="loading-seal">BREAKING SEAL...</div>
+            <div class="channel-list-wrapper" id="channel-list">
+                <div class="loading-state">/// LINKING...</div>
             </div>
 
-            <div class="power-readout">
-                 SYNC RATE: <span style="color:var(--neon-orange)">99.9%</span> UNSTABLE
+            <div class="panel-footer">
+                <div class="connection-status">
+                    <span class="dot"></span> STABLE
+                </div>
             </div>
         </aside>
 
-        <section class="chat-core-shard">
-            <div class="shard-header">
-                /// NEURAL-CHAKRA LINK ESTABLISHED
+        <section class="chat-core">
+            <div class="chat-header-bar">
+                <span class="deco-text">TARGET FOCUS</span>
+                <span class="deco-line"></span>
+                <button class="stats-trigger" onclick="toggleDrawer()">
+                    Open Metrics [⚡]
+                </button>
             </div>
 
-            <div class="chat-void-feed" id="chat-feed">
-                 <div class="empty-void">
-                    <div class="kurama-eye-icon">👁‍🗨</div>
-                    AWAITING TARGET FOCUS...
-                 </div>
+            <div class="chat-window" id="chat-feed">
+                <div class="empty-feed-icon">
+                    <div class="hex-icon"></div>
+                    <p>AWAITING NEURAL CONNECTION</p>
+                </div>
             </div>
 
-            <div class="injection-port">
-                <input type="text" id="msg-input" placeholder="INJECT WILLPOWER / COMMAND..." autocomplete="off">
-                <button id="send-btn">MANIFEST</button>
+            <div class="input-array">
+                <div class="input-wrapper">
+                    <input type="text" id="msg-input" placeholder="INITIATE PROTOCOL..." autocomplete="off">
+                </div>
+                <button id="send-btn">EXECUTE</button>
             </div>
         </section>
 
-        <button class="kurama-release-btn" onclick="toggleDrawer()">
-            <span class="btn-glitch">UNLEASH</span>
-            <span class="btn-sub">FULL COWL MODE</span>
-        </button>
-
     </main>
 
-    <div class="beast-mode-drawer" id="stats-drawer">
-        <div class="drawer-background-fx"></div>
-        
-        <div class="drawer-content-wrapper">
-            <div class="drawer-header-chaotic">
-                <h2>/// EGOIST DATA: <span style="color:var(--neon-orange)">TAILED FORM</span></h2>
-                <button class="close-seal" onclick="toggleDrawer()">SEAL ✖</button>
+    <div class="metric-drawer" id="stats-drawer">
+        <div class="drawer-glass">
+            <div class="drawer-top">
+                <h2>EGOIST PARAMETERS</h2>
+                <button class="close-btn" onclick="toggleDrawer()">CLOSE //</button>
             </div>
 
-            <div class="stats-chaos-grid">
-                <div class="stat-cluster cyber-cluster">
-                    <h3 class="cyber-title">OFFENSIVE [LOGIC]</h3>
-                    <div class="hex-inputs">
-                        <div class="hex-field"><label>SHT</label><input type="number" id="sht" placeholder="0-10"></div>
-                        <div class="hex-field"><label>DBL</label><input type="number" id="dbl" placeholder="0-10"></div>
-                        <div class="hex-field"><label>STL</label><input type="number" id="stl" placeholder="0-10"></div>
-                        <div class="hex-field"><label>PSN</label><input type="number" id="psn" placeholder="0-10"></div>
-                        <div class="hex-field wide"><label>DFD</label><input type="number" id="dfd" placeholder="0-10"></div>
+            <div class="metrics-container">
+                <div class="metric-column logic-col">
+                    <h3 class="col-title cyan">OFFENSIVE [LOGIC]</h3>
+                    <div class="input-stack">
+                        <div class="data-row"><label>SHT</label><input type="number" id="sht" placeholder="00"></div>
+                        <div class="data-row"><label>DBL</label><input type="number" id="dbl" placeholder="00"></div>
+                        <div class="data-row"><label>STL</label><input type="number" id="stl" placeholder="00"></div>
+                        <div class="data-row"><label>PSN</label><input type="number" id="psn" placeholder="00"></div>
+                        <div class="data-row"><label>DFD</label><input type="number" id="dfd" placeholder="00"></div>
                     </div>
                 </div>
 
-                <div class="chaos-divider">VS</div>
-
-                <div class="stat-cluster beast-cluster">
-                    <h3 class="beast-title">GOALKEEPER [INSTINCT]</h3>
-                    <div class="circle-inputs">
-                        <div class="orb-field"><label>DVG</label><input type="number" id="dvg" placeholder="-"></div>
-                        <div class="orb-field"><label>BIQ</label><input type="number" id="biq" placeholder="-"></div>
-                        <div class="orb-field"><label>RFX</label><input type="number" id="rfx" placeholder="-"></div>
-                        <div class="orb-field"><label>DTG</label><input type="number" id="dtg" placeholder="-"></div>
+                <div class="metric-column instinct-col">
+                    <h3 class="col-title orange">GK [INSTINCT]</h3>
+                    <div class="input-stack">
+                        <div class="data-row"><label>DVG</label><input type="number" id="dvg" placeholder="--"></div>
+                        <div class="data-row"><label>BIQ</label><input type="number" id="biq" placeholder="--"></div>
+                        <div class="data-row"><label>RFX</label><input type="number" id="rfx" placeholder="--"></div>
+                        <div class="data-row"><label>DTG</label><input type="number" id="dtg" placeholder="--"></div>
                     </div>
                 </div>
             </div>
 
             <button id="ui-stats-btn" onclick="generateStats()">
-                <span class="btn-burn">MATERIALIZE FULL POWER GRAPH</span>
+                MATERIALIZE SOUL DATA
             </button>
         </div>
     </div>
 
-    <div id="stats-modal" class="modal-overlay">
-        <div class="modal-shard">
+    <div id="stats-modal" class="modal-backdrop">
+        <div class="holo-card">
             <canvas id="stats-canvas" width="500" height="500"></canvas>
-            <div class="modal-actions">
-                <button id="close-modal" class="shard-btn close">CLOSE RIFT</button>
-                <button id="copy-stats-btn" class="shard-btn copy">CAPTURE ESSENCE</button>
+            <div class="holo-actions">
+                <button id="close-modal" class="holo-btn cancel">DISMISS</button>
+                <button id="copy-stats-btn" class="holo-btn save">SYNC DATA</button>
             </div>
         </div>
     </div>
