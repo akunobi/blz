@@ -3,151 +3,82 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BLZ SYSTEM</title>
-    
+    <title>BLZ | EGOIST TERMINAL</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
-    
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <div class="bg-chaos"></div>
 
-    <div class="main-wrapper">
+    <div class="top-bar">
+        <div class="brand-title">BLZ <span style="color:#fff; opacity:0.5;">//</span> SYSTEM</div>
+        <div class="system-status" style="border:none; margin:0; padding:0; color: var(--cyan-bl);">
+            STATUS: <span class="glitch-text">CONNECTED</span>
+        </div>
+    </div>
+
+    <div class="main-container">
         
-        <div class="sidebar-container">
-            <div class="sidebar-content">
-                <div class="logo">
-                    <h1>BLZ-<span class="orange glow-text">SYSTEM</span></h1>
-                </div>
-                
-                <div class="menu-section">
-                    <label>MODULE SELECTION</label>
-                    <div class="menu-row">
-                        <button onclick="switchView('tickets')" id="btn-view-tickets" class="system-btn active">TICKETS</button>
-                        <button onclick="switchView('qualifications')" id="btn-view-qualifications" class="system-btn">STATS</button>
-                    </div>
-                </div>
+        <div id="channel-list" class="sidebar">
+            <h3 class="glitch-text">LOADING_DATA...</h3>
+        </div>
 
-                <div class="region-selector">
-                    <div class="separator"></div>
-                    <label style="color: var(--neon-blue); opacity: 0.8; letter-spacing: 2px;">INCOMING SIGNALS</label>
+        <div class="chat-area">
+            <div id="chat-messages">
+                <div style="text-align:center; color:#666; margin-top:50px;">
+                    WAITING FOR LINK...<br>
+                    SELECT A CHANNEL TO START
                 </div>
-
-                <div id="ticket-list-container" class="ticket-list-wrapper">
-                    <div id="ticket-list" class="ticket-list custom-scroll">
-                        <div style="padding:20px; color:#555; text-align:center;">INITIALIZING...</div>
-                    </div>
-                </div>
+            </div>
+            
+            <div class="input-area">
+                <input type="text" id="message-input" placeholder="ENTER MESSAGE_COMMAND...">
+                <button class="btn-send" onclick="sendMessage()">SEND</button>
             </div>
         </div>
 
-        <div id="view-tickets" class="content-view">
-            <div class="chat-container">
-                <div class="chat-header">
-                    <h2 id="current-ticket-name">AWAITING TARGET SELECTION...</h2>
-                    <div class="actions">
-                        <button onclick="completeTicket()" class="btn-complete pulsing">COMPLETE TRYOUT</button>
-                    </div>
+        <div class="stats-panel">
+            <div class="stats-section">
+                <h4>/// OFFENSIVE PARAMETERS [BL]</h4>
+                <div class="input-row">
+                    <input type="number" id="sht" class="stat-input offensive-input" placeholder="SHT" min="0" max="100">
+                    <input type="number" id="dbl" class="stat-input offensive-input" placeholder="DBL" min="0" max="100">
+                    <input type="number" id="stl" class="stat-input offensive-input" placeholder="STL" min="0" max="100">
                 </div>
-                
-                <div id="chat-box" class="chat-box custom-scroll">
-                    <div class="empty-state">SELECT A TICKET TO INITIATE LINK</div>
-                </div>
-
-                <div class="input-area-wrapper">
-                    <div class="input-area">
-                        <input type="text" id="msg-input" placeholder="Enter command protocol..." onkeypress="handleEnter(event)" disabled>
-                        <button onclick="sendMessage()" id="send-btn" class="btn-send" disabled>DEPLOY</button>
-                    </div>
+                <div class="input-row">
+                    <input type="number" id="psn" class="stat-input offensive-input" placeholder="PSN" min="0" max="100">
+                    <input type="number" id="dfd" class="stat-input offensive-input" placeholder="DFD" min="0" max="100">
                 </div>
             </div>
-        </div>
 
-        <div id="view-qualifications" class="content-view hidden">
-            <div class="stats-panel">
-                
-                <div class="panel-header-row">
-                    <h2 class="panel-title">PLAYER EVALUATION PROTOCOL</h2>
-                    <button onclick="openStatsModal()" class="btn-ui-stats">
-                        <span class="icon">⬡</span> VIEW UI STATS
-                    </button>
+            <div class="stats-section" style="margin-top: 20px;">
+                <h4>/// GK PARAMETERS [KYUBI]</h4>
+                <div class="input-row">
+                    <input type="number" id="dvg" class="stat-input gk-input" placeholder="DVG" min="0" max="100">
+                    <input type="number" id="biq" class="stat-input gk-input" placeholder="BIQ" min="0" max="100">
                 </div>
-                
-                <div class="stats-grid">
-                    <div class="stat-category-container">
-                        <h3 class="category-header">
-                            <span class="role-badge">FW / MF</span> 
-                            OFFENSIVE PROTOCOL
-                        </h3>
-                        <div class="stat-group">
-                            <div class="stat-box"><label>SHT</label><input type="number" step="0.1" id="sht" class="stat-input" placeholder="-"></div>
-                            <div class="stat-box"><label>DBL</label><input type="number" step="0.1" id="dbl" class="stat-input" placeholder="-"></div>
-                            <div class="stat-box"><label>STL</label><input type="number" step="0.1" id="stl" class="stat-input" placeholder="-"></div>
-                            <div class="stat-box"><label>PSN</label><input type="number" step="0.1" id="psn" class="stat-input" placeholder="-"></div>
-                            <div class="stat-box"><label>DFD</label><input type="number" step="0.1" id="dfd" class="stat-input" placeholder="-"></div>
-                        </div>
-                    </div>
-
-                    <div class="tech-separator"></div>
-
-                    <div class="stat-category-container">
-                        <h3 class="category-header">
-                            <span class="role-badge gk">GK</span> 
-                            GOALKEEPER PROTOCOL
-                        </h3>
-                        <div class="stat-group">
-                            <div class="stat-box"><label>DVG</label><input type="number" step="0.1" id="dvg" class="stat-input" placeholder="-"></div>
-                            <div class="stat-box"><label>BIQ</label><input type="number" step="0.1" id="biq" class="stat-input" placeholder="-"></div>
-                            <div class="stat-box"><label>RFX</label><input type="number" step="0.1" id="rfx" class="stat-input" placeholder="-"></div>
-                            <div class="stat-box"><label>DTG</label><input type="number" step="0.1" id="dtg" class="stat-input" placeholder="-"></div>
-                            <div class="stat-box empty"></div>
-                        </div>
-                    </div>
+                <div class="input-row">
+                    <input type="number" id="rfx" class="stat-input gk-input" placeholder="RFX" min="0" max="100">
+                    <input type="number" id="dtg" class="stat-input gk-input" placeholder="DTG" min="0" max="100">
                 </div>
+            </div>
 
-                <div class="results-dashboard">
-                    <div class="result-card">
-                        <span class="res-label">AVERAGE</span>
-                        <span id="result-avg" class="res-value">0.0</span>
-                    </div>
-                    <div class="result-card main">
-                        <span class="res-label">ASSIGNED TITLE</span>
-                        <span id="result-rank" class="res-value-rank">N/A</span>
-                    </div>
-                    <div class="result-card">
-                        <span class="res-label">TIER</span>
-                        <span id="result-tier" class="res-value-tier">-</span>
-                    </div>
-                </div>
+            <button id="generate-btn" onclick="generateStats()">
+                INITIALIZE UI STATS
+            </button>
 
-                <div class="notes-section">
-                    <label>EVALUATION NOTES</label>
-                    <textarea id="notes-area" class="custom-scroll" placeholder="Enter scout observations..."></textarea>
-                </div>
-                
-                <div class="save-indicator" id="save-status">DATA SAVED LOCALLY</div>
+            <div class="system-status">
+                <span style="color: var(--text-dim);">V.1.0.4 // EGO_INTEGRITY: 100%</span>
             </div>
         </div>
 
     </div>
 
-    <div id="stats-modal" class="modal-overlay hidden">
+    <div id="stats-modal" class="modal-overlay">
         <div class="modal-content">
-            <div class="modal-header">
-                <h3>VISUAL DATA ANALYSIS</h3>
-                <button onclick="closeStatsModal()" class="close-btn">×</button>
-            </div>
+            <canvas id="stats-canvas" width="500" height="500"></canvas>
             
-            <div class="chart-container-wrapper">
-                <canvas id="blzChart"></canvas>
-            </div>
-
-            <div class="modal-footer">
-                <button onclick="copyChartToClipboard()" class="btn-copy">
-                    COPY CHART IMAGE
-                </button>
+            <div class="modal-actions">
+                <button id="close-modal" class="modal-btn">CLOSE</button>
+                <button id="copy-stats-btn" class="modal-btn">COPY IMAGE</button>
             </div>
         </div>
     </div>

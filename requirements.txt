@@ -1,5 +1,4 @@
-discord.py
 flask
-flask-sqlalchemy
-flask-cors
-psycopg2-binary
+discord.py
+python-dotenv
+gunicorn

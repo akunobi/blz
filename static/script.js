@@ -1,304 +1,345 @@
-// ==========================================
-// 1. CONFIGURACIÓN GLOBAL
-// ==========================================
-let currentTicketId = null;
-let blzChartInstance = null; 
-
-// ==========================================
-// 2. INICIALIZACIÓN
-// ==========================================
 document.addEventListener('DOMContentLoaded', () => {
+    console.log(">>> [SYSTEM]: EGOIST_SCRIPT_LOADED. INIT_CHAOS_PROTOCOL...");
+
+    // --- VARIABLES GLOBALES ---
+    let currentChannelId = null;
+    const chatContainer = document.getElementById('chat-messages');
+    const channelList = document.getElementById('channel-list');
     
-    // --- TICKETS ---
-    loadTickets();
-    setInterval(loadTickets, 3000); 
-    setInterval(() => { if (currentTicketId) loadMessages(currentTicketId); }, 2000);
+    // --- ELEMENTOS STATS ---
+    const statsModal = document.getElementById('stats-modal');
+    const statsCanvas = document.getElementById('stats-canvas');
+    const ctx = statsCanvas.getContext('2d');
+    const copyBtn = document.getElementById('copy-stats-btn');
+    const closeModalBtn = document.getElementById('close-modal');
 
-    // --- CHAT INPUT FIX ---
-    const chatInput = document.getElementById('msg-input');
-    const sendBtn = document.querySelector('.btn-send');
+    // =================================================================
+    // 1. SISTEMA DE TICKETS (Igual que antes)
+    // =================================================================
 
-    if(chatInput){
-        // Forzamos que se pueda escribir al hacer clic
-        chatInput.onclick = () => { chatInput.focus(); };
-        chatInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') sendMessage();
-        });
+    setInterval(fetchMessages, 3000);
+    fetchChannels();
+
+    async function fetchChannels() {
+        try {
+            const res = await fetch('/api/channels');
+            const channels = await res.json();
+            channelList.innerHTML = '';
+            channels.forEach(ch => {
+                const btn = document.createElement('div');
+                btn.className = 'channel-item glitch-effect';
+                btn.innerText = `# ${ch.channel_name}`;
+                btn.onclick = () => {
+                    currentChannelId = ch.channel_id;
+                    document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('active'));
+                    btn.classList.add('active');
+                    fetchMessages();
+                };
+                channelList.appendChild(btn);
+            });
+        } catch (e) {
+            console.error(">>> [ERROR]: CANAL LINK SEVERED.", e);
+        }
     }
-    if(sendBtn) sendBtn.addEventListener('click', sendMessage);
 
-    // --- STATS SYSTEM ---
-    loadStats(); // Cargar datos guardados
-    
-    // Asignar listeners a los inputs numéricos
-    const statInputs = document.querySelectorAll('.stat-input');
-    statInputs.forEach(input => {
-        input.addEventListener('input', calculateStats);
-        input.addEventListener('change', calculateStats); // Doble seguridad
-    });
-    
-    // Calcular una vez al inicio por si hay datos
-    setTimeout(calculateStats, 500);
-});
+    async function fetchMessages() {
+        if (!currentChannelId) return;
+        try {
+            const res = await fetch('/api/messages'); 
+            const allMessages = await res.json();
+            const messages = allMessages.filter(m => m.channel_id == currentChannelId);
 
-// ==========================================
-// 3. NAVEGACIÓN
-// ==========================================
-function switchView(viewName) {
-    document.querySelectorAll('.system-btn').forEach(btn => btn.classList.remove('active'));
-    const activeBtn = document.getElementById(`btn-view-${viewName}`);
-    if(activeBtn) activeBtn.classList.add('active');
+            chatContainer.innerHTML = '';
+            messages.reverse().forEach(msg => {
+                const msgDiv = document.createElement('div');
+                msgDiv.className = 'message-card';
+                msgDiv.innerHTML = `
+                    <div class="msg-header">
+                        <img src="${msg.author_avatar}" class="avatar-sm">
+                        <span class="author-name">${msg.author_name}</span>
+                        <span class="timestamp">${new Date(msg.timestamp).toLocaleTimeString()}</span>
+                    </div>
+                    <div class="msg-content">${msg.content}</div>
+                `;
+                chatContainer.appendChild(msgDiv);
+            });
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        } catch (e) {
+            console.error(">>> [ERROR]: DATA STREAM CORRUPTED.", e);
+        }
+    }
 
-    const ticketsView = document.getElementById('view-tickets');
-    const statsView = document.getElementById('view-qualifications'); 
+    window.sendMessage = async () => {
+        const input = document.getElementById('message-input');
+        const content = input.value;
+        if (!content || !currentChannelId) return;
+        try {
+            await fetch('/api/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ channel_id: currentChannelId, content: content })
+            });
+            input.value = '';
+            fetchMessages();
+        } catch (e) { alert(">>> [ERROR]: MESSAGE REJECTED."); }
+    };
 
-    if(viewName === 'tickets') {
-        if(ticketsView) ticketsView.classList.remove('hidden');
-        if(statsView) statsView.classList.add('hidden');
-    } else if (viewName === 'qualifications') {
-        if(ticketsView) ticketsView.classList.add('hidden');
-        if(statsView) statsView.classList.remove('hidden');
+    // =================================================================
+    // 2. LÓGICA DE RANGOS (NUEVO)
+    // =================================================================
+
+    function calculateOffensiveRank(avg) {
+        // Normalizamos el promedio a 1 decimal
+        const s = parseFloat(avg.toFixed(1)); 
+
+        if (s < 4.6) return "N/A";
+
+        // Rookie Strikers 🥉
+        if (s >= 4.6 && s <= 5.4) {
+            let stars = "⭐";
+            if (s >= 4.8) stars = "⭐⭐";
+            if (s >= 5.2) stars = "⭐⭐⭐";
+            return `Rookie Strikers 🥉 - ${stars}`;
+        }
+        // Amateur Striker ⚽
+        if (s >= 5.5 && s <= 6.3) {
+            let stars = "⭐";
+            if (s >= 5.8) stars = "⭐⭐";
+            if (s >= 6.1) stars = "⭐⭐⭐";
+            return `Amateur Striker ⚽ - ${stars}`;
+        }
+        // Elite ⚡
+        if (s >= 6.4 && s <= 7.2) {
+            let stars = "⭐";
+            if (s >= 6.7) stars = "⭐⭐";
+            if (s >= 7.0) stars = "⭐⭐⭐";
+            return `Elite ⚡ - ${stars}`;
+        }
+        // Prodigy 🏅
+        if (s >= 7.3 && s <= 8.1) {
+            let stars = "⭐";
+            if (s >= 7.6) stars = "⭐⭐";
+            if (s >= 7.9) stars = "⭐⭐⭐";
+            return `Prodigy 🏅 - ${stars}`;
+        }
+        // New Gen XI ⭐
+        if (s >= 8.2 && s <= 9.0) {
+            let stars = "⭐";
+            if (s >= 8.5) stars = "⭐⭐";
+            if (s >= 8.8) stars = "⭐⭐⭐";
+            return `New Gen XI - ${stars}`; // El emoji de la clase ya es una estrella
+        }
+        // World Class 👑
+        if (s >= 9.1) {
+            let stars = "⭐";
+            if (s >= 9.4) stars = "⭐⭐";
+            if (s >= 9.7) stars = "⭐⭐⭐";
+            return `World Class 👑 - ${stars}`;
+        }
+        return "Unranked";
+    }
+
+    function calculateGKRank(avg) {
+        const s = parseFloat(avg.toFixed(1));
         
-        // Renderizar gráfico al cambiar pestaña
-        setTimeout(() => {
-            calculateStats();
-            if(blzChartInstance) blzChartInstance.update();
-        }, 100);
+        if (s <= 6.9) return "D Tier";
+        if (s >= 7.0 && s <= 7.9) return "C Tier";
+        if (s >= 8.0 && s <= 8.4) return "B Tier";
+        if (s >= 8.5 && s <= 8.9) return "A Tier";
+        if (s >= 9.0 && s <= 9.4) return "S Tier";
+        if (s >= 9.5) return "S+ Tier";
+        
+        return "N/A";
     }
-}
 
-// ==========================================
-// 4. TICKETS & CHAT
-// ==========================================
-function loadTickets() {
-    const ticketView = document.getElementById('view-tickets');
-    if (ticketView && ticketView.classList.contains('hidden')) return;
+    // =================================================================
+    // 3. GENERADOR DE STATS Y CANVAS
+    // =================================================================
 
-    fetch('/api/get_tickets')
-    .then(r => r.json())
-    .then(data => {
-        const list = document.getElementById('ticket-list');
-        if(!list) return;
+    window.generateStats = () => {
+        const offensiveInputs = ['sht', 'dbl', 'stl', 'psn', 'dfd'];
+        const gkInputs = ['dvg', 'biq', 'rfx', 'dtg'];
 
-        list.innerHTML = ''; 
-        if (data.length === 0) {
-            list.innerHTML = '<div style="padding:20px; color:#555; text-align:center;">NO SIGNALS</div>';
-            return;
+        let type = null;
+        let values = {};
+        let sum = 0;
+        let count = 0;
+
+        // Detectar tipo y sumar valores
+        if (document.getElementById('sht').value !== "") {
+            type = 'offensive';
+            offensiveInputs.forEach(id => {
+                const val = parseFloat(document.getElementById(id).value) || 0;
+                values[id] = val;
+                sum += val;
+                count++;
+            });
+        } else {
+            type = 'gk';
+            gkInputs.forEach(id => {
+                const val = parseFloat(document.getElementById(id).value) || 0;
+                values[id] = val;
+                sum += val;
+                count++;
+            });
         }
 
-        data.forEach(ticket => {
-            const div = document.createElement('div');
-            div.className = `ticket-item ${currentTicketId === ticket.id ? 'active' : ''}`;
-            
-            // Generador de nombres si falla el backend
-            let displayName = ticket.channel_name;
-            if (!displayName || displayName === 'null') {
-                const cleanUser = ticket.user_name ? ticket.user_name.replace(/\s+/g, '').toLowerCase() : 'unknown';
-                displayName = `ticket-${cleanUser}`;
-            }
+        // Calcular Promedio y Rango
+        // ASUMIMOS QUE EL INPUT ES 0-100. DIVIDIMOS POR 10 PARA LA TABLA DE RANGOS (0-10).
+        // Si el usuario mete 0-10 directamente, quita el "/ 10".
+        const rawAverage = sum / count; 
+        const rankAverage = rawAverage / 10; 
 
-            div.onclick = () => selectTicket(ticket.id, displayName); 
+        let rankText = "";
+        if (type === 'offensive') {
+            rankText = calculateOffensiveRank(rankAverage);
+        } else {
+            rankText = calculateGKRank(rankAverage);
+        }
 
-            let statusBadge = ticket.status === 'open' 
-                ? `<span style="color:var(--neon-blue); font-weight:bold; border:1px solid var(--neon-blue); padding:2px 6px; border-radius:4px; font-size:0.7em;">OP</span>` 
-                : `<span style="color:#666; border:1px solid #444; padding:2px 6px; border-radius:4px; font-size:0.7em;">CL</span>`;
+        drawChart(type, values, rankText, rawAverage);
+        statsModal.style.display = 'flex';
+    };
 
-            div.innerHTML = `
-                <div style="display:flex; flex-direction:column;">
-                    <span style="color:var(--neon-blue); font-weight:bold;"># ${displayName}</span> 
-                    <span style="font-size:0.75em; color:#888;">User: ${ticket.user_name}</span>
-                </div>
-                ${statusBadge}
-            `;
-            list.appendChild(div);
-        });
-    });
-}
+    function drawChart(type, data, rankText, rawAvg) {
+        // Reset y Fondo
+        ctx.clearRect(0, 0, statsCanvas.width, statsCanvas.height);
+        const w = statsCanvas.width;
+        const h = statsCanvas.height;
+        const centerX = w / 2;
+        const centerY = h / 2 - 20; // Subimos un poco el gráfico para dejar espacio al texto abajo
+        const maxRadius = 110;
 
-function selectTicket(id, name) {
-    currentTicketId = id;
-    const header = document.getElementById('chat-header-title');
-    if(header) header.innerText = name;
-    loadTickets(); 
-    loadMessages(id);
-}
+        ctx.fillStyle = "#050510"; 
+        ctx.fillRect(0,0,w,h);
 
-function loadMessages(ticketId) {
-    const chatBody = document.getElementById('chat-body');
-    if (!chatBody) return;
+        // Estilos
+        ctx.lineWidth = 2;
+        // Offensive: Cyan BlueLock | GK: Magenta/Rojo Sangre
+        const primaryColor = type === 'offensive' ? '#00f2ff' : '#ff004c'; 
+        ctx.strokeStyle = primaryColor;
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = primaryColor;
+        
+        const statsKeys = Object.keys(data);
+        const totalStats = statsKeys.length;
+        const angleStep = (Math.PI * 2) / totalStats;
 
-    fetch(`/api/get_messages/${ticketId}`)
-    .then(r => r.json())
-    .then(msgs => {
-        chatBody.innerHTML = ''; 
-        msgs.forEach(msg => {
-            const div = document.createElement('div');
-            const isMe = (msg.sender === 'BLZ-T');
-            div.className = `message ${isMe ? 'agent' : 'discord'}`;
-            div.innerHTML = `<div>${msg.content}</div><div style="font-size:0.6em; opacity:0.6; margin-top:5px;">${msg.sender}</div>`;
-            chatBody.appendChild(div);
-        });
-        chatBody.scrollTop = chatBody.scrollHeight;
-    });
-}
-
-function sendMessage() {
-    const input = document.getElementById('msg-input');
-    if(!input) return;
-
-    const content = input.value.trim();
-    if (!content || !currentTicketId) return; 
-
-    input.value = ''; 
-    input.focus(); // Mantener foco para escribir rápido
-
-    fetch('/api/send_message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticket_id: currentTicketId, content: content })
-    })
-    .then(r => r.json())
-    .then(d => { if(d.status === 'success') loadMessages(currentTicketId); });
-}
-
-// ==========================================
-// 5. STATS SYSTEM (CORREGIDO)
-// ==========================================
-function calculateStats() {
-    const ids = ['offense', 'shoot', 'dribble', 'pass', 'defense', 'speed'];
-    let total = 0;
-    let values = [];
-
-    // Recoger valores
-    ids.forEach(id => {
-        const el = document.getElementById(id);
-        let val = 0;
-        if(el) val = parseFloat(el.value) || 0;
-        if (val > 99) val = 99; // Cap en 99 como FIFA/Blue Lock
-        values.push(val);
-        total += val;
-    });
-
-    const avg = Math.round(total / 6);
-    
-    // Actualizar UI - Total
-    const totalEl = document.getElementById('result-total');
-    if(totalEl) totalEl.innerText = avg;
-
-    // --- LÓGICA DE RANGOS (AS SOLICITADO) ---
-    let rankTitle = 'B ⭐';     // Default
-    let rankTier = 'ACADEMY';   // Default
-    let rankColor = 'white';
-
-    if (avg >= 90) {
-        rankTitle = 'S ⭐⭐⭐⭐⭐';
-        rankTier = 'WORLD 11 🌏';
-        rankColor = 'var(--neon-blue)'; // Azul Neón
-    } else if (avg >= 85) {
-        rankTitle = 'S ⭐⭐⭐⭐';
-        rankTier = 'NEO EGOIST ⚔️';
-        rankColor = '#00ccff';
-    } else if (avg >= 80) {
-        rankTitle = 'A ⭐⭐⭐';
-        rankTier = 'BLUE LOCK ⛓️';
-        rankColor = 'var(--neon-orange)'; // Naranja
-    } else if (avg >= 70) {
-        rankTitle = 'B ⭐⭐';
-        rankTier = 'U-20 🇯🇵';
-        rankColor = '#ffff00'; // Amarillo
-    }
-
-    // Actualizar DOM Rangos
-    const rankEl = document.getElementById('result-rank');
-    const tierEl = document.getElementById('result-tier');
-    
-    if(rankEl) {
-        rankEl.innerText = rankTitle;
-        rankEl.style.color = rankColor;
-    }
-    if(tierEl) {
-        tierEl.innerText = rankTier;
-        // Animación suave si es World 11
-        tierEl.style.textShadow = (avg >= 90) ? "0 0 15px var(--neon-blue)" : "none";
-    }
-
-    // Actualizar Gráfico y Guardar
-    updateChart(values);
-    saveStats();
-}
-
-function updateChart(dataValues) {
-    const ctx = document.getElementById('blzChart');
-    if (!ctx) return;
-
-    if (blzChartInstance) {
-        blzChartInstance.data.datasets[0].data = dataValues;
-        blzChartInstance.update();
-    } else {
-        blzChartInstance = new Chart(ctx, {
-            type: 'radar',
-            data: {
-                labels: ['OFF', 'SHO', 'DRI', 'PAS', 'DEF', 'SPD'],
-                datasets: [{
-                    label: 'STATS',
-                    data: dataValues,
-                    backgroundColor: 'rgba(0, 240, 255, 0.2)', 
-                    borderColor: '#00f0ff',
-                    pointBackgroundColor: '#fff',
-                    pointBorderColor: '#00f0ff',
-                    borderWidth: 2
-                }]
-            },
-            options: {
-                scales: {
-                    r: {
-                        angleLines: { color: 'rgba(255, 255, 255, 0.1)' },
-                        grid: { color: 'rgba(255, 255, 255, 0.1)' },
-                        pointLabels: { color: '#00f0ff', font: { size: 10 } },
-                        suggestedMin: 0,
-                        suggestedMax: 100, 
-                        ticks: { display: false } 
-                    }
-                },
-                plugins: { legend: { display: false } }
-            }
-        });
-    }
-}
-
-function saveStats() {
-    const data = { inputs: {} };
-    ['offense', 'shoot', 'dribble', 'pass', 'defense', 'speed'].forEach(id => {
-        const el = document.getElementById(id);
-        if(el) data.inputs[id] = el.value;
-    });
-    localStorage.setItem('blz_stats_data', JSON.stringify(data));
-}
-
-function loadStats() {
-    const saved = localStorage.getItem('blz_stats_data');
-    if (saved) {
-        try {
-            const data = JSON.parse(saved);
-            if(data.inputs) {
-                for (const [key, val] of Object.entries(data.inputs)) {
-                    const el = document.getElementById(key);
-                    if(el) el.value = val;
+        // 1. GRID DE FONDO
+        ctx.beginPath();
+        for (let level = 1; level <= 5; level++) {
+            const r = (maxRadius / 5) * level;
+            for (let i = 0; i < totalStats; i++) {
+                const angle = i * angleStep - Math.PI / 2;
+                const x = centerX + Math.cos(angle) * r;
+                const y = centerY + Math.sin(angle) * r;
+                
+                if (type === 'gk') {
+                    // GK: Círculos (Rinnegan style)
+                    ctx.beginPath();
+                    ctx.arc(centerX, centerY, r, 0, Math.PI * 2);
+                    ctx.strokeStyle = `rgba(255, 0, 76, 0.15)`; // Rojo tenue
+                    ctx.stroke();
+                } else {
+                    // Offensive: Pentágono
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
                 }
             }
-            calculateStats();
-        } catch(e) { console.error(e); }
-    }
-}
+            if (type === 'offensive') {
+                ctx.closePath();
+                ctx.strokeStyle = `rgba(0, 242, 255, 0.15)`;
+                ctx.stroke();
+            }
+        }
 
-// Funciones modales
-function openStatsModal() {
-    document.getElementById('stats-modal')?.classList.remove('hidden');
-    if(blzChartInstance) blzChartInstance.update();
-}
-function closeStatsModal() {
-    document.getElementById('stats-modal')?.classList.add('hidden');
-}
-async function copyChartToClipboard() {
-    alert("Función de copiado lista (requiere HTTPS/Localhost)");
-}
+        // 2. GRAFICO DE DATOS (EL EGO)
+        ctx.beginPath();
+        statsKeys.forEach((key, i) => {
+            let val = data[key]; 
+            // Clamp value 0-100
+            if (val > 100) val = 100;
+            if (val < 0) val = 0;
+
+            const r = (val / 100) * maxRadius;
+            const angle = i * angleStep - Math.PI / 2;
+            const x = centerX + Math.cos(angle) * r;
+            const y = centerY + Math.sin(angle) * r;
+
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+
+            // Vértices Brillantes
+            drawGlitchPoint(x, y, primaryColor);
+            
+            // Labels (SHT, DBL...)
+            drawLabel(key.toUpperCase(), angle, centerX, centerY, maxRadius + 25);
+        });
+        ctx.closePath();
+        
+        ctx.fillStyle = type === 'offensive' ? 'rgba(0, 242, 255, 0.25)' : 'rgba(255, 0, 76, 0.25)';
+        ctx.fill();
+        ctx.strokeStyle = primaryColor;
+        ctx.stroke();
+
+        // 3. TEXTO DE RANGO (PARTE INFERIOR)
+        // Fondo semitransparente para el texto
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.fillRect(0, h - 60, w, 60);
+
+        // Texto del Promedio Numérico
+        ctx.font = "bold 20px 'Courier New'";
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.shadowBlur = 0;
+        ctx.fillText(`AVG: ${rawAvg.toFixed(1)} / 100`, centerX, h - 40);
+
+        // Texto del RANGO FINAL
+        ctx.font = "bold 18px 'Arial'"; // Arial para soportar mejor emojis
+        ctx.fillStyle = primaryColor; // Color del texto igual al gráfico
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = primaryColor;
+        ctx.fillText(rankText.toUpperCase(), centerX, h - 15);
+    }
+
+    function drawGlitchPoint(x, y, color) {
+        ctx.save();
+        ctx.fillStyle = "#fff";
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = color;
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI*2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    function drawLabel(text, angle, cx, cy, radius) {
+        const x = cx + Math.cos(angle) * radius;
+        const y = cy + Math.sin(angle) * radius;
+        ctx.font = "bold 12px 'Courier New'";
+        ctx.fillStyle = "#ccc";
+        ctx.textAlign = "center";
+        ctx.shadowBlur = 0;
+        ctx.fillText(text, x, y + 5);
+    }
+
+    // --- POPUP UTILS ---
+    closeModalBtn.onclick = () => statsModal.style.display = 'none';
+
+    copyBtn.onclick = () => {
+        statsCanvas.toBlob(blob => {
+            const item = new ClipboardItem({ "image/png": blob });
+            navigator.clipboard.write([item]).then(() => {
+                const originalText = copyBtn.innerText;
+                copyBtn.innerText = "COPIED [EGO]";
+                copyBtn.style.background = "#00ff00";
+                copyBtn.style.color = "#000";
+                setTimeout(() => {
+                    copyBtn.innerText = originalText;
+                    copyBtn.style.background = "";
+                    copyBtn.style.color = "";
+                }, 2000);
+            });
+        });
+    };
+});
