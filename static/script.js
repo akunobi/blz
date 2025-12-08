@@ -12,15 +12,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let isFetching = false;
 
     // --- INICIO ---
-    // Cargar canales al iniciar
     fetchChannels();
-    
-    // Loop de mensajes (cada 3s)
     setInterval(() => {
         if (!isFetching && currentChannelId) fetchMessages();
     }, 3000);
 
-    // Enviar con Enter
     if(msgInput) {
         msgInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') window.sendMessage();
@@ -33,27 +29,20 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/channels');
             const channels = await res.json();
 
-            // Limpiamos la lista solo si hay datos nuevos
             if (channels.length > 0) channelList.innerHTML = '';
             
             channels.forEach(ch => {
-                // CORRECCIÓN: Busca 'name' O 'channel_name', y 'id' O 'channel_id'
                 const cName = ch.name || ch.channel_name || "Unknown Channel";
                 const cId = ch.id || ch.channel_id;
 
                 const btn = document.createElement('button');
                 btn.className = 'channel-btn';
-                btn.innerText = `> ${cName}`; // Estilo terminal
+                btn.innerText = `> ${cName}`; 
                 
                 btn.onclick = () => {
-                    // Actualizar ID actual
                     currentChannelId = cId;
-                    
-                    // Actualizar visual (clase active)
                     document.querySelectorAll('.channel-btn').forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
-                    
-                    // Mostrar carga y pedir mensajes
                     chatFeed.innerHTML = '<div style="padding:20px; text-align:center; opacity:0.5; color:var(--cyan);">/// ESTABLISHING UPLINK...</div>';
                     fetchMessages();
                 };
@@ -74,18 +63,13 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await fetch('/api/messages');
             const allMsgs = await res.json();
-            
-            // Filtramos por el canal seleccionado
-            // Usamos '==' para que no importe si es string o int
             const msgs = allMsgs.filter(m => m.channel_id == currentChannelId).reverse();
-            
-            // Detectar si el usuario está leyendo mensajes viejos (scroll arriba)
             const isScrolledToBottom = (chatFeed.scrollHeight - chatFeed.scrollTop - chatFeed.clientHeight) < 150;
 
             chatFeed.innerHTML = '';
             
             if (msgs.length === 0) {
-                chatFeed.innerHTML = '<div class="empty-feed"><div class="eye-icon">👁</div><p>NO DATA FOUND</p></div>';
+                chatFeed.innerHTML = '<div class="empty-state" style="text-align:center; padding:20px; color:#555;">NO DATA FOUND</div>';
             } else {
                 msgs.forEach(msg => {
                     const card = document.createElement('div');
@@ -102,7 +86,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
 
-            // Mantener scroll abajo si corresponde
             if (isScrolledToBottom) {
                 chatFeed.scrollTop = chatFeed.scrollHeight;
             }
@@ -111,18 +94,15 @@ document.addEventListener('DOMContentLoaded', () => {
         finally { isFetching = false; }
     }
 
-    // Convertir URLs en links clickeables
     function formatLinks(text) {
         if (!text) return "";
         return text.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>');
     }
 
-    // --- ENVIAR MENSAJES (MEJORADO) ---
     window.sendMessage = async () => {
         const content = msgInput.value.trim();
         if (!content || !currentChannelId) return;
 
-        // Feedback visual
         const originalPlaceholder = msgInput.placeholder;
         msgInput.value = '';
         msgInput.placeholder = "/// TRANSMITTING...";
@@ -135,18 +115,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ channel_id: currentChannelId, content: content })
             });
             
-            // Manejo de errores detallado
             if (!res.ok) {
                 const errData = await res.json();
                 throw new Error(errData.error || "Server Reject");
             }
-            
-            // Refrescar rápido
             setTimeout(fetchMessages, 500);
             
         } catch(e) {
             alert("TRANSMISSION ERROR: " + e.message);
-            msgInput.value = content; // Devolver texto si falla para no perderlo
+            msgInput.value = content;
         } finally {
             msgInput.placeholder = originalPlaceholder;
             msgInput.disabled = false;
@@ -154,17 +131,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- ESTADÍSTICAS (GRÁFICOS) ---
-    // Esta función detecta si rellenaste los datos de Ofensiva o Portero
+    // =========================================================
+    // --- LÓGICA DE ESTADÍSTICAS (ACTUALIZADA Y PRECISA) ---
+    // =========================================================
+
     window.generateStats = () => {
-        // Detectar tipo chequeando si el input DVG (portero) tiene algo
+        // 1. Detectar tipo
         let type = 'offensive';
         const gkInput = document.getElementById('dvg');
-        if (gkInput && gkInput.value !== "") {
+        
+        // Si hay ALGÚN valor en el campo de GK (DVG), cambiamos a modo GK
+        if (gkInput && gkInput.value.trim() !== "") {
             type = 'gk';
         }
 
-        // IDs según el tipo
+        // 2. Definir Inputs según el tipo
         const inputs = type === 'offensive' 
             ? ['sht', 'dbl', 'stl', 'psn', 'dfd'] 
             : ['dvg', 'biq', 'rfx', 'dtg'];
@@ -173,14 +154,15 @@ document.addEventListener('DOMContentLoaded', () => {
         let sum = 0;
         let count = 0;
 
+        // 3. Recopilar datos y Calcular Media
         inputs.forEach(id => {
             const el = document.getElementById(id);
             if (!el) return;
             
             let val = parseFloat(el.value);
-            if (isNaN(val)) val = 0; // Si está vacío cuenta como 0
+            if (isNaN(val)) val = 0; 
             
-            // Límites 0-10 (adaptable)
+            // Clamping 0-10
             if (val > 10) val = 10; 
             if (val < 0) val = 0;
             
@@ -189,45 +171,80 @@ document.addEventListener('DOMContentLoaded', () => {
             count++;
         });
 
-        // Calcular promedio y rango
         const avg = count > 0 ? sum / count : 0;
-        const rank = getRankText(avg);
+        
+        // 4. Obtener Rango DETALLADO
+        let rank = "N/A";
+        if (type === 'offensive') {
+            rank = getOffensiveRank(avg);
+        } else {
+            rank = getGKRank(avg);
+        }
 
-        // Dibujar
+        // 5. Dibujar
         drawGraph(type, data, avg, rank);
         
-        // Mostrar Modal
         if(modal) modal.style.display = 'flex';
-        
-        // Cerrar Drawer automáticamente
-        const drawer = document.getElementById('stats-drawer');
-        if(drawer) drawer.classList.remove('active');
     };
 
-    function getRankText(s) {
-        // Asumiendo escala 0-10
-        if (s < 5) return "UNRANKED";
-        if (s < 7) return "ROOKIE";
-        if (s < 8) return "ELITE";
-        if (s < 9) return "PRODIGY";
-        if (s < 9.5) return "WORLD CLASS";
-        return "MASTER EGOIST";
+    // --- RANGOS OFFENSIVE (CON ESTRELLAS PRECISAS) ---
+    // Basado en tu imagen: cada rango tiene 3 niveles de estrellas
+    function getOffensiveRank(s) {
+        if (s < 4.6) return "N/A";
+        
+        // Rookie Strikers 🥉
+        if (s <= 4.8) return "ROOKIE STRIKERS 🥉 - ⭐";
+        if (s <= 5.1) return "ROOKIE STRIKERS 🥉 - ⭐⭐";
+        if (s <= 5.4) return "ROOKIE STRIKERS 🥉 - ⭐⭐⭐";
+        
+        // Amateur Striker ⚽
+        if (s <= 5.7) return "AMATEUR STRIKER ⚽ - ⭐";
+        if (s <= 6.0) return "AMATEUR STRIKER ⚽ - ⭐⭐";
+        if (s <= 6.3) return "AMATEUR STRIKER ⚽ - ⭐⭐⭐";
+        
+        // Elite ⚡
+        if (s <= 6.6) return "ELITE ⚡ - ⭐";
+        if (s <= 6.9) return "ELITE ⚡ - ⭐⭐";
+        if (s <= 7.2) return "ELITE ⚡ - ⭐⭐⭐";
+        
+        // Prodigy 🏅
+        if (s <= 7.5) return "PRODIGY 🏅 - ⭐";
+        if (s <= 7.8) return "PRODIGY 🏅 - ⭐⭐";
+        if (s <= 8.1) return "PRODIGY 🏅 - ⭐⭐⭐";
+        
+        // New Gen XI
+        if (s <= 8.4) return "NEW GEN XI - ⭐";
+        if (s <= 8.7) return "NEW GEN XI - ⭐⭐";
+        if (s <= 9.0) return "NEW GEN XI - ⭐⭐⭐";
+        
+        // World Class 👑
+        if (s <= 9.3) return "WORLD CLASS 👑 - ⭐";
+        if (s <= 9.6) return "WORLD CLASS 👑 - ⭐⭐";
+        return "WORLD CLASS 👑 - ⭐⭐⭐";
     }
 
+    // --- RANGOS GK (TIERS PRECISOS) ---
+    function getGKRank(s) {
+        if (s <= 6.9) return "D TIER";
+        if (s <= 7.9) return "C TIER";
+        if (s <= 8.4) return "B TIER";
+        if (s <= 8.9) return "A TIER";
+        if (s <= 9.4) return "S TIER";
+        return "S+ TIER";
+    }
+
+    // --- DIBUJADO DE GRÁFICO ---
     function drawGraph(type, data, avg, rank) {
-        // Limpiar canvas
         ctx.clearRect(0,0,500,500);
         
-        // Fondo negro puro
+        // Fondo
         ctx.fillStyle = "#050505";
         ctx.fillRect(0,0,500,500);
 
         const cx = 250, cy = 250;
         const maxRadius = 140;
-        // Colores dinámicos según el tipo
-        const color = type === 'offensive' ? '#00f2ff' : '#ff5e00'; 
+        const color = type === 'offensive' ? '#00f2ff' : '#ff0040'; 
 
-        // Configuración lineas
         ctx.strokeStyle = color;
         ctx.lineWidth = 2;
         ctx.shadowBlur = 15;
@@ -237,27 +254,41 @@ document.addEventListener('DOMContentLoaded', () => {
         const total = keys.length;
         const angleStep = (Math.PI * 2) / total;
 
-        // 1. DIBUJAR BASE (La "telaraña" de fondo)
+        // 1. GRID DE FONDO
         ctx.beginPath();
         for(let level=1; level<=4; level++) {
             let r = (maxRadius/4)*level;
-            // Dibujamos polígono o círculo según tipo
-            for(let i=0; i<=total; i++) {
-                let a = i * angleStep - Math.PI/2;
-                let x = cx + Math.cos(a) * r;
-                let y = cy + Math.sin(a) * r;
-                if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+            
+            if (type === 'gk') {
+                ctx.moveTo(cx + r, cy);
+                ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            } else {
+                for(let i=0; i<=total; i++) {
+                    let a = i * angleStep - Math.PI/2;
+                    let x = cx + Math.cos(a) * r;
+                    let y = cy + Math.sin(a) * r;
+                    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+                }
             }
         }
-        ctx.strokeStyle = "rgba(255,255,255,0.1)"; // Base gris oscura
+        ctx.strokeStyle = "rgba(255,255,255,0.1)"; 
         ctx.shadowBlur = 0;
         ctx.stroke();
 
-        // 2. DIBUJAR DATOS (La forma rellena)
+        // Radios
+        ctx.beginPath();
+        for(let i=0; i<total; i++) {
+            let a = i * angleStep - Math.PI/2;
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + Math.cos(a) * maxRadius, cy + Math.sin(a) * maxRadius);
+        }
+        ctx.stroke();
+
+        // 2. FORMA DE DATOS
         ctx.beginPath();
         keys.forEach((k, i) => {
             let val = data[k];
-            let r = (val / 10) * maxRadius; // Normalizar 0-10 a Radio
+            let r = (val / 10) * maxRadius;
             let a = i * angleStep - Math.PI/2;
             let x = cx + Math.cos(a) * r;
             let y = cy + Math.sin(a) * r;
@@ -266,17 +297,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         ctx.closePath();
         
-        // Relleno con transparencia
-        ctx.fillStyle = type === 'offensive' ? "rgba(0, 242, 255, 0.2)" : "rgba(255, 94, 0, 0.2)";
+        ctx.fillStyle = type === 'offensive' ? "rgba(0, 242, 255, 0.2)" : "rgba(255, 0, 64, 0.2)";
         ctx.fill();
-        
-        // Borde brillante
         ctx.strokeStyle = color;
         ctx.shadowBlur = 20;
-        ctx.shadowColor = color;
         ctx.stroke();
 
-        // 3. ETIQUETAS (Texto SHT, DBL...)
+        // 3. ETIQUETAS
         keys.forEach((k, i) => {
             let a = i * angleStep - Math.PI/2;
             let labelR = maxRadius + 35;
@@ -285,7 +312,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             ctx.save();
             ctx.fillStyle = "#fff";
-            ctx.font = "bold 16px 'Share Tech Mono'";
+            ctx.font = "bold 16px 'Courier New'";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.shadowBlur = 0;
@@ -293,19 +320,22 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.restore();
         });
 
-        // 4. RANGO EN EL CENTRO (Opcional, o abajo)
+        // 4. RESULTADOS (AVG Y RANK)
         ctx.shadowBlur = 0;
         ctx.fillStyle = "#fff";
-        ctx.font = "14px 'Share Tech Mono'";
+        ctx.font = "14px 'Courier New'";
         ctx.textAlign = "center";
-        ctx.fillText(`AVG: ${avg.toFixed(1)}`, cx, 450);
+        ctx.fillText(`AVG: ${avg.toFixed(1)} / 10`, cx, 440);
 
-        ctx.font = "bold 24px 'Teko'";
+        // Ajustamos la fuente para que quepa el nombre largo
+        ctx.font = "bold 20px 'Impact'";
         ctx.fillStyle = color;
-        ctx.fillText(rank, cx, 480);
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = color;
+        ctx.fillText(rank, cx, 475);
     }
 
-    // --- CONTROLES DEL MODAL ---
+    // --- CONTROLES MODAL ---
     const closeBtn = document.getElementById('close-modal');
     if(closeBtn) closeBtn.onclick = () => modal.style.display = 'none';
 
