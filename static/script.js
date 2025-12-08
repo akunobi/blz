@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- LÓGICA DE CANALES (AQUÍ ESTABA EL ERROR) ---
+    // --- LÓGICA DE CANALES ---
     async function fetchChannels() {
         try {
             const res = await fetch('/api/channels');
@@ -43,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const btn = document.createElement('button');
                 btn.className = 'channel-btn';
-                btn.innerText = `# ${cName}`; 
+                btn.innerText = `> ${cName}`; // Estilo terminal
                 
                 btn.onclick = () => {
                     // Actualizar ID actual
@@ -54,7 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     btn.classList.add('active');
                     
                     // Mostrar carga y pedir mensajes
-                    chatFeed.innerHTML = '<div style="padding:20px; text-align:center; opacity:0.5;">/// DECRYPTING DATA...</div>';
+                    chatFeed.innerHTML = '<div style="padding:20px; text-align:center; opacity:0.5; color:var(--cyan);">/// ESTABLISHING UPLINK...</div>';
                     fetchMessages();
                 };
                 
@@ -62,7 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         } catch(e) { 
             console.error("Chan Error", e);
-            channelList.innerHTML = '<div style="color:red; padding:10px;">OFFLINE MODE</div>';
+            channelList.innerHTML = '<div style="color:var(--red); padding:10px;">[OFFLINE MODE]</div>';
         }
     }
 
@@ -85,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
             chatFeed.innerHTML = '';
             
             if (msgs.length === 0) {
-                chatFeed.innerHTML = '<div class="empty-state"><p>NO DATA FOUND</p></div>';
+                chatFeed.innerHTML = '<div class="empty-feed"><div class="eye-icon">👁</div><p>NO DATA FOUND</p></div>';
             } else {
                 msgs.forEach(msg => {
                     const card = document.createElement('div');
@@ -117,14 +117,15 @@ document.addEventListener('DOMContentLoaded', () => {
         return text.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>');
     }
 
-    // --- ENVIAR MENSAJES ---
+    // --- ENVIAR MENSAJES (MEJORADO) ---
     window.sendMessage = async () => {
         const content = msgInput.value.trim();
         if (!content || !currentChannelId) return;
 
         // Feedback visual
+        const originalPlaceholder = msgInput.placeholder;
         msgInput.value = '';
-        msgInput.placeholder = "/// SENDING...";
+        msgInput.placeholder = "/// TRANSMITTING...";
         msgInput.disabled = true;
 
         try {
@@ -134,16 +135,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ channel_id: currentChannelId, content: content })
             });
             
-            if (!res.ok) throw new Error("Server Reject");
+            // Manejo de errores detallado
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.error || "Server Reject");
+            }
             
             // Refrescar rápido
             setTimeout(fetchMessages, 500);
             
         } catch(e) {
-            alert("ERROR: " + e);
-            msgInput.value = content; // Devolver texto si falla
+            alert("TRANSMISSION ERROR: " + e.message);
+            msgInput.value = content; // Devolver texto si falla para no perderlo
         } finally {
-            msgInput.placeholder = "ENTER COMMAND / MESSAGE...";
+            msgInput.placeholder = originalPlaceholder;
             msgInput.disabled = false;
             msgInput.focus();
         }
@@ -167,7 +172,6 @@ document.addEventListener('DOMContentLoaded', () => {
         let data = {};
         let sum = 0;
         let count = 0;
-        let valid = true;
 
         inputs.forEach(id => {
             const el = document.getElementById(id);
@@ -176,7 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let val = parseFloat(el.value);
             if (isNaN(val)) val = 0; // Si está vacío cuenta como 0
             
-            // Límites 0-100 o 0-10 (adaptable)
+            // Límites 0-10 (adaptable)
             if (val > 10) val = 10; 
             if (val < 0) val = 0;
             
@@ -195,7 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Mostrar Modal
         if(modal) modal.style.display = 'flex';
         
-        // Cerrar Drawer automáticamente (opcional)
+        // Cerrar Drawer automáticamente
         const drawer = document.getElementById('stats-drawer');
         if(drawer) drawer.classList.remove('active');
     };
@@ -220,7 +224,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const cx = 250, cy = 250;
         const maxRadius = 140;
-        const color = type === 'offensive' ? '#00f2ff' : '#ff0040'; // Cyan o Rojo
+        // Colores dinámicos según el tipo
+        const color = type === 'offensive' ? '#00f2ff' : '#ff5e00'; 
 
         // Configuración lineas
         ctx.strokeStyle = color;
@@ -262,7 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.closePath();
         
         // Relleno con transparencia
-        ctx.fillStyle = type === 'offensive' ? "rgba(0, 242, 255, 0.2)" : "rgba(255, 0, 64, 0.2)";
+        ctx.fillStyle = type === 'offensive' ? "rgba(0, 242, 255, 0.2)" : "rgba(255, 94, 0, 0.2)";
         ctx.fill();
         
         // Borde brillante
@@ -280,7 +285,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             ctx.save();
             ctx.fillStyle = "#fff";
-            ctx.font = "bold 16px Courier New";
+            ctx.font = "bold 16px 'Share Tech Mono'";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.shadowBlur = 0;
@@ -291,11 +296,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // 4. RANGO EN EL CENTRO (Opcional, o abajo)
         ctx.shadowBlur = 0;
         ctx.fillStyle = "#fff";
-        ctx.font = "14px Courier New";
+        ctx.font = "14px 'Share Tech Mono'";
         ctx.textAlign = "center";
         ctx.fillText(`AVG: ${avg.toFixed(1)}`, cx, 450);
 
-        ctx.font = "bold 24px Impact";
+        ctx.font = "bold 24px 'Teko'";
         ctx.fillStyle = color;
         ctx.fillText(rank, cx, 480);
     }

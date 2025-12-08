@@ -292,3 +292,56 @@ body {
 .ctl-btn { flex: 1; padding: 15px; font-family: var(--font-code); font-weight: bold; cursor: pointer; border: none; }
 .ctl-btn.save { background: var(--cyan); color: #000; }
 .ctl-btn:hover { opacity: 0.8; }
+
+/* === CORRECCIÓN DE INPUT Y CLICKS === */
+
+/* Aseguramos que el contenedor del chat tenga jerarquía */
+.chat-construct {
+    position: relative;
+    z-index: 10; /* Subimos la prioridad del bloque central */
+    transform-style: preserve-3d; /* Vital para que los hijos 3d funcionen */
+}
+
+.parasite-input {
+    position: absolute;
+    bottom: 20px; 
+    right: -20px; /* Lo sacamos un poco más a la derecha */
+    width: 95%;
+    height: 70px;
+    display: flex;
+    
+    /* MAGIA 3D: Lo traemos 100px hacia el frente para que nada lo tape */
+    transform: rotate(-1deg) translateZ(100px); 
+    
+    box-shadow: 20px 20px 50px rgba(0,0,0,0.5);
+    z-index: 9999; /* Prioridad máxima absoluta */
+    pointer-events: auto !important; /* Forzamos detección del mouse */
+}
+
+#msg-input {
+    flex: 1;
+    background: #000;
+    border: 2px solid var(--cyan);
+    color: var(--cyan);
+    font-family: var(--font-code);
+    font-size: 1.2rem;
+    padding: 0 20px;
+    outline: none;
+    cursor: text; /* Aseguramos cursor de texto */
+}
+
+#send-btn {
+    width: 150px;
+    background: var(--orange);
+    border: none;
+    color: #000;
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    cursor: pointer;
+    clip-path: polygon(15% 0, 100% 0, 100% 100%, 0 100%);
+    transition: 0.2s;
+}
+
+#send-btn:active {
+    transform: scale(0.95); /* Feedback visual al hacer click */
+}
