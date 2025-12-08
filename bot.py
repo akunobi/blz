@@ -15,17 +15,18 @@ app.secret_key = os.urandom(24)
 
 TOKEN = os.getenv("DISCORD_TOKEN") 
 
-# CORRECCIÓN IMPORTANTE: Leemos 'CATEGORY_ID'
+# Configuración de Categoría
 try:
     raw_id = os.getenv("CATEGORY_ID")
     if not raw_id:
-        print("!!! [CRITICAL] FALTAN VARIABLES EN RENDER: Asegúrate de tener 'CATEGORY_ID' y 'DISCORD_TOKEN'")
+        # Fallback si no está configurado en Render
         TARGET_CATEGORY_ID = 0
+        print("!!! [ALERTA] Variable CATEGORY_ID no encontrada.")
     else:
         TARGET_CATEGORY_ID = int(raw_id)
 except ValueError:
-    print("!!! [ERROR] CATEGORY_ID no es un número válido.")
     TARGET_CATEGORY_ID = 0
+    print("!!! [ERROR] CATEGORY_ID no es numérico.")
 
 # --- SETUP DISCORD ---
 intents = discord.Intents.default()
@@ -57,7 +58,7 @@ def init_db():
         ''')
         conn.commit()
         conn.close()
-        print(">>> [DB]: Lista.")
+        print(">>> [DB]: Inicializada.")
     except Exception as e:
         print(f"!!! [DB ERROR]: {e}")
 
@@ -65,19 +66,6 @@ def init_db():
 @client.event
 async def on_ready():
     print(f'>>> [DISCORD]: Conectado como {client.user}')
-    print(f'>>> [DISCORD]: Usando CATEGORY_ID: {TARGET_CATEGORY_ID}')
-    
-    # Diagnóstico rápido al arrancar
-    if TARGET_CATEGORY_ID == 0:
-        print("!!! [ALERTA]: TARGET_CATEGORY_ID es 0. El bot NO funcionará.")
-    else:
-        try:
-            # Intentar ver si tenemos acceso a la categoría
-            category = client.get_channel(TARGET_CATEGORY_ID) or await client.fetch_channel(TARGET_CATEGORY_ID)
-            print(f">>> [EXITO]: Categoría '{category.name}' detectada correctamente.")
-        except Exception as e:
-            print(f"!!! [ALERTA]: El bot no puede ver la categoría {TARGET_CATEGORY_ID}. Error: {e}")
-
     bot_ready_event.set()
 
 @client.event
@@ -101,7 +89,6 @@ async def on_message(message):
                 ))
                 conn.commit()
                 conn.close()
-                print(f">>> [MSG SAVED]: {message.author.name} -> #{message.channel.name}")
             except Exception as e:
                 print(f"!!! [SAVE ERROR]: {e}")
 
@@ -111,6 +98,27 @@ async def on_message(message):
 def index():
     return render_template('index.html')
 
+# --- RUTA DE RESETEO (LA NUEVA FUNCIÓN) ---
+@app.route('/api/admin/reset')
+def reset_database():
+    """Borra todo el contenido de la base de datos para limpiar canales viejos."""
+    try:
+        conn = get_db_connection()
+        # Borramos la tabla entera
+        conn.execute('DROP TABLE IF EXISTS messages')
+        conn.commit()
+        conn.close()
+        
+        # La volvemos a crear limpia
+        init_db()
+        
+        return jsonify({
+            "status": "SUCCESS", 
+            "message": "Base de datos purgada. Canales viejos eliminados. Escribe en Discord para ver nuevos canales."
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/channels')
 def get_channels():
     if not bot_ready_event.is_set():
@@ -118,17 +126,19 @@ def get_channels():
 
     async def get_channels_async():
         try:
+            # Intentamos obtener fresca la categoría de Discord
             category = client.get_channel(TARGET_CATEGORY_ID)
             if not category:
                 try:
                     category = await client.fetch_channel(TARGET_CATEGORY_ID)
                 except:
-                    return []
+                    pass # Si falla, devolveremos lista vacía o de DB
             
             if category:
                 text_channels = [c for c in category.channels if isinstance(c, discord.TextChannel)]
                 text_channels.sort(key=lambda x: x.position)
                 return [{"id": c.id, "name": c.name} for c in text_channels]
+            
             return []
         except Exception as e:
             print(f"Error channels: {e}")
@@ -137,7 +147,17 @@ def get_channels():
     try:
         future = asyncio.run_coroutine_threadsafe(get_channels_async(), bot_loop)
         channels = future.result(timeout=5)
-        return jsonify(channels)
+        
+        # Si Discord devuelve canales, perfecto.
+        if channels:
+            return jsonify(channels)
+        
+        # Si no (error de conexión), intentamos leer de la DB (que acabamos de limpiar si usaste reset)
+        conn = get_db_connection()
+        db_chans = conn.execute('SELECT DISTINCT channel_name as name, channel_id as id FROM messages').fetchall()
+        conn.close()
+        return jsonify([dict(row) for row in db_chans])
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -157,11 +177,10 @@ def send_message():
     channel_id = data.get('channel_id')
     content = data.get('content')
     
-    # LOG DEBUG
-    print(f"\n>>> [WEB REQUEST] ID Solicitada: {channel_id} | Configurada: {TARGET_CATEGORY_ID}")
+    print(f"\n>>> [WEB SEND] ID: {channel_id} | Msg: {content}")
     
     if not channel_id or not content:
-        return jsonify({"error": "Faltan datos"}), 400
+        return jsonify({"error": "Datos incompletos"}), 400
 
     if not bot_loop or not bot_ready_event.is_set():
         return jsonify({"error": "Bot desconectado"}), 503
@@ -170,22 +189,17 @@ def send_message():
         try:
             c_id = int(channel_id)
             channel = await client.fetch_channel(c_id)
-            
-            # Verificación extra de seguridad (opcional, pero recomendada)
-            if channel.category and channel.category.id != TARGET_CATEGORY_ID:
-                 print(f"!!! [ALERTA] Intento de envío a categoría incorrecta ({channel.category.id})")
-            
             await channel.send(content)
             return {"success": True}
         
         except discord.NotFound:
-            print(f"!!! [ERROR] Canal {c_id} NO ENCONTRADO.")
-            return {"success": False, "error": "Canal no encontrado."}
+            print(f"!!! [ERROR] Canal {c_id} NO EXISTE.")
+            return {"success": False, "error": "Canal no encontrado (Borrado o ID vieja)."}
         except discord.Forbidden:
-            print(f"!!! [ERROR] SIN PERMISOS en canal {c_id}.")
+            print(f"!!! [ERROR] SIN PERMISOS en {c_id}.")
             return {"success": False, "error": "Sin permisos."}
         except Exception as e:
-            print(f"!!! [ERROR CRÍTICO]: {e}")
+            print(f"!!! [ERROR]: {e}")
             return {"success": False, "error": str(e)}
 
     try:
@@ -198,7 +212,7 @@ def send_message():
             return jsonify({"error": result["error"]}), 500
             
     except Exception as e:
-        return jsonify({"error": f"Timeout/Internal: {e}"}), 500
+        return jsonify({"error": f"Internal: {e}"}), 500
 
 # --- ARRANQUE ---
 def run_discord_bot():
