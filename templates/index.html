@@ -3,96 +3,102 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BLZ-T</title>
-    <link href="https://fonts.googleapis.com/css2?family=Koulen&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+    <title>BLUE LOCK // DECONSTRUCTED</title>
+    <link href="https://fonts.googleapis.com/css2?family=Teko:wght@300;600&family=JetBrains+Mono:wght@400;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 
-    <div class="chaos-bg"></div>
-    <div class="puzzle-overlay"></div>
+    <div class="noise-bg"></div>
+    <div class="grid-floor"></div>
+    <div class="vignette"></div>
 
-    <main class="fragmented-layout">
+    <main class="radical-layout">
         
-        <div class="shard-column">
-            <div class="shard-title"><span>TARGETS</span></div>
-            <div id="channel-list" class="shard-container"></div>
+        <div class="targets-zone">
+            <div class="zone-label">/// TARGET_LIST</div>
+            <div id="channel-list" class="broken-list">
+                </div>
         </div>
 
-        <div class="void-chat-area">
-            <div id="chat-feed" class="floating-feed">
-                <div class="initial-lock">
-                    <div class="lock-icon">🔒</div>
-                    <p>AWAKEN YOUR EGO</p>
+        <div class="void-feed-container">
+            <div id="chat-feed" class="raw-feed">
+                <div class="system-idle">
+                    <span class="blink">_WAITING_FOR_EGO</span>
                 </div>
             </div>
 
-            <div id="ticket-hud" class="target-analysis-panel">
-                <div class="hud-line"></div>
-                <div class="hud-content">
-                    <div class="hud-data">
-                        <span class="hud-label">TICKET / CHANNEL</span>
-                        <span id="hud-name" class="hud-value active">---</span>
+            <div id="ticket-hud" class="hologram-hud">
+                <div class="holo-glitch-bar"></div>
+                <div class="holo-info">
+                    <div class="data-point">
+                        <span class="lbl">ID:</span>
+                        <span id="hud-name" class="val">NULL</span>
                     </div>
-                    <div class="hud-data">
-                        <span class="hud-label">OPENED AT</span>
-                        <span id="hud-date" class="hud-value">--/--/--</span>
+                    <div class="data-point">
+                        <span class="lbl">T:</span>
+                        <span id="hud-time" class="val">00:00</span>
                     </div>
-                    <div class="hud-data">
-                        <span class="hud-label">UPTIME</span>
-                        <span id="hud-time" class="hud-value glitch">00:00</span>
+                    <div class="data-point big">
+                        <span class="lbl">STATUS:</span>
+                        <span class="val active">LOCKED</span>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="trigger-input">
-            <input type="text" id="msg-input" placeholder="MESSAGE..." autocomplete="off">
-            <button id="send-btn">SEND</button>
+        <div class="command-line-wrapper">
+            <div class="cmd-decor">INPUT_STREAM >></div>
+            <div class="cmd-input-box">
+                <input type="text" id="msg-input" placeholder="OVERWRITE WORLD..." autocomplete="off">
+                <button id="send-btn">EXECUTE</button>
+            </div>
         </div>
 
     </main>
 
-    <div class="reactor-container-right">
-        <button class="ego-reactor-btn" onclick="toggleDrawer()">
-            <div class="reactor-ring"></div>
-            <div class="reactor-core">STATS</div>
+    <div class="stats-trigger-zone">
+        <button class="radical-stat-btn" onclick="toggleDrawer()">
+            <span class="stat-icon">⚡</span>
+            <span class="stat-label">EGO<br>DATA</span>
         </button>
     </div>
 
-    <div class="evolution-drawer" id="stats-drawer">
-        <div class="evo-content">
-            <div class="evo-header">
-                <h2>CALIFICATIONS</h2>
-                <button class="close-evo" onclick="toggleDrawer()">✕</button>
+    <div class="shard-drawer" id="stats-drawer">
+        <div class="drawer-inner">
+            <div class="drawer-title">
+                <h2>EVOLUTION_PATH</h2>
+                <button class="close-x" onclick="toggleDrawer()">CLOSE</button>
             </div>
-            <div class="evo-grid">
-                <div class="evo-col">
-                    <h3>OFFENSIVE</h3>
-                    <div class="skill-row"><label>SHT</label><input type="number" id="sht" placeholder="00"></div>
-                    <div class="skill-row"><label>DBL</label><input type="number" id="dbl" placeholder="00"></div>
-                    <div class="skill-row"><label>STL</label><input type="number" id="stl" placeholder="00"></div>
-                    <div class="skill-row"><label>PSN</label><input type="number" id="psn" placeholder="00"></div>
-                    <div class="skill-row"><label>DFD</label><input type="number" id="dfd" placeholder="00"></div>
+            
+            <div class="metrics-container">
+                <div class="m-col">
+                    <h3>// WEAPONS</h3>
+                    <div class="raw-inp"><label>SHT</label><input type="number" id="sht" placeholder="00"></div>
+                    <div class="raw-inp"><label>DBL</label><input type="number" id="dbl" placeholder="00"></div>
+                    <div class="raw-inp"><label>STL</label><input type="number" id="stl" placeholder="00"></div>
+                    <div class="raw-inp"><label>PSN</label><input type="number" id="psn" placeholder="00"></div>
+                    <div class="raw-inp"><label>DFD</label><input type="number" id="dfd" placeholder="00"></div>
                 </div>
-                <div class="evo-col">
-                    <h3>GK</h3>
-                    <div class="skill-row"><label>DVG</label><input type="number" id="dvg" placeholder="--"></div>
-                    <div class="skill-row"><label>BIQ</label><input type="number" id="biq" placeholder="--"></div>
-                    <div class="skill-row"><label>RFX</label><input type="number" id="rfx" placeholder="--"></div>
-                    <div class="skill-row"><label>DTG</label><input type="number" id="dtg" placeholder="--"></div>
+                <div class="m-col">
+                    <h3>// REFLEX</h3>
+                    <div class="raw-inp"><label>DVG</label><input type="number" id="dvg" placeholder="--"></div>
+                    <div class="raw-inp"><label>BIQ</label><input type="number" id="biq" placeholder="--"></div>
+                    <div class="raw-inp"><label>RFX</label><input type="number" id="rfx" placeholder="--"></div>
+                    <div class="raw-inp"><label>DTG</label><input type="number" id="dtg" placeholder="--"></div>
                 </div>
             </div>
+
             <button id="ui-stats-btn" onclick="generateStats()">MATERIALIZE</button>
         </div>
     </div>
 
-    <div id="stats-modal" class="modal-limbo">
-        <div class="modal-prism">
+    <div id="stats-modal" class="modal-void">
+        <div class="modal-content-raw">
             <canvas id="stats-canvas" width="500" height="500"></canvas>
-            <div class="modal-controls">
-                <button id="close-modal">BACK</button>
-                <button id="copy-stats-btn">COPY IMAGE</button>
+            <div class="modal-actions">
+                <button id="close-modal">DESTROY</button>
+                <button id="copy-stats-btn">CAPTURE</button>
             </div>
         </div>
     </div>

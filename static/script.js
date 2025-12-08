@@ -7,10 +7,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('stats-canvas');
     const ctx = canvas.getContext('2d');
     
-    // HUD REFERENCIAS
+    // HUD
     const hudPanel = document.getElementById('ticket-hud');
     const hudName = document.getElementById('hud-name');
-    const hudDate = document.getElementById('hud-date');
     const hudTime = document.getElementById('hud-time');
     let timerInterval;
 
@@ -42,30 +41,31 @@ document.addEventListener('DOMContentLoaded', () => {
                 const cName = ch.name || "Unknown";
                 const cId = ch.id; 
 
+                // Creamos el fragmento de datos (Shard)
                 const shard = document.createElement('div');
-                shard.className = 'channel-shard';
-                shard.innerText = `${cName.toUpperCase()}`; 
+                shard.className = 'data-shard';
+                shard.innerText = `// ${cName}`; 
                 
                 shard.onclick = () => {
                     currentChannelId = cId;
-                    document.querySelectorAll('.channel-shard').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll('.data-shard').forEach(b => b.classList.remove('active'));
                     shard.classList.add('active');
                     
-                    // ACTUALIZAR HUD
+                    // HUD UPDATE
                     hudPanel.classList.add('visible');
                     hudName.innerText = cName.toUpperCase();
-                    
-                    const now = new Date();
-                    hudDate.innerText = now.toLocaleDateString();
-                    startTimer(); 
+                    startTimer();
 
-                    chatFeed.innerHTML = '<div style="text-align:center; margin-top:50px; color:var(--bl-cyan); font-family:\'Koulen\'">SYNCING DATA...</div>';
+                    chatFeed.innerHTML = '<div style="text-align:center; padding-top:50px; color:var(--neon); font-family:\'Teko\'">INITIALIZING LINK...</div>';
                     fetchMessages();
                 };
                 
                 channelList.appendChild(shard);
             });
-        } catch(e) { console.error(e); }
+        } catch(e) { 
+            console.error(e);
+            channelList.innerHTML = '<div style="color:#444; padding:20px;">[NO_SIGNAL]</div>';
+        }
     }
 
     function startTimer() {
@@ -94,16 +94,16 @@ document.addEventListener('DOMContentLoaded', () => {
             chatFeed.innerHTML = '';
             
             if (msgs.length === 0) {
-                chatFeed.innerHTML = '<div class="initial-lock"><div class="lock-icon">👁‍🗨</div><p>VOID</p></div>';
+                chatFeed.innerHTML = '<div class="system-idle"><span class="blink">_VOID</span></div>';
             } else {
                 msgs.forEach(msg => {
-                    const frag = document.createElement('div');
-                    frag.className = 'msg-fragment';
-                    frag.innerHTML = `
-                        <div class="msg-meta">${msg.author_name}</div>
-                        <div class="msg-text">${formatLinks(msg.content)}</div>
+                    const rawMsg = document.createElement('div');
+                    rawMsg.className = 'msg-raw';
+                    rawMsg.innerHTML = `
+                        <div class="msg-header">>${msg.author_name}</div>
+                        <div class="msg-content">${formatLinks(msg.content)}</div>
                     `;
-                    chatFeed.appendChild(frag);
+                    chatFeed.appendChild(rawMsg);
                 });
             }
 
@@ -124,7 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const originalPlaceholder = msgInput.placeholder;
         msgInput.value = '';
-        msgInput.placeholder = "SYNCING...";
+        msgInput.placeholder = "SENDING...";
         msgInput.disabled = true;
 
         try {
@@ -137,7 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!res.ok) throw new Error(data.error || "Server Reject");
             setTimeout(fetchMessages, 200);
         } catch(e) {
-            alert("ERROR: " + e.message);
+            alert("ERR: " + e.message);
             msgInput.value = content;
         } finally {
             msgInput.placeholder = originalPlaceholder;
@@ -166,7 +166,6 @@ document.addEventListener('DOMContentLoaded', () => {
         drawGraph(type, data, avg, rank);
         
         if(modal) modal.style.display = 'flex';
-        // Cerramos el drawer al mostrar el modal (para que se vea bien)
         document.getElementById('stats-drawer').classList.remove('active');
     };
 
@@ -203,7 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function drawGraph(type, data, avg, rank) {
         ctx.clearRect(0,0,500,500);
-        ctx.fillStyle = "#000"; ctx.fillRect(0,0,500,500);
+        ctx.fillStyle = "#050505"; ctx.fillRect(0,0,500,500);
         const cx = 250, cy = 250, r = 140;
         const color = type === 'offensive' ? '#00f2ff' : '#0066ff';
 
@@ -236,24 +235,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         keys.forEach((k, i) => {
             let a = i*angleStep-Math.PI/2, labelR = r+40, x=cx+Math.cos(a)*labelR, y=cy+Math.sin(a)*labelR;
-            ctx.save(); ctx.fillStyle = "#fff"; ctx.font = "bold 20px 'Koulen'"; 
+            ctx.save(); ctx.fillStyle = "#fff"; ctx.font = "bold 20px 'Teko'"; 
             ctx.textAlign = "center"; ctx.textBaseline = "middle";
             ctx.fillText(k.toUpperCase(), x, y); ctx.restore();
         });
 
-        ctx.fillStyle = "#fff"; ctx.font = "16px 'Rajdhani'"; ctx.textAlign = "center";
+        ctx.fillStyle = "#fff"; ctx.font = "16px 'JetBrains Mono'"; ctx.textAlign = "center";
         ctx.fillText(`AVG: ${avg.toFixed(1)} / 10`, cx, 440);
-        ctx.font = "bold 30px 'Koulen'"; ctx.fillStyle = color;
+        ctx.font = "bold 30px 'Teko'"; ctx.fillStyle = color;
         ctx.fillText(rank, cx, 480);
     }
 
-    // --- AQUÍ ESTÁ EL CAMBIO ---
     const closeBtn = document.getElementById('close-modal');
     if(closeBtn) closeBtn.onclick = () => {
-        // 1. Cierra el Modal
         modal.style.display = 'none';
-        // 2. Abre de nuevo el Drawer de Stats
-        document.getElementById('stats-drawer').classList.add('active');
+        document.getElementById('stats-drawer').classList.add('active'); // Volver al panel de stats
     };
 
     const copyBtn = document.getElementById('copy-stats-btn');
@@ -262,7 +258,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const item = new ClipboardItem({ "image/png": blob });
                 navigator.clipboard.write([item]).then(() => {
-                    const p = copyBtn.innerText; copyBtn.innerText = "CAPTURED";
+                    const p = copyBtn.innerText; copyBtn.innerText = "SAVED";
                     setTimeout(() => copyBtn.innerText = p, 2000);
                 });
             } catch (e) { alert("Right click to save"); }
