@@ -1,90 +1,80 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log(">>> [SYSTEM]: CHAOS_SCRIPT INITIALIZED.");
+    console.log(">>> SYSTEM: INITIALIZED.");
 
-    // --- VARIABLES ---
     let currentChannelId = null;
-    const chatContainer = document.getElementById('chat-messages');
+    const chatFeed = document.getElementById('chat-feed');
     const channelList = document.getElementById('channel-list');
     
-    // Elementos Stats
+    // UI ELEMENTS
     const statsModal = document.getElementById('stats-modal');
-    const statsCanvas = document.getElementById('stats-canvas');
-    const ctx = statsCanvas.getContext('2d');
-    const copyBtn = document.getElementById('copy-stats-btn');
     const closeModalBtn = document.getElementById('close-modal');
+    const copyBtn = document.getElementById('copy-stats-btn');
+    const canvas = document.getElementById('stats-canvas');
+    const ctx = canvas.getContext('2d');
 
-    // =================================================================
-    // 1. SISTEMA DE CANALES Y CHAT
-    // =================================================================
-
-    // Cargar canales al iniciar
+    // ===========================================
+    // 1. CHAT LOGIC
+    // ===========================================
     fetchChannels();
-    // Actualizar mensajes cada 3 seg
-    setInterval(fetchMessages, 3000);
+    setInterval(fetchMessages, 3000); // Auto refresh chat
 
     async function fetchChannels() {
         try {
             const res = await fetch('/api/channels');
             const channels = await res.json();
             
-            console.log(">>> [CHANNELS FOUND]:", channels); // Debug en consola
-            channelList.innerHTML = '';
-
-            if (channels.length === 0) {
-                channelList.innerHTML = '<div style="padding:10px; text-align:right;">NO DATA...</div>';
-            }
-
+            if (channels.length > 0) channelList.innerHTML = '';
+            
             channels.forEach(ch => {
                 const btn = document.createElement('div');
-                btn.className = 'channel-item';
-                btn.innerText = `# ${ch.channel_name}`; // Solo nombre
+                btn.className = 'channel-btn';
+                btn.innerText = `# ${ch.channel_name}`;
                 btn.onclick = () => {
                     currentChannelId = ch.channel_id;
-                    // Estilos de activo
-                    document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('active'));
+                    document.querySelectorAll('.channel-btn').forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
                     fetchMessages();
                 };
                 channelList.appendChild(btn);
             });
-        } catch (e) {
-            console.error(">>> [ERROR FETCHING CHANNELS]:", e);
-        }
+        } catch(e) { console.error("Link Error", e); }
     }
 
     async function fetchMessages() {
         if (!currentChannelId) return;
         try {
-            const res = await fetch('/api/messages'); 
-            const allMessages = await res.json();
-            // Filtrar por canal seleccionado
-            const messages = allMessages.filter(m => m.channel_id == currentChannelId);
-
-            chatContainer.innerHTML = '';
-            // Invertir orden para que el más nuevo esté abajo
-            messages.reverse().forEach(msg => {
-                const msgDiv = document.createElement('div');
-                msgDiv.className = 'message-card';
-                msgDiv.innerHTML = `
+            const res = await fetch('/api/messages');
+            const allMsgs = await res.json();
+            // Filtramos y ordenamos
+            const msgs = allMsgs.filter(m => m.channel_id == currentChannelId).reverse();
+            
+            chatFeed.innerHTML = '';
+            
+            msgs.forEach(msg => {
+                // Crear tarjeta de mensaje
+                const card = document.createElement('div');
+                card.className = 'msg-card';
+                
+                // AQUÍ SE VE DE QUIÉN ES EL MENSAJE
+                card.innerHTML = `
                     <div class="msg-header">
-                        <img src="${msg.author_avatar}" class="avatar-sm">
-                        <span class="author-name">${msg.author_name}</span>
+                        <img src="${msg.author_avatar}" class="msg-avatar">
+                        <span class="msg-author">${msg.author_name}</span>
                     </div>
-                    <div class="msg-content">${msg.content}</div>
-                    <span class="timestamp">${new Date(msg.timestamp).toLocaleTimeString()}</span>
+                    <div class="msg-body">${msg.content}</div>
+                    <div class="msg-time">${new Date(msg.timestamp).toLocaleTimeString()}</div>
                 `;
-                chatContainer.appendChild(msgDiv);
+                chatFeed.appendChild(card);
             });
-            // Auto scroll al final
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-        } catch (e) {
-            console.error(">>> [ERROR STREAM]:", e);
-        }
+            // Auto scroll down
+            chatFeed.scrollTop = chatFeed.scrollHeight;
+
+        } catch(e) { console.error("Stream Error", e); }
     }
 
-    // Funcion global para el boton del HTML
+    // ENVIAR MENSAJE
     window.sendMessage = async () => {
-        const input = document.getElementById('message-input');
+        const input = document.getElementById('msg-input');
         const content = input.value;
         if (!content || !currentChannelId) return;
 
@@ -95,19 +85,45 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ channel_id: currentChannelId, content: content })
             });
             input.value = '';
-            setTimeout(fetchMessages, 500); // Recargar rápido
-        } catch (e) { alert("ERROR SENDING"); }
+            setTimeout(fetchMessages, 500); // Refresco rápido
+        } catch(e) { alert("ERROR DE TRANSMISIÓN"); }
     };
 
-    // =================================================================
-    // 2. SISTEMA DE STATS (FIXED)
-    // =================================================================
+    // Permitir enviar con la tecla Enter
+    document.getElementById('msg-input').addEventListener("keypress", function(event) {
+        if (event.key === "Enter") {
+            window.sendMessage();
+        }
+    });
 
-    // Lógica de Rangos (Promedio)
-    function calculateRankText(avg, type) {
-        // avg viene en escala 0-100. Lo pasamos a 0-10 para comparar con tu tabla
-        const s = parseFloat((avg / 10).toFixed(1)); 
-        
+    // ===========================================
+    // 2. STATS & POPUP LOGIC
+    // ===========================================
+    
+    // Cerrar Modal
+    closeModalBtn.onclick = () => {
+        statsModal.style.display = 'none';
+    };
+
+    // Copiar Imagen
+    copyBtn.onclick = () => {
+        canvas.toBlob(blob => {
+            const item = new ClipboardItem({ "image/png": blob });
+            navigator.clipboard.write([item]).then(() => {
+                const oldText = copyBtn.innerText;
+                copyBtn.innerText = "COPIED [MEMORY]";
+                copyBtn.style.color = "#00f2ff";
+                setTimeout(() => {
+                    copyBtn.innerText = oldText;
+                    copyBtn.style.color = "";
+                }, 2000);
+            });
+        });
+    };
+
+    // Función de cálculo de rangos
+    function getRank(avg, type) {
+        let s = parseFloat((avg / 10).toFixed(1));
         if (type === 'offensive') {
             if (s < 4.6) return "UNRANKED";
             if (s <= 5.4) return "ROOKIE 🥉";
@@ -117,7 +133,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (s <= 9.0) return "NEW GEN XI ⭐";
             return "WORLD CLASS 👑";
         } else {
-            // GK
             if (s <= 6.9) return "D TIER";
             if (s <= 7.9) return "C TIER";
             if (s <= 8.4) return "B TIER";
@@ -127,128 +142,117 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ASIGNAR FUNCIÓN AL OBJETO WINDOW PARA QUE EL HTML LA VEA
     window.generateStats = () => {
-        console.log(">>> BUTTON CLICKED: GENERATING STATS...");
-
-        const offensiveIds = ['sht', 'dbl', 'stl', 'psn', 'dfd'];
-        const gkIds = ['dvg', 'biq', 'rfx', 'dtg'];
-
+        // Detectar si es ofensivo o portero
         let type = 'offensive';
-        // Si el primer campo de GK tiene algo, cambiamos a GK
-        if (document.getElementById('dvg').value !== "") {
-            type = 'gk';
-        }
+        const gkVal = document.getElementById('dvg').value;
+        if (gkVal && gkVal !== "") type = 'gk';
 
-        let values = {};
+        const inputs = type === 'offensive' 
+            ? ['sht', 'dbl', 'stl', 'psn', 'dfd'] 
+            : ['dvg', 'biq', 'rfx', 'dtg'];
+
+        let data = {};
         let sum = 0;
         let count = 0;
-        const idsToUse = type === 'offensive' ? offensiveIds : gkIds;
 
-        idsToUse.forEach(id => {
-            let val = parseFloat(document.getElementById(id).value);
-            if (isNaN(val)) val = 0; 
-            values[id] = val;
+        inputs.forEach(id => {
+            let val = parseFloat(document.getElementById(id).value) || 0;
+            if(val > 100) val = 100;
+            data[id] = val;
             sum += val;
             count++;
         });
 
-        const avg = count > 0 ? (sum / count) : 0;
-        const rankText = calculateRankText(avg, type);
+        const avg = count > 0 ? sum / count : 0;
+        const rank = getRank(avg, type);
 
-        drawChart(type, values, rankText, avg);
+        drawCanvas(type, data, avg, rank);
+        
+        // MOSTRAR EL POPUP (FLEX)
         statsModal.style.display = 'flex';
     };
 
-    function drawChart(type, data, rankText, avg) {
-        // Limpieza
-        ctx.clearRect(0, 0, statsCanvas.width, statsCanvas.height);
-        
-        // Configuración
-        const w = statsCanvas.width;
-        const h = statsCanvas.height;
-        const cx = w / 2;
-        const cy = h / 2 - 30; // Subir un poco
-        const maxRadius = 130;
+    function drawCanvas(type, data, avg, rank) {
+        // Reset
+        ctx.clearRect(0,0,500,500);
+        ctx.fillStyle = "#020205"; // Fondo oscuro casi negro
+        ctx.fillRect(0,0,500,500);
 
-        // Fondo Negro
-        ctx.fillStyle = "#000";
-        ctx.fillRect(0,0,w,h);
-
-        // Color según tipo
+        const cx = 250, cy = 230;
+        const radius = 130;
         const color = type === 'offensive' ? '#00f2ff' : '#ff2a00';
 
+        // Estilos
         ctx.lineWidth = 3;
         ctx.strokeStyle = color;
-        ctx.fillStyle = color;
-        ctx.shadowBlur = 15;
+        ctx.shadowBlur = 20;
         ctx.shadowColor = color;
 
         const keys = Object.keys(data);
-        const total = keys.length;
-        const angleStep = (Math.PI * 2) / total;
+        const step = (Math.PI * 2) / keys.length;
 
-        // 1. DIBUJAR GRID (Fondo)
+        // 1. Grid (Fondo)
         ctx.beginPath();
-        for (let r = 20; r <= maxRadius; r += 25) {
-            ctx.moveTo(cx + r, cy);
-            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        for (let i = 1; i <= 4; i++) {
+            let r = (radius / 4) * i;
+            if (type === 'gk') {
+                ctx.moveTo(cx + r, cy);
+                ctx.arc(cx, cy, r, 0, Math.PI*2);
+            } else {
+                // Pentágono
+                for (let j = 0; j < keys.length; j++) {
+                    let a = j * step - Math.PI/2;
+                    let x = cx + Math.cos(a) * r;
+                    let y = cy + Math.sin(a) * r;
+                    if(j===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+                }
+                ctx.closePath();
+            }
         }
+        ctx.save();
         ctx.strokeStyle = "rgba(255,255,255,0.1)";
+        ctx.shadowBlur = 0;
         ctx.stroke();
+        ctx.restore();
 
-        // 2. DIBUJAR DATOS
+        // 2. Data Shape
         ctx.beginPath();
-        ctx.strokeStyle = color;
-        keys.forEach((key, i) => {
-            let val = data[key];
-            if(val > 100) val = 100;
+        keys.forEach((k, i) => {
+            let val = data[k];
+            let r = (val / 100) * radius;
+            let a = i * step - Math.PI/2;
+            let x = cx + Math.cos(a) * r;
+            let y = cy + Math.sin(a) * r;
+            if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
             
-            const r = (val / 100) * maxRadius;
-            const angle = i * angleStep - Math.PI / 2;
-            const x = cx + Math.cos(angle) * r;
-            const y = cy + Math.sin(angle) * r;
-
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-
             // Labels
-            const labelR = maxRadius + 30;
-            const lx = cx + Math.cos(angle) * labelR;
-            const ly = cy + Math.sin(angle) * labelR;
-            ctx.font = "bold 16px Courier New";
+            ctx.save();
+            ctx.fillStyle = "#fff";
+            ctx.font = "bold 14px Consolas";
             ctx.textAlign = "center";
-            ctx.fillText(key.toUpperCase(), lx, ly);
+            ctx.shadowBlur = 0;
+            let lx = cx + Math.cos(a) * (radius + 25);
+            let ly = cy + Math.sin(a) * (radius + 25);
+            ctx.fillText(k.toUpperCase(), lx, ly);
+            ctx.restore();
         });
         ctx.closePath();
         ctx.fillStyle = type === 'offensive' ? "rgba(0, 242, 255, 0.2)" : "rgba(255, 42, 0, 0.2)";
         ctx.fill();
         ctx.stroke();
 
-        // 3. TEXTO RESULTADO
-        ctx.shadowBlur = 0;
+        // 3. Texts
         ctx.fillStyle = "#fff";
-        ctx.font = "bold 20px Courier New";
         ctx.textAlign = "center";
-        ctx.fillText(`AVG: ${avg.toFixed(1)}`, cx, h - 50);
+        ctx.shadowBlur = 0;
+        ctx.font = "bold 20px Consolas";
+        ctx.fillText(`AVG: ${avg.toFixed(1)}`, cx, 430);
 
-        ctx.font = "bold 24px Impact";
         ctx.fillStyle = color;
+        ctx.font = "bold 26px Impact";
         ctx.shadowBlur = 10;
-        ctx.fillText(rankText, cx, h - 20);
+        ctx.shadowColor = color;
+        ctx.fillText(rank, cx, 460);
     }
-
-    // Eventos Modal
-    closeModalBtn.onclick = () => statsModal.style.display = 'none';
-    
-    copyBtn.onclick = () => {
-        statsCanvas.toBlob(blob => {
-            const item = new ClipboardItem({ "image/png": blob });
-            navigator.clipboard.write([item]).then(() => {
-                const oldText = copyBtn.innerText;
-                copyBtn.innerText = "COPIED!";
-                setTimeout(() => copyBtn.innerText = oldText, 2000);
-            });
-        });
-    };
 });

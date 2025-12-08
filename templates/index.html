@@ -3,82 +3,73 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BLZ | EGOIST TERMINAL</title>
+    <title>BLZ | SYSTEM V.2</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 
-    <div class="top-bar">
-        <div class="brand-title">BLZ <span style="color:#fff; opacity:0.5;">//</span> SYSTEM</div>
-        <div class="system-status" style="border:none; margin:0; padding:0; color: var(--cyan-bl);">
-            STATUS: <span class="glitch-text">CONNECTED</span>
-        </div>
-    </div>
-
-    <div class="main-container">
+    <div class="main-interface">
         
-        <div id="channel-list" class="sidebar">
-            <h3 class="glitch-text">LOADING_DATA...</h3>
+        <div class="sidebar">
+            <div class="brand">EGOIST<br><span style="font-size:1rem; color:#fff;">SYSTEM</span></div>
+            <div id="channel-list" class="channel-list">
+                <div style="padding:20px; text-align:center; color:#555;">SCANNING...</div>
+            </div>
+            <div style="font-size:0.7rem; color:#444; text-align:center; padding:10px;">
+                CONNECTED: <span style="color:var(--bl-cyan)">TRUE</span>
+            </div>
         </div>
 
-        <div class="chat-area">
-            <div id="chat-messages">
-                <div style="text-align:center; color:#666; margin-top:50px;">
-                    WAITING FOR LINK...<br>
-                    SELECT A CHANNEL TO START
+        <div class="chat-section">
+            <div id="chat-feed">
+                <div style="text-align:center; margin-top:50px; color:#555;">
+                    /// SELECT A CHANNEL TO INITIALIZE LINK ///
                 </div>
             </div>
             
-            <div class="input-area">
-                <input type="text" id="message-input" placeholder="ENTER MESSAGE_COMMAND...">
-                <button class="btn-send" onclick="sendMessage()">SEND</button>
+            <div class="input-zone">
+                <input type="text" id="msg-input" placeholder="ENTER COMMAND / MESSAGE...">
+                <button id="send-btn" onclick="sendMessage()">SEND</button>
             </div>
         </div>
 
         <div class="stats-panel">
-            <div class="stats-section">
-                <h4>/// OFFENSIVE PARAMETERS [BL]</h4>
-                <div class="input-row">
-                    <input type="number" id="sht" class="stat-input offensive-input" placeholder="SHT" min="0" max="100">
-                    <input type="number" id="dbl" class="stat-input offensive-input" placeholder="DBL" min="0" max="100">
-                    <input type="number" id="stl" class="stat-input offensive-input" placeholder="STL" min="0" max="100">
-                </div>
-                <div class="input-row">
-                    <input type="number" id="psn" class="stat-input offensive-input" placeholder="PSN" min="0" max="100">
-                    <input type="number" id="dfd" class="stat-input offensive-input" placeholder="DFD" min="0" max="100">
+            <div class="panel-title">/// PLAYER METRICS CONFIG</div>
+
+            <div class="stat-group">
+                <h4>[BL] OFFENSIVE</h4>
+                <div class="stat-inputs">
+                    <input type="number" id="sht" class="stat-field" placeholder="SHT" min="0" max="100">
+                    <input type="number" id="dbl" class="stat-field" placeholder="DBL" min="0" max="100">
+                    <input type="number" id="stl" class="stat-field" placeholder="STL" min="0" max="100">
+                    <input type="number" id="psn" class="stat-field" placeholder="PSN" min="0" max="100">
+                    <input type="number" id="dfd" class="stat-field" placeholder="DFD" min="0" max="100">
                 </div>
             </div>
 
-            <div class="stats-section" style="margin-top: 20px;">
-                <h4>/// GK PARAMETERS [KYUBI]</h4>
-                <div class="input-row">
-                    <input type="number" id="dvg" class="stat-input gk-input" placeholder="DVG" min="0" max="100">
-                    <input type="number" id="biq" class="stat-input gk-input" placeholder="BIQ" min="0" max="100">
-                </div>
-                <div class="input-row">
-                    <input type="number" id="rfx" class="stat-input gk-input" placeholder="RFX" min="0" max="100">
-                    <input type="number" id="dtg" class="stat-input gk-input" placeholder="DTG" min="0" max="100">
+            <div class="stat-group kurama">
+                <h4>[KYUBI] GOALKEEPER</h4>
+                <div class="stat-inputs">
+                    <input type="number" id="dvg" class="stat-field" placeholder="DVG" min="0" max="100">
+                    <input type="number" id="biq" class="stat-field" placeholder="BIQ" min="0" max="100">
+                    <input type="number" id="rfx" class="stat-field" placeholder="RFX" min="0" max="100">
+                    <input type="number" id="dtg" class="stat-field" placeholder="DTG" min="0" max="100">
                 </div>
             </div>
 
-            <button id="generate-btn" onclick="generateStats()">
-                INITIALIZE UI STATS
+            <button id="ui-stats-btn" onclick="generateStats()">
+                GENERATE UI GRAPH
             </button>
-
-            <div class="system-status">
-                <span style="color: var(--text-dim);">V.1.0.4 // EGO_INTEGRITY: 100%</span>
-            </div>
         </div>
 
     </div>
 
     <div id="stats-modal" class="modal-overlay">
-        <div class="modal-content">
+        <div class="modal-box">
             <canvas id="stats-canvas" width="500" height="500"></canvas>
-            
-            <div class="modal-actions">
-                <button id="close-modal" class="modal-btn">CLOSE</button>
-                <button id="copy-stats-btn" class="modal-btn">COPY IMAGE</button>
+            <div class="modal-controls">
+                <button id="close-modal" class="mod-btn close">CLOSE</button>
+                <button id="copy-stats-btn" class="mod-btn copy">COPY IMAGE</button>
             </div>
         </div>
     </div>

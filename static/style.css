@@ -1,431 +1,333 @@
 /* =========================================
-   CORE CHAOS & VARIABLES
+   CORE: SYSTEM RESET
    ========================================= */
 :root {
-    --void: #020202;
-    --ego-cyan: #00f2ff;       /* BLUE LOCK */
-    --kurama-red: #ff2a00;     /* NARUTO CHAKRA */
-    --kurama-glow: #ff2a0080;
-    --grid-line: rgba(255, 255, 255, 0.03);
-    --font-terminal: 'Courier New', Courier, monospace;
-    --font-impact: Impact, sans-serif;
+    --void-bg: #030305;
+    --panel-bg: rgba(10, 15, 20, 0.85);
+    --bl-cyan: #00f2ff;       /* Blue Lock: Logic */
+    --kurama-red: #ff2a00;    /* Kurama: Chaos */
+    --kurama-glow: rgba(255, 42, 0, 0.4);
+    --tech-font: 'Consolas', 'Courier New', monospace;
+    --header-font: 'Impact', sans-serif;
 }
 
-* {
-    box-sizing: border-box;
-    cursor: crosshair; /* El cursor es una mira */
-}
+* { box-sizing: border-box; }
 
 body {
-    background-color: var(--void);
-    color: #fff;
-    font-family: var(--font-terminal);
     margin: 0;
+    padding: 0;
+    background-color: var(--void-bg);
+    color: #fff;
+    font-family: var(--tech-font);
     height: 100vh;
     overflow: hidden;
-    /* Fondo de cuadrícula distorsionada */
+    /* Fondo: Grid Tecnológico con Aura Roja */
     background-image: 
-        linear-gradient(var(--grid-line) 1px, transparent 1px),
-        linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
-    background-size: 50px 50px;
-    perspective: 1000px;
+        linear-gradient(rgba(0, 242, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 242, 255, 0.03) 1px, transparent 1px),
+        radial-gradient(circle at 50% 50%, rgba(255, 42, 0, 0.1) 0%, transparent 60%);
+    background-size: 40px 40px, 40px 40px, 100% 100%;
 }
 
-/* Scrollbars agresivos */
-::-webkit-scrollbar { width: 10px; background: #000; }
-::-webkit-scrollbar-thumb { 
-    background: var(--kurama-red); 
-    border: 2px solid #000;
-}
+/* Scrollbars Cyberpunk */
+::-webkit-scrollbar { width: 6px; background: #000; }
+::-webkit-scrollbar-thumb { background: var(--bl-cyan); }
 
 /* =========================================
-   LAYOUT: BROKEN GRID
+   LAYOUT STRATEGY
    ========================================= */
-.main-container {
+.main-interface {
     display: grid;
-    /* Estructura asimétrica */
-    grid-template-columns: 260px 1fr 320px;
+    grid-template-columns: 250px 1fr 350px; /* Sidebar | Chat | Stats */
     height: 100vh;
-    gap: 10px;
-    padding: 10px;
-    background: radial-gradient(circle at center, transparent 0%, #000 90%);
+    border: 1px solid #333;
 }
 
 /* =========================================
-   HEADER: floating debris
-   ========================================= */
-.top-bar {
-    position: absolute;
-    top: 0; left: 0; width: 100%;
-    height: 40px;
-    background: transparent;
-    z-index: 999;
-    pointer-events: none;
-    display: flex;
-    justify-content: space-between;
-    padding: 0 50px;
-    mix-blend-mode: difference;
-}
-
-.brand-title {
-    font-family: var(--font-impact);
-    font-size: 3rem;
-    color: var(--ego-cyan);
-    text-transform: uppercase;
-    transform: skewX(-20deg) rotate(-2deg) translateY(10px);
-    text-shadow: 4px 4px 0px var(--kurama-red);
-    letter-spacing: -2px;
-}
-
-.system-status {
-    font-size: 0.8rem;
-    color: var(--kurama-red);
-    border: 1px solid var(--kurama-red);
-    padding: 5px 10px;
-    background: #000;
-    transform: rotate(90deg); /* Estado vertical antinatural */
-    transform-origin: right top;
-    margin-top: 50px;
-}
-
-/* =========================================
-   SIDEBAR: THE SHARD (IZQUIERDA)
+   1. SIDEBAR (CHANNELS)
    ========================================= */
 .sidebar {
-    background: rgba(0, 0, 0, 0.8);
-    border-right: 2px solid var(--ego-cyan);
-    padding-top: 80px; /* Espacio para el titulo gigante */
-    clip-path: polygon(0 0, 100% 0, 95% 100%, 0% 100%); /* Forma rota */
-    overflow-y: auto;
-}
-
-.sidebar h3 {
-    text-align: right;
-    padding-right: 20px;
-    color: var(--text-dim);
-    font-size: 0.7rem;
-    letter-spacing: 5px;
-    border-bottom: 1px solid var(--kurama-red);
-    margin-bottom: 20px;
-    transform: scaleY(0.8);
-}
-
-.channel-item {
-    padding: 15px 20px;
-    text-transform: uppercase;
-    font-weight: bold;
-    text-align: right; /* Alineación opuesta a lo normal */
-    transition: 0.2s;
-    border-bottom: 1px dashed #333;
-    position: relative;
-}
-
-.channel-item:hover {
-    background: var(--ego-cyan);
-    color: #000;
-    transform: translateX(-10px) skewX(-10deg); /* Se rompe al tocarlo */
-    box-shadow: 10px 0 20px var(--ego-cyan);
-}
-
-.channel-item.active {
-    background: var(--kurama-red);
-    color: #000;
-    clip-path: polygon(10% 0, 100% 0, 100% 100%, 0% 100%);
-    font-style: italic;
-    padding-right: 40px;
-}
-
-/* =========================================
-   CHAT AREA: THE ARENA (CENTRO)
-   ========================================= */
-.chat-area {
-    position: relative;
-    border: 1px solid #333;
-    background: rgba(10, 10, 10, 0.6);
-    /* Efecto CRT/TV vieja */
-    box-shadow: inset 0 0 100px #000;
+    background: rgba(0,0,0,0.6);
+    border-right: 1px solid var(--bl-cyan);
     display: flex;
     flex-direction: column;
+    padding: 10px;
 }
 
-#chat-messages {
-    flex: 1;
-    overflow-y: auto;
-    padding: 40px 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 30px; /* Mucho espacio entre mensajes */
-}
-
-/* MENSAJES ROTOS */
-.message-card {
-    background: #080808;
-    color: var(--ego-cyan);
-    border-left: 4px solid var(--kurama-red);
-    padding: 15px;
-    position: relative;
-    max-width: 90%;
-    margin-left: 20px;
-    /* Forma poligonal agresiva */
-    clip-path: polygon(
-        0 0, 
-        100% 0, 
-        100% calc(100% - 20px), 
-        calc(100% - 20px) 100%, 
-        0 100%
-    );
-    transition: transform 0.2s;
-}
-
-.message-card:hover {
-    transform: scale(1.02) translateX(5px);
-    border-left-color: var(--ego-cyan);
-    background: #0e0e0e;
-    z-index: 10;
-}
-
-/* Avatar y Nombre FLOTANDO FUERA de la caja */
-.msg-header {
-    position: absolute;
-    top: -25px; /* Fuera de la caja */
-    left: -10px;
-    background: #000;
-    border: 1px solid var(--ego-cyan);
-    padding: 2px 10px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    transform: skewX(-15deg); /* Inclinado */
-}
-
-.avatar-sm {
-    width: 20px; height: 20px;
-    border-radius: 0; /* Cuadrado */
-    filter: grayscale(100%);
-}
-
-.author-name {
-    font-size: 0.8rem;
-    color: #fff;
+.brand {
+    font-family: var(--header-font);
+    font-size: 2rem;
+    color: var(--bl-cyan);
     text-transform: uppercase;
-}
-
-.msg-content {
-    margin-top: 5px;
-    font-size: 1rem;
-    line-height: 1.4;
-    color: #ddd;
-    font-family: 'Verdana', sans-serif; /* Contraste de fuente */
-    text-shadow: 0 0 5px rgba(0, 242, 255, 0.2);
-}
-
-.timestamp {
-    position: absolute;
-    bottom: -15px;
-    right: 0;
-    font-size: 0.6rem;
-    background: var(--kurama-red);
-    color: #000;
-    padding: 2px 5px;
-}
-
-/* INPUT AREA: COMMAND LINE */
-.input-area {
-    background: #000;
-    padding: 15px;
-    border-top: 4px solid var(--kurama-red);
-    display: flex;
-    gap: 0;
-    transform: skewY(-1deg); /* Todo el input inclinado */
-}
-
-#message-input {
-    flex: 1;
-    background: #111;
-    border: none;
-    color: var(--kurama-red);
-    font-family: var(--font-terminal);
-    padding: 15px;
-    font-size: 1.1rem;
-    outline: none;
-}
-#message-input:focus {
-    background: #1a0505; /* Rojo muy oscuro */
-}
-
-.btn-send {
-    background: var(--kurama-red);
-    color: #000;
-    font-weight: 900;
-    border: none;
-    padding: 0 30px;
-    text-transform: uppercase;
-    font-style: italic;
-    clip-path: polygon(20% 0, 100% 0, 100% 100%, 0% 100%);
-    transition: 0.1s;
-}
-.btn-send:hover {
-    background: #fff;
-    transform: scale(1.1);
-}
-
-/* =========================================
-   STATS PANEL: THE SEAL (DERECHA)
-   ========================================= */
-.stats-panel {
-    background: rgba(5, 5, 5, 0.9);
-    border-left: 1px solid #333;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 30px;
-    /* Efecto de ruido estático */
-    background-image: repeating-linear-gradient(
-        0deg,
-        transparent,
-        transparent 2px,
-        #111 2px,
-        #111 4px
-    );
-}
-
-.stats-section h4 {
-    background: var(--ego-cyan);
-    color: #000;
-    padding: 5px;
-    font-size: 1.2rem;
     text-align: center;
-    transform: skewX(-20deg);
-    margin-bottom: 15px;
-    font-weight: 900;
-}
-
-/* Inputs como ranuras de datos */
-.input-row {
-    display: flex;
-    justify-content: space-between;
+    padding: 20px 0;
+    text-shadow: 2px 2px 0px var(--kurama-red);
+    border-bottom: 2px solid var(--kurama-red);
     margin-bottom: 10px;
 }
 
-.stat-input {
-    width: 30%;
-    background: transparent;
-    border: 2px solid #333;
-    color: #fff;
-    text-align: center;
-    font-size: 1.2rem;
-    padding: 10px 0;
+.channel-list {
+    overflow-y: auto;
+    flex: 1;
+}
+
+.channel-btn {
+    padding: 12px;
+    margin-bottom: 5px;
+    cursor: pointer;
+    border-left: 3px solid #333;
     transition: 0.3s;
-}
-
-.stat-input:focus {
-    border-color: var(--ego-cyan);
-    transform: scale(1.1) rotate(5deg); /* Gira al escribir */
-    background: #000;
-    box-shadow: 0 0 15px var(--ego-cyan);
-    z-index: 5;
-}
-
-/* Variación para GK (Rojo) */
-.gk-input:focus {
-    border-color: var(--kurama-red);
-    box-shadow: 0 0 15px var(--kurama-red);
-    transform: scale(1.1) rotate(-5deg);
-}
-
-/* BOTON DE UI STATS */
-#generate-btn {
-    margin-top: auto;
-    padding: 20px;
-    background: transparent;
-    border: 2px solid var(--ego-cyan);
-    color: var(--ego-cyan);
-    font-family: var(--font-impact);
-    font-size: 1.5rem;
-    letter-spacing: 2px;
     text-transform: uppercase;
-    position: relative;
-    overflow: hidden;
-    transition: 0.3s;
+    font-size: 0.9rem;
+    color: #888;
 }
 
-#generate-btn:hover {
-    background: var(--ego-cyan);
-    color: #000;
-    box-shadow: 0 0 30px var(--ego-cyan);
-    text-shadow: none;
-    transform: skewX(-10deg);
+.channel-btn:hover {
+    color: var(--bl-cyan);
+    background: rgba(0, 242, 255, 0.05);
+    padding-left: 20px; /* Movimiento tecnológico */
+}
+
+.channel-btn.active {
+    border-left-color: var(--kurama-red);
+    color: #fff;
+    background: linear-gradient(90deg, rgba(255, 42, 0, 0.2), transparent);
+    font-weight: bold;
+    text-shadow: 0 0 5px var(--kurama-red);
 }
 
 /* =========================================
-   GLITCH MODAL
+   2. CHAT FEED (CENTRAL CORE)
    ========================================= */
-.modal-overlay {
-    background: rgba(0, 0, 0, 0.95);
-    backdrop-filter: blur(10px);
+.chat-section {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background: rgba(0,0,0,0.3);
 }
 
-.modal-content {
-    border: 2px solid var(--kurama-red);
-    box-shadow: 0 0 50px var(--kurama-red);
-    transform: rotate(2deg); /* Modal torcido */
-    padding: 10px;
-    background: #000;
-}
-
-canvas {
-    border: 1px solid #333;
-}
-
-/* Botones del modal */
-.modal-actions {
+#chat-feed {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
     gap: 20px;
-    margin-top: 20px;
 }
 
-.modal-btn {
-    border: 1px solid #fff;
-    background: transparent;
-    color: #fff;
+/* Mensajes Estilo Tarjeta de Datos */
+.msg-card {
+    background: #080a10;
+    border: 1px solid #333;
+    padding: 0;
+    position: relative;
+    max-width: 85%;
+    /* Esquina cortada */
+    clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+    box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Header del mensaje (Avatar + Nombre) */
+.msg-header {
+    background: rgba(255, 255, 255, 0.03);
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid #222;
+}
+
+.msg-avatar {
+    width: 25px; height: 25px;
+    border: 1px solid var(--bl-cyan);
+    border-radius: 2px;
+}
+
+.msg-author {
+    color: var(--bl-cyan);
+    font-weight: bold;
+    font-size: 0.9rem;
+    letter-spacing: 1px;
+}
+
+.msg-body {
+    padding: 12px;
+    color: #ddd;
+    line-height: 1.4;
+    font-size: 0.95rem;
+}
+
+.msg-time {
+    position: absolute;
+    bottom: 2px;
+    right: 5px;
+    font-size: 0.6rem;
+    color: #555;
+}
+
+/* INPUT AREA (Inferior) */
+.input-zone {
     padding: 15px;
-    font-family: var(--font-terminal);
+    background: #050505;
+    border-top: 1px solid var(--bl-cyan);
+    display: flex;
+    gap: 10px;
+}
+
+#msg-input {
+    flex: 1;
+    background: #111;
+    border: 1px solid #333;
+    color: var(--bl-cyan);
+    padding: 12px;
+    font-family: var(--tech-font);
+    outline: none;
+}
+#msg-input:focus { border-color: var(--bl-cyan); box-shadow: 0 0 10px rgba(0, 242, 255, 0.1); }
+
+#send-btn {
+    background: var(--kurama-red);
+    color: #000;
+    border: none;
+    padding: 0 25px;
     font-weight: bold;
     cursor: pointer;
+    text-transform: uppercase;
+    transition: 0.2s;
+    clip-path: polygon(15% 0, 100% 0, 100% 100%, 0% 100%);
+}
+#send-btn:hover { background: #fff; box-shadow: 0 0 15px var(--kurama-red); }
+
+/* =========================================
+   3. STATS PANEL (RIGHT WING)
+   ========================================= */
+.stats-panel {
+    background: rgba(5, 5, 8, 0.95);
+    border-left: 1px solid var(--kurama-red);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+    overflow-y: auto;
 }
 
-#copy-stats-btn:hover {
-    background: var(--ego-cyan);
+.panel-title {
+    color: #666;
+    font-size: 0.8rem;
+    border-bottom: 1px solid #333;
+    padding-bottom: 5px;
+    margin-bottom: 10px;
+}
+
+.stat-group h4 {
+    margin: 0 0 10px 0;
+    color: var(--bl-cyan);
+    font-size: 0.9rem;
+    text-transform: uppercase;
+}
+.stat-group.kurama h4 { color: var(--kurama-red); }
+
+.stat-inputs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.stat-field {
+    background: transparent;
+    border: 1px solid #333;
+    border-left: 2px solid var(--bl-cyan);
+    color: #fff;
+    padding: 8px;
+    text-align: center;
+    font-family: var(--tech-font);
+    font-size: 1rem;
+    transition: 0.3s;
+}
+.stat-field:focus {
+    background: rgba(0, 242, 255, 0.1);
+    border-color: var(--bl-cyan);
+}
+.kurama .stat-field { border-left-color: var(--kurama-red); }
+.kurama .stat-field:focus { 
+    background: rgba(255, 42, 0, 0.1); 
+    border-color: var(--kurama-red); 
+}
+
+#ui-stats-btn {
+    margin-top: auto;
+    padding: 15px;
+    background: transparent;
+    border: 1px solid var(--bl-cyan);
+    color: var(--bl-cyan);
+    font-family: var(--header-font);
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: 0.3s;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+#ui-stats-btn:hover {
+    background: var(--bl-cyan);
     color: #000;
-    border-color: var(--ego-cyan);
-    box-shadow: 5px 5px 0px #fff; /* Sombra sólida dura */
-}
-
-#close-modal:hover {
-    background: var(--kurama-red);
-    border-color: var(--kurama-red);
+    box-shadow: 0 0 20px var(--bl-cyan);
 }
 
 /* =========================================
-   ANIMACIONES EGOISTA
+   4. POPUP MODAL (FIXED CENTER)
    ========================================= */
-.glitch-text {
-    animation: glitch-anim 2s infinite linear alternate-reverse;
+.modal-overlay {
+    display: none; /* JS lo cambia a flex */
+    position: fixed; /* FIJA LA POSICIÓN RELATIVA A LA VENTANA */
+    top: 0; 
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(8px); /* Efecto cristal borroso */
+    z-index: 10000; /* POR ENCIMA DE TODO */
+    justify-content: center;
+    align-items: center;
 }
 
-@keyframes glitch-anim {
-    0% { text-shadow: -2px 0 var(--kurama-red); transform: translateX(0); }
-    20% { text-shadow: 2px 0 var(--ego-cyan); transform: translateX(2px); }
-    40% { transform: skewX(-10deg); }
-    60% { text-shadow: -2px 0 var(--kurama-red); transform: translateX(-2px); }
-    100% { transform: skewX(0deg); }
+.modal-box {
+    background: #000;
+    border: 2px solid var(--kurama-red);
+    box-shadow: 0 0 50px rgba(255, 42, 0, 0.3);
+    padding: 10px;
+    position: relative;
+    animation: modalGlitch 0.3s ease-out;
 }
 
-/* Responsive Hack para móviles */
-@media (max-width: 900px) {
-    .main-container {
-        grid-template-columns: 1fr;
-        grid-template-rows: auto 1fr auto;
-    }
-    .top-bar { position: relative; }
-    .sidebar { display: none; } /* Ocultar sidebar en movil o ponerla arriba */
+@keyframes modalGlitch {
+    0% { transform: scale(0.8) skewX(20deg); opacity: 0; }
+    80% { transform: scale(1.05) skewX(-5deg); opacity: 1; }
+    100% { transform: scale(1) skewX(0); }
 }
+
+canvas { display: block; background: #050510; }
+
+.modal-controls {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.mod-btn {
+    flex: 1;
+    padding: 10px;
+    background: transparent;
+    border: 1px solid #444;
+    color: #fff;
+    cursor: pointer;
+    font-family: var(--tech-font);
+    font-weight: bold;
+    transition: 0.2s;
+}
+
+.mod-btn.copy:hover { background: var(--bl-cyan); color: #000; border-color: var(--bl-cyan); }
+.mod-btn.close:hover { background: var(--kurama-red); color: #000; border-color: var(--kurama-red); }
