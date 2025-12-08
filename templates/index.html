@@ -78,11 +78,14 @@
             </div>
         </div>
     </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
     
     <script>
         document.getElementById('msg-input').addEventListener('keypress', function (e) {
+            // Llama a la función global sendMessage() definida en script.js
             if (e.key === 'Enter') {
                 window.sendMessage();
             }

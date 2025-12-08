@@ -1,294 +1,291 @@
+/* =========================================
+   CORE CONFIG & FONTS
+   ========================================= */
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&family=Orbitron:wght@900&display=swap');
+
 :root {
-    --cyan: #00f2ff;
-    --red: #ff0040;
-    --dark: #050505;
-    --glass: rgba(10, 10, 15, 0.85);
-    --font-main: 'Courier New', monospace;
-    --font-head: 'Impact', sans-serif;
+    /* BLUE LOCK PALETTE (ORDER & LOGIC) */
+    --ego-blue: #00f7ff;
+    --ego-dark: #001e2b;
+    --puzzle-bg: rgba(0, 247, 255, 0.05);
+    
+    /* KURAMA PALETTE (CHAOS & POWER) */
+    --kurama-orange: #ff4800;
+    --kurama-gold: #ffae00;
+    --kurama-blood: #3d0a00;
+    
+    /* SHARED */
+    --void: #050505;
+    --text: #ffffff;
 }
 
+* {
+    box-sizing: border-box;
+}
+
+/* =========================================
+   BACKGROUND: THE BATTLEFIELD
+   ========================================= */
 body {
-    background-color: var(--dark);
-    color: #fff;
-    font-family: var(--font-main);
     margin: 0;
-    overflow: hidden; /* El body no hace scroll, solo el chat */
+    padding: 0;
+    font-family: 'Rajdhani', sans-serif;
+    background-color: var(--void);
+    color: var(--text);
     height: 100vh;
-}
-
-/* FONDO "ROTO" */
-.background-grid {
-    position: fixed;
-    top: -50%; left: -50%;
-    width: 200%; height: 200%;
-    background: 
-        linear-gradient(transparent 95%, var(--cyan) 96%),
-        linear-gradient(90deg, transparent 95%, var(--red) 96%);
-    background-size: 100px 100px;
-    opacity: 0.1;
-    transform: perspective(500px) rotateX(60deg) translateY(100px) translateZ(-200px);
-    z-index: -1;
-    animation: gridMove 20s linear infinite;
-}
-
-@keyframes gridMove { 0% { transform: perspective(500px) rotateX(60deg) translateY(0); } 100% { transform: perspective(500px) rotateX(60deg) translateY(100px); } }
-
-/* ==================================================
-   1. HUD LEFT (CANALES) - FLOTANTE Y TORCIDO
-   ================================================== */
-.hud-left {
-    position: fixed;
-    top: 20px;
-    left: 20px;
-    bottom: 20px;
-    width: 220px;
-    background: var(--glass);
-    border: 1px solid var(--cyan);
-    z-index: 100;
     display: flex;
-    flex-direction: column;
-    /* ANTILÓGICA: Forma trapezoidal */
-    clip-path: polygon(0 0, 100% 0, 85% 100%, 0% 100%);
-    padding: 20px;
-    backdrop-filter: blur(5px);
-}
-
-.brand-glitch {
-    font-family: var(--font-head);
-    font-size: 2.5rem;
-    color: var(--cyan);
-    text-shadow: 3px 3px 0 var(--red);
-    margin-bottom: 20px;
-    transform: skewX(-10deg);
-}
-
-.channel-container {
-    flex: 1;
-    overflow-y: auto; /* SCROLL PARA CANALES SI HAY MUCHOS */
-    padding-right: 10px;
-}
-
-.channel-btn {
-    display: block;
-    padding: 10px;
-    margin-bottom: 5px;
-    background: rgba(0,0,0,0.5);
-    border-left: 2px solid #333;
-    cursor: pointer;
-    transition: 0.2s;
-    font-size: 0.8rem;
-    text-transform: uppercase;
-}
-
-.channel-btn:hover {
-    background: var(--cyan);
-    color: #000;
-    transform: translateX(10px); /* Se sale del contenedor */
-}
-
-.channel-btn.active {
-    border-left: 5px solid var(--red);
-    background: linear-gradient(90deg, rgba(255,0,64,0.2), transparent);
-    color: #fff;
-    font-weight: bold;
-    text-shadow: 0 0 5px var(--red);
-}
-
-/* ==================================================
-   2. HUD RIGHT (STATS) - FLOTANTE Y SUPERPUESTO
-   ================================================== */
-.hud-right {
-    position: fixed;
-    top: 50px;
-    right: 30px;
-    width: 280px;
-    background: rgba(0, 0, 0, 0.9);
-    border: 1px solid var(--red);
-    z-index: 100;
-    padding: 20px;
-    /* ANTILÓGICA: Inclinado hacia el otro lado */
-    transform: skewY(-2deg);
-    box-shadow: -10px 10px 0px rgba(255, 0, 64, 0.2);
-}
-
-.panel-header {
-    border-bottom: 2px solid var(--cyan);
-    margin-bottom: 15px;
-    color: var(--cyan);
-    text-align: right;
-    font-weight: bold;
-}
-
-.input-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 5px;
-    margin-bottom: 15px;
-}
-
-input {
-    width: 100%;
-    background: transparent;
-    border: 1px solid #444;
-    color: #fff;
-    text-align: center;
-    padding: 5px;
-    font-family: var(--font-main);
-}
-
-input:focus {
-    border-color: var(--cyan);
-    outline: none;
-    background: rgba(0, 242, 255, 0.1);
-}
-
-.gk input:focus { border-color: var(--red); background: rgba(255, 0, 64, 0.1); }
-
-#ui-stats-btn {
-    width: 100%;
-    padding: 15px;
-    margin-top: 10px;
-    background: var(--cyan);
-    color: #000;
-    border: none;
-    font-family: var(--font-head);
-    font-size: 1.2rem;
-    letter-spacing: 2px;
-    cursor: pointer;
-    /* Efecto roto */
-    clip-path: polygon(10% 0, 100% 0, 100% 80%, 90% 100%, 0 100%, 0 20%);
-    transition: 0.2s;
-}
-
-#ui-stats-btn:hover {
-    background: #fff;
-    box-shadow: 0 0 20px var(--cyan);
-    transform: scale(1.05);
-}
-
-/* ==================================================
-   3. CHAT VOID (CENTRO) - SCROLL ARREGLADO
-   ================================================== */
-.chat-void {
-    /* Ocupa toda la pantalla, pero con margen para los HUDs */
-    position: absolute;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    padding-left: 260px; /* Espacio para el Sidebar */
-    padding-right: 320px; /* Espacio para Stats */
-    padding-top: 20px;
-    padding-bottom: 80px; /* Espacio para input */
-    display: flex;
-    flex-direction: column;
-}
-
-.chat-feed {
-    flex: 1;
-    overflow-y: auto; /* SCROLL HABILITADO */
-    padding-right: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
-
-/* SCROLLBAR PERSONALIZADO */
-::-webkit-scrollbar { width: 8px; }
-::-webkit-scrollbar-track { background: #000; }
-::-webkit-scrollbar-thumb { background: #333; border: 1px solid #555; }
-::-webkit-scrollbar-thumb:hover { background: var(--cyan); }
-
-/* MENSAJES */
-.msg-card {
-    background: rgba(20, 20, 20, 0.8);
-    border-left: 3px solid var(--cyan);
-    padding: 10px;
-    max-width: 90%;
-    position: relative;
-    animation: fadeIn 0.3s ease;
-}
-
-.msg-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 5px;
-    font-size: 0.8rem;
-    color: var(--cyan);
-}
-
-.msg-avatar { width: 20px; height: 20px; border: 1px solid #fff; }
-
-.msg-body { color: #eee; font-size: 0.95rem; line-height: 1.4; }
-
-/* INPUT DECK (ABAJO CENTRO) */
-.input-deck {
-    position: fixed;
-    bottom: 20px;
-    left: 260px;
-    right: 30px; /* Se mete debajo del panel de stats */
-    background: #000;
-    border: 1px solid var(--red);
-    display: flex;
-    z-index: 90;
-    /* Inclinación sutil */
-    transform: skewX(-15deg);
-}
-
-#msg-input {
-    flex: 1;
-    border: none;
-    padding: 15px;
-    color: var(--red);
-    font-size: 1.1rem;
-    transform: skewX(15deg); /* Contrarrestar skew padre */
-}
-
-#send-btn {
-    background: var(--red);
-    color: #000;
-    border: none;
-    padding: 0 30px;
-    font-weight: bold;
-    cursor: pointer;
-    transform: skewX(15deg); /* Contrarrestar skew padre */
-}
-
-/* ==================================================
-   4. MODAL POPUP
-   ================================================== */
-.modal-overlay {
-    display: none; /* JS controla esto */
-    position: fixed; top: 0; left: 0;
-    width: 100vw; height: 100vh;
-    background: rgba(0,0,0,0.9);
-    z-index: 9999;
     justify-content: center;
     align-items: center;
+    overflow: hidden;
+    
+    /* Fondo dual: Grietas azules vs Fuego naranja */
+    background: 
+        /* Piezas de puzzle sutiles (Blue Lock) */
+        linear-gradient(45deg, transparent 48%, var(--ego-dark) 49%, var(--ego-dark) 51%, transparent 52%),
+        linear-gradient(-45deg, transparent 48%, var(--ego-dark) 49%, var(--ego-dark) 51%, transparent 52%),
+        /* El chakra de fondo */
+        radial-gradient(circle at 10% 90%, rgba(255, 72, 0, 0.2) 0%, transparent 60%),
+        radial-gradient(circle at 90% 10%, rgba(0, 247, 255, 0.15) 0%, transparent 60%);
+    background-size: 60px 60px, 60px 60px, 100% 100%, 100% 100%;
+    animation: pulse-aura 10s infinite alternate;
 }
 
-.modal-card {
-    background: #050505;
-    border: 2px solid var(--cyan);
-    box-shadow: 0 0 50px rgba(0, 242, 255, 0.3);
-    padding: 10px;
-    transform: rotate(-2deg);
-}
-
-.modal-actions {
+/* =========================================
+   MAIN CONTAINER: "THE STRATUM"
+   ========================================= */
+.chat-container {
+    width: 95%;
+    max-width: 900px;
+    height: 90vh;
+    position: relative;
+    background: rgba(10, 10, 15, 0.85);
+    /* Borde doble: Azul fuera, Naranja dentro */
+    border: 2px solid var(--ego-blue);
+    box-shadow: 
+        0 0 30px rgba(0, 247, 255, 0.1),
+        inset 0 0 50px rgba(255, 72, 0, 0.05);
+    
+    /* Forma recortada tecnológica (Blue Lock aesthetic) */
+    clip-path: polygon(
+        0 0, 
+        100% 0, 
+        100% 85%, 
+        95% 100%, 
+        0 100%, 
+        0 15%
+    );
+    
     display: flex;
-    gap: 10px;
-    margin-top: 10px;
+    flex-direction: column;
 }
 
-.action-btn {
+/* DECORACIÓN SUPERIOR: EL SELLO */
+.chat-container::before {
+    content: "SYSTEM :: RELEASE_LIMITER";
+    position: absolute;
+    top: 0;
+    left: 0;
+    background: var(--ego-blue);
+    color: var(--void);
+    padding: 5px 15px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.8rem;
+    letter-spacing: 2px;
+    clip-path: polygon(0 0, 100% 0, 85% 100%, 0 100%);
+}
+
+/* =========================================
+   MESSAGES AREA
+   ========================================= */
+.messages-area {
     flex: 1;
-    padding: 15px;
-    border: 1px solid #fff;
-    background: transparent;
-    color: #fff;
-    font-weight: bold;
-    cursor: pointer;
+    padding: 60px 20px 20px 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
 }
 
-.action-btn.confirm:hover { background: var(--cyan); color: #000; }
-.action-btn.cancel:hover { background: var(--red); color: #000; }
+/* SCROLLBAR PERSONALIZADA */
+.messages-area::-webkit-scrollbar { width: 6px; }
+.messages-area::-webkit-scrollbar-track { background: var(--void); }
+.messages-area::-webkit-scrollbar-thumb { 
+    background: linear-gradient(to bottom, var(--ego-blue), var(--kurama-orange)); 
+}
+
+/* ESTILOS COMUNES DE MENSAJE */
+.msg {
+    max-width: 80%;
+    padding: 15px 25px;
+    font-size: 1.1rem;
+    font-weight: 500;
+    position: relative;
+    backdrop-filter: blur(5px);
+    transition: transform 0.2s;
+}
+
+.msg:hover {
+    transform: scale(1.02);
+}
+
+/* -----------------------------------------
+   USER MESSAGE: "THE EGOIST" (BLUE LOCK)
+   ----------------------------------------- */
+.msg.user {
+    align-self: flex-end;
+    text-align: right;
+    color: var(--ego-blue);
+    background: linear-gradient(90deg, transparent, rgba(0, 247, 255, 0.08));
+    border-right: 4px solid var(--ego-blue);
+    
+    /* Forma poligonal agresiva (Puzzle Piece) */
+    clip-path: polygon(10% 0, 100% 0, 100% 100%, 0 100%, 0 40%);
+    
+    text-shadow: 0 0 10px rgba(0, 247, 255, 0.4);
+}
+
+/* Etiqueta flotante del usuario */
+.msg.user::after {
+    content: "EGOIST_RANK_Z";
+    position: absolute;
+    bottom: -20px;
+    right: 0;
+    font-size: 0.7rem;
+    color: var(--ego-blue);
+    opacity: 0.6;
+    font-family: 'Orbitron';
+}
+
+/* -----------------------------------------
+   BOT MESSAGE: "THE BEAST" (KURAMA)
+   ----------------------------------------- */
+.msg.bot {
+    align-self: flex-start;
+    text-align: left;
+    color: var(--kurama-gold);
+    background: linear-gradient(135deg, rgba(61, 10, 0, 0.6), transparent);
+    border-left: 4px solid var(--kurama-orange);
+    
+    /* Bordes irregulares como llamas o papel quemado */
+    border-radius: 0 20px 20px 0;
+    box-shadow: -5px 0 20px rgba(255, 72, 0, 0.2);
+    
+    /* Animación de respiración de chakra */
+    animation: kurama-breath 3s infinite ease-in-out;
+}
+
+.msg.bot::before {
+    content: ""; /* Orbe de chakra */
+    position: absolute;
+    top: 50%;
+    left: -14px;
+    width: 20px;
+    height: 20px;
+    background: var(--kurama-orange);
+    border-radius: 50%;
+    transform: translateY(-50%);
+    box-shadow: 0 0 10px var(--kurama-orange);
+}
+
+/* =========================================
+   INPUT AREA: "THE AWAKENING"
+   ========================================= */
+.input-area {
+    padding: 25px;
+    background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
+    display: flex;
+    gap: 15px;
+    align-items: flex-end;
+    position: relative;
+    z-index: 10;
+}
+
+/* CADENAS DECORATIVAS (Blue Lock Chains) */
+.input-area::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: repeating-linear-gradient(
+        90deg,
+        var(--ego-blue),
+        var(--ego-blue) 10px,
+        transparent 10px,
+        transparent 20px
+    );
+    opacity: 0.5;
+}
+
+input[type="text"] {
+    flex: 1;
+    background: rgba(0, 30, 43, 0.6);
+    border: 1px solid var(--ego-blue);
+    color: white;
+    padding: 15px 20px;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 1.2rem;
+    font-weight: bold;
+    clip-path: polygon(0 0, 95% 0, 100% 30%, 100% 100%, 5% 100%, 0 70%);
+    transition: 0.3s;
+}
+
+input[type="text"]:focus {
+    outline: none;
+    box-shadow: 0 0 20px rgba(0, 247, 255, 0.3);
+    background: rgba(0, 30, 43, 0.9);
+}
+
+/* EL BOTÓN (FUSIÓN) */
+button {
+    background: var(--kurama-orange);
+    color: black;
+    border: none;
+    padding: 15px 30px;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    letter-spacing: 1px;
+    cursor: pointer;
+    text-transform: uppercase;
+    
+    /* Forma de garra o fragmento */
+    clip-path: polygon(20% 0, 100% 0, 100% 100%, 0 100%, 0 30%);
+    
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Efecto Hover: Cambia de Kurama (Naranja) a Ego (Azul) */
+button:hover {
+    background: var(--ego-blue);
+    color: black;
+    box-shadow: 0 0 30px var(--ego-blue);
+    transform: translateY(-2px);
+}
+
+button:active {
+    transform: scale(0.95);
+}
+
+/* =========================================
+   ANIMATIONS
+   ========================================= */
+
+@keyframes kurama-breath {
+    0% { box-shadow: -5px 0 10px rgba(255, 72, 0, 0.1); }
+    50% { box-shadow: -5px 0 25px rgba(255, 72, 0, 0.4); }
+    100% { box-shadow: -5px 0 10px rgba(255, 72, 0, 0.1); }
+}
+
+@keyframes pulse-aura {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 100% 50%; }
+}
+
+/* RESPONSIVE */
+@media (max-width: 600px) {
+    .chat-container { width: 100%; height: 100vh; border: none; }
+    .msg { max-width: 90%; }
+}
