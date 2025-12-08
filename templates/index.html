@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BLUE LOCK // CHAIN</title>
+    <title>BLUE LOCK // EGOIST FRAGMENT</title>
     <link href="https://fonts.googleapis.com/css2?family=Koulen&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
@@ -15,11 +15,8 @@
     <main class="fragmented-layout">
         
         <div class="shard-column">
-            <div class="shard-title">
-                <span>TARGETS</span>
-            </div>
-            <div id="channel-list" class="shard-container">
-                </div>
+            <div class="shard-title"><span>TARGETS</span></div>
+            <div id="channel-list" class="shard-container"></div>
         </div>
 
         <div class="void-chat-area">
@@ -29,6 +26,24 @@
                     <p>AWAKEN YOUR EGO</p>
                 </div>
             </div>
+
+            <div id="ticket-hud" class="target-analysis-panel">
+                <div class="hud-line"></div>
+                <div class="hud-content">
+                    <div class="hud-data">
+                        <span class="hud-label">TICKET / CHANNEL</span>
+                        <span id="hud-name" class="hud-value active">---</span>
+                    </div>
+                    <div class="hud-data">
+                        <span class="hud-label">OPENED AT</span>
+                        <span id="hud-date" class="hud-value">--/--/--</span>
+                    </div>
+                    <div class="hud-data">
+                        <span class="hud-label">UPTIME</span>
+                        <span id="hud-time" class="hud-value glitch">00:00</span>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div class="trigger-input">
@@ -36,11 +51,14 @@
             <button id="send-btn">SHOOT</button>
         </div>
 
-        <button class="ego-core-btn" onclick="toggleDrawer()">
-            <span class="core-text">EGO<br>DATA</span>
-        </button>
-
     </main>
+
+    <div class="reactor-container-right">
+        <button class="ego-reactor-btn" onclick="toggleDrawer()">
+            <div class="reactor-ring"></div>
+            <div class="reactor-core">STATS</div>
+        </button>
+    </div>
 
     <div class="evolution-drawer" id="stats-drawer">
         <div class="evo-content">
@@ -48,7 +66,6 @@
                 <h2>EVOLUTION CHART</h2>
                 <button class="close-evo" onclick="toggleDrawer()">✕</button>
             </div>
-
             <div class="evo-grid">
                 <div class="evo-col">
                     <h3>WEAPONS</h3>
@@ -66,10 +83,7 @@
                     <div class="skill-row"><label>DTG</label><input type="number" id="dtg" placeholder="--"></div>
                 </div>
             </div>
-
-            <button id="ui-stats-btn" onclick="generateStats()">
-                MATERIALIZE
-            </button>
+            <button id="ui-stats-btn" onclick="generateStats()">MATERIALIZE</button>
         </div>
     </div>
 

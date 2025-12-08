@@ -6,6 +6,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('stats-canvas');
     const ctx = canvas.getContext('2d');
     
+    // HUD REFERENCIAS
+    const hudPanel = document.getElementById('ticket-hud');
+    const hudName = document.getElementById('hud-name');
+    const hudDate = document.getElementById('hud-date');
+    const hudTime = document.getElementById('hud-time');
+    let timerInterval;
+
     let currentChannelId = null;
     let isFetching = false;
 
@@ -19,11 +26,10 @@ document.addEventListener('DOMContentLoaded', () => {
         msgInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') window.sendMessage();
         });
-        const sendBtn = document.getElementById('send-btn');
-        if(sendBtn) sendBtn.onclick = window.sendMessage;
+        document.getElementById('send-btn').onclick = window.sendMessage;
     }
 
-    // --- CANALES (SHARDS) ---
+    // --- CANALES ---
     async function fetchChannels() {
         try {
             const res = await fetch('/api/channels');
@@ -35,7 +41,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const cName = ch.name || "Unknown";
                 const cId = ch.id; 
 
-                // Creamos un FRAGMENTO
                 const shard = document.createElement('div');
                 shard.className = 'channel-shard';
                 shard.innerText = `${cName.toUpperCase()}`; 
@@ -44,19 +49,37 @@ document.addEventListener('DOMContentLoaded', () => {
                     currentChannelId = cId;
                     document.querySelectorAll('.channel-shard').forEach(b => b.classList.remove('active'));
                     shard.classList.add('active');
-                    chatFeed.innerHTML = '<div style="text-align:center; margin-top:50px; color:var(--bl-cyan); font-family:\'Koulen\'">CONNECTING TO TARGET...</div>';
+                    
+                    // ACTUALIZAR HUD
+                    hudPanel.classList.add('visible');
+                    hudName.innerText = cName.toUpperCase();
+                    
+                    const now = new Date();
+                    hudDate.innerText = now.toLocaleDateString();
+                    startTimer(); // Reiniciar contador de tiempo
+
+                    chatFeed.innerHTML = '<div style="text-align:center; margin-top:50px; color:var(--bl-cyan); font-family:\'Koulen\'">SYNCING DATA...</div>';
                     fetchMessages();
                 };
                 
                 channelList.appendChild(shard);
             });
-        } catch(e) { 
-            console.error("Chan Error", e);
-            channelList.innerHTML = '<div style="color:#666; padding:20px;">[SYSTEM OFFLINE]</div>';
-        }
+        } catch(e) { console.error(e); }
     }
 
-    // --- MENSAJES (FRAGMENTS) ---
+    function startTimer() {
+        if (timerInterval) clearInterval(timerInterval);
+        let seconds = 0;
+        hudTime.innerText = "00:00";
+        timerInterval = setInterval(() => {
+            seconds++;
+            const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const secs = (seconds % 60).toString().padStart(2, '0');
+            hudTime.innerText = `${mins}:${secs}`;
+        }, 1000);
+    }
+
+    // --- MENSAJES ---
     async function fetchMessages() {
         if (!currentChannelId) return;
         isFetching = true;
@@ -122,7 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- ESTADÍSTICAS (Tu lógica intacta) ---
+    // --- ESTADÍSTICAS (Igual que antes) ---
     window.generateStats = () => {
         let type = 'offensive';
         if (document.getElementById('dvg').value.trim() !== "") type = 'gk';
@@ -180,9 +203,9 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.clearRect(0,0,500,500);
         ctx.fillStyle = "#000"; ctx.fillRect(0,0,500,500);
         const cx = 250, cy = 250, r = 140;
-        const color = type === 'offensive' ? '#00f2ff' : '#0066ff'; // Cian vs Azul puro
+        const color = type === 'offensive' ? '#00f2ff' : '#0066ff';
 
-        ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.shadowBlur = 0; // Estilo plano más agresivo
+        ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.shadowBlur = 0;
         const keys = Object.keys(data), total = keys.length, angleStep = (Math.PI * 2) / total;
 
         ctx.beginPath();
@@ -196,7 +219,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         }
-        ctx.strokeStyle = "#333"; ctx.stroke(); // Grid gris oscuro
+        ctx.strokeStyle = "#333"; ctx.stroke();
 
         ctx.beginPath();
         keys.forEach((k, i) => {
@@ -205,9 +228,9 @@ document.addEventListener('DOMContentLoaded', () => {
             i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
         });
         ctx.closePath();
-        ctx.fillStyle = type==='offensive'?"rgba(0,242,255,0.5)":"rgba(0,102,255,0.5)"; // Más opacidad
+        ctx.fillStyle = type==='offensive'?"rgba(0,242,255,0.5)":"rgba(0,102,255,0.5)"; 
         ctx.fill(); 
-        ctx.strokeStyle = "#fff"; ctx.stroke(); // Borde blanco para contraste
+        ctx.strokeStyle = "#fff"; ctx.stroke();
 
         keys.forEach((k, i) => {
             let a = i*angleStep-Math.PI/2, labelR = r+40, x=cx+Math.cos(a)*labelR, y=cy+Math.sin(a)*labelR;
