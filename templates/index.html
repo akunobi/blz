@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BLUE LOCK // EGOIST FRAGMENT</title>
+    <title>BLZ-T</title>
     <link href="https://fonts.googleapis.com/css2?family=Koulen&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
@@ -47,8 +47,8 @@
         </div>
 
         <div class="trigger-input">
-            <input type="text" id="msg-input" placeholder="DEVOUR..." autocomplete="off">
-            <button id="send-btn">SHOOT</button>
+            <input type="text" id="msg-input" placeholder="MESSAGE..." autocomplete="off">
+            <button id="send-btn">SEND</button>
         </div>
 
     </main>
@@ -63,12 +63,12 @@
     <div class="evolution-drawer" id="stats-drawer">
         <div class="evo-content">
             <div class="evo-header">
-                <h2>EVOLUTION CHART</h2>
+                <h2>CALIFICATIONS</h2>
                 <button class="close-evo" onclick="toggleDrawer()">✕</button>
             </div>
             <div class="evo-grid">
                 <div class="evo-col">
-                    <h3>WEAPONS</h3>
+                    <h3>OFFENSIVE</h3>
                     <div class="skill-row"><label>SHT</label><input type="number" id="sht" placeholder="00"></div>
                     <div class="skill-row"><label>DBL</label><input type="number" id="dbl" placeholder="00"></div>
                     <div class="skill-row"><label>STL</label><input type="number" id="stl" placeholder="00"></div>
@@ -76,7 +76,7 @@
                     <div class="skill-row"><label>DFD</label><input type="number" id="dfd" placeholder="00"></div>
                 </div>
                 <div class="evo-col">
-                    <h3>REFLEX</h3>
+                    <h3>GK</h3>
                     <div class="skill-row"><label>DVG</label><input type="number" id="dvg" placeholder="--"></div>
                     <div class="skill-row"><label>BIQ</label><input type="number" id="biq" placeholder="--"></div>
                     <div class="skill-row"><label>RFX</label><input type="number" id="rfx" placeholder="--"></div>
@@ -91,8 +91,8 @@
         <div class="modal-prism">
             <canvas id="stats-canvas" width="500" height="500"></canvas>
             <div class="modal-controls">
-                <button id="close-modal">DESTROY</button>
-                <button id="copy-stats-btn">CAPTURE</button>
+                <button id="close-modal">BACK</button>
+                <button id="copy-stats-btn">COPY IMAGE</button>
             </div>
         </div>
     </div>
