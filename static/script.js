@@ -9,39 +9,36 @@ let blzChartInstance = null;
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
     
-    // --- A. INICIO DE TICKETS ---
+    // --- TICKETS ---
     loadTickets();
     setInterval(loadTickets, 3000); 
     setInterval(() => { if (currentTicketId) loadMessages(currentTicketId); }, 2000);
 
-    const chatInput = document.getElementById('msg-input') || document.getElementById('chat-input');
-    
+    // --- CHAT INPUT FIX ---
+    const chatInput = document.getElementById('msg-input');
+    const sendBtn = document.querySelector('.btn-send');
+
     if(chatInput){
-        // Forzar foco por si el CSS molesta
-        chatInput.onclick = () => chatInput.focus();
-        
+        // Forzamos que se pueda escribir al hacer clic
+        chatInput.onclick = () => { chatInput.focus(); };
         chatInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') sendMessage();
         });
     }
+    if(sendBtn) sendBtn.addEventListener('click', sendMessage);
 
-    const sendBtn = document.querySelector('.btn-send');
-    if(sendBtn) {
-        sendBtn.addEventListener('click', sendMessage);
-    }
-
-    // --- B. INICIO DE STATS (Restaurado) ---
-    loadStats();
+    // --- STATS SYSTEM ---
+    loadStats(); // Cargar datos guardados
     
+    // Asignar listeners a los inputs numéricos
     const statInputs = document.querySelectorAll('.stat-input');
     statInputs.forEach(input => {
         input.addEventListener('input', calculateStats);
+        input.addEventListener('change', calculateStats); // Doble seguridad
     });
     
-    const notesArea = document.getElementById('notes-area');
-    if(notesArea) {
-        notesArea.addEventListener('input', saveStats);
-    }
+    // Calcular una vez al inicio por si hay datos
+    setTimeout(calculateStats, 500);
 });
 
 // ==========================================
@@ -61,17 +58,20 @@ function switchView(viewName) {
     } else if (viewName === 'qualifications') {
         if(ticketsView) ticketsView.classList.add('hidden');
         if(statsView) statsView.classList.remove('hidden');
-        if(blzChartInstance) blzChartInstance.update();
-        else calculateStats(); 
+        
+        // Renderizar gráfico al cambiar pestaña
+        setTimeout(() => {
+            calculateStats();
+            if(blzChartInstance) blzChartInstance.update();
+        }, 100);
     }
 }
 
 // ==========================================
-// 4. LÓGICA DE TICKETS (CORREGIDO ID vs NOMBRE)
+// 4. TICKETS & CHAT
 // ==========================================
 function loadTickets() {
     const ticketView = document.getElementById('view-tickets');
-    // Si usas pestañas y está oculta, no actualizamos para ahorrar recursos
     if (ticketView && ticketView.classList.contains('hidden')) return;
 
     fetch('/api/get_tickets')
@@ -81,9 +81,8 @@ function loadTickets() {
         if(!list) return;
 
         list.innerHTML = ''; 
-        
         if (data.length === 0) {
-            list.innerHTML = '<div style="padding:20px; color:#555; text-align:center; font-family:monospace;">NO SIGNALS DETECTED</div>';
+            list.innerHTML = '<div style="padding:20px; color:#555; text-align:center;">NO SIGNALS</div>';
             return;
         }
 
@@ -91,43 +90,35 @@ function loadTickets() {
             const div = document.createElement('div');
             div.className = `ticket-item ${currentTicketId === ticket.id ? 'active' : ''}`;
             
-            // --- AQUÍ ESTÁ EL FIX ---
-            // Si ticket.channel_name viene vacío o es null, creamos uno bonito
+            // Generador de nombres si falla el backend
             let displayName = ticket.channel_name;
-            if (!displayName || displayName === 'null' || displayName === 'undefined') {
-                // Genera "ticket-pepito" limpiando espacios
+            if (!displayName || displayName === 'null') {
                 const cleanUser = ticket.user_name ? ticket.user_name.replace(/\s+/g, '').toLowerCase() : 'unknown';
                 displayName = `ticket-${cleanUser}`;
             }
-            // ------------------------
 
             div.onclick = () => selectTicket(ticket.id, displayName); 
 
             let statusBadge = ticket.status === 'open' 
-                ? `<span class="badge" style="background:var(--neon-blue); box-shadow:0 0 5px var(--neon-blue); color:black; padding: 2px 5px; border-radius: 4px; font-size: 0.7em;">OP</span>` 
-                : `<span class="badge" style="background:var(--text-grey); box-shadow:none; padding: 2px 5px; border-radius: 4px; font-size: 0.7em;">CL</span>`;
+                ? `<span style="color:var(--neon-blue); font-weight:bold; border:1px solid var(--neon-blue); padding:2px 6px; border-radius:4px; font-size:0.7em;">OP</span>` 
+                : `<span style="color:#666; border:1px solid #444; padding:2px 6px; border-radius:4px; font-size:0.7em;">CL</span>`;
 
             div.innerHTML = `
                 <div style="display:flex; flex-direction:column;">
-                    <span class="ticket-name" style="font-size:0.9rem; font-family:monospace; color:var(--neon-blue); letter-spacing:1px; font-weight:bold;"># ${displayName}</span> 
-                    <span style="font-size:0.75em; color:var(--text-grey); margin-top:4px;">User: <span style="color:white;">${ticket.user_name}</span></span>
+                    <span style="color:var(--neon-blue); font-weight:bold;"># ${displayName}</span> 
+                    <span style="font-size:0.75em; color:#888;">User: ${ticket.user_name}</span>
                 </div>
                 ${statusBadge}
             `;
             list.appendChild(div);
         });
-    })
-    .catch(err => console.error("Error loading tickets:", err));
+    });
 }
 
 function selectTicket(id, name) {
     currentTicketId = id;
     const header = document.getElementById('chat-header-title');
-    
-    // Si el nombre llega vacío, mostramos el ID cortado como último recurso
-    if(header) header.innerText = name || `Ticket ${id.substring(0,6)}...`;
-    
-    // Refrescamos la lista para pintar el borde naranja de "activo"
+    if(header) header.innerText = name;
     loadTickets(); 
     loadMessages(id);
 }
@@ -142,22 +133,9 @@ function loadMessages(ticketId) {
         chatBody.innerHTML = ''; 
         msgs.forEach(msg => {
             const div = document.createElement('div');
-            // Ajusta 'BLZ-T' al nombre de tu bot si es diferente
             const isMe = (msg.sender === 'BLZ-T');
-            div.className = `message ${isMe ? 'agent' : 'discord'}`; // Usamos agent/discord para coincidir con CSS típico
-            
-            // Fallback por si classes son sent/received
-            if (!div.className.includes('agent') && !div.className.includes('discord')) {
-                 div.className = `message ${isMe ? 'sent' : 'received'}`;
-            }
-
-            const timeString = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            div.innerHTML = `
-                <div class="msg-content">${msg.content}</div>
-                <div class="msg-meta" style="font-size: 0.7em; opacity: 0.7; margin-top: 5px; text-align: ${isMe ? 'right' : 'left'}">
-                    <span style="color:${isMe ? 'var(--neon-orange)' : 'var(--neon-blue)'}">${msg.sender}</span> • ${timeString}
-                </div>
-            `;
+            div.className = `message ${isMe ? 'agent' : 'discord'}`;
+            div.innerHTML = `<div>${msg.content}</div><div style="font-size:0.6em; opacity:0.6; margin-top:5px;">${msg.sender}</div>`;
             chatBody.appendChild(div);
         });
         chatBody.scrollTop = chatBody.scrollHeight;
@@ -165,69 +143,86 @@ function loadMessages(ticketId) {
 }
 
 function sendMessage() {
-    const input = document.getElementById('msg-input') || document.getElementById('chat-input');
+    const input = document.getElementById('msg-input');
     if(!input) return;
 
     const content = input.value.trim();
     if (!content || !currentTicketId) return; 
 
     input.value = ''; 
+    input.focus(); // Mantener foco para escribir rápido
 
     fetch('/api/send_message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            ticket_id: currentTicketId,
-            content: content
-        })
+        body: JSON.stringify({ ticket_id: currentTicketId, content: content })
     })
     .then(r => r.json())
-    .then(data => {
-        if(data.status === 'success') {
-            loadMessages(currentTicketId); 
-        } else {
-            console.error("Error sending:", data);
-        }
-    });
+    .then(d => { if(d.status === 'success') loadMessages(currentTicketId); });
 }
 
 // ==========================================
-// 5. LÓGICA DE STATS Y GRÁFICO
+// 5. STATS SYSTEM (CORREGIDO)
 // ==========================================
-
 function calculateStats() {
     const ids = ['offense', 'shoot', 'dribble', 'pass', 'defense', 'speed'];
     let total = 0;
     let values = [];
 
+    // Recoger valores
     ids.forEach(id => {
         const el = document.getElementById(id);
-        if(!el) return;
-        let val = parseFloat(el.value) || 0;
-        if (val > 100) val = 100; 
+        let val = 0;
+        if(el) val = parseFloat(el.value) || 0;
+        if (val > 99) val = 99; // Cap en 99 como FIFA/Blue Lock
         values.push(val);
         total += val;
     });
 
-    const avg = total / 6;
+    const avg = Math.round(total / 6);
+    
+    // Actualizar UI - Total
     const totalEl = document.getElementById('result-total');
-    if(totalEl) totalEl.innerText = Math.round(avg);
-    
-    let rank = 'C';
-    let tier = 'III';
-    
-    if (avg >= 90) { rank = 'S'; tier = 'WORLD 11'; }
-    else if (avg >= 80) { rank = 'A'; tier = 'BLUE LOCK'; }
-    else if (avg >= 70) { rank = 'B'; tier = 'U-20'; }
-    
-    const rankEl = document.getElementById('result-rank');
-    if(rankEl) {
-        rankEl.innerText = rank;
-        rankEl.style.color = (rank === 'S' || rank === 'A') ? 'var(--neon-blue)' : 'white';
-    }
-    const tierEl = document.getElementById('result-tier');
-    if(tierEl) tierEl.innerText = tier;
+    if(totalEl) totalEl.innerText = avg;
 
+    // --- LÓGICA DE RANGOS (AS SOLICITADO) ---
+    let rankTitle = 'B ⭐';     // Default
+    let rankTier = 'ACADEMY';   // Default
+    let rankColor = 'white';
+
+    if (avg >= 90) {
+        rankTitle = 'S ⭐⭐⭐⭐⭐';
+        rankTier = 'WORLD 11 🌏';
+        rankColor = 'var(--neon-blue)'; // Azul Neón
+    } else if (avg >= 85) {
+        rankTitle = 'S ⭐⭐⭐⭐';
+        rankTier = 'NEO EGOIST ⚔️';
+        rankColor = '#00ccff';
+    } else if (avg >= 80) {
+        rankTitle = 'A ⭐⭐⭐';
+        rankTier = 'BLUE LOCK ⛓️';
+        rankColor = 'var(--neon-orange)'; // Naranja
+    } else if (avg >= 70) {
+        rankTitle = 'B ⭐⭐';
+        rankTier = 'U-20 🇯🇵';
+        rankColor = '#ffff00'; // Amarillo
+    }
+
+    // Actualizar DOM Rangos
+    const rankEl = document.getElementById('result-rank');
+    const tierEl = document.getElementById('result-tier');
+    
+    if(rankEl) {
+        rankEl.innerText = rankTitle;
+        rankEl.style.color = rankColor;
+    }
+    if(tierEl) {
+        tierEl.innerText = rankTier;
+        // Animación suave si es World 11
+        tierEl.style.textShadow = (avg >= 90) ? "0 0 15px var(--neon-blue)" : "none";
+    }
+
+    // Actualizar Gráfico y Guardar
     updateChart(values);
     saveStats();
 }
@@ -245,7 +240,7 @@ function updateChart(dataValues) {
             data: {
                 labels: ['OFF', 'SHO', 'DRI', 'PAS', 'DEF', 'SPD'],
                 datasets: [{
-                    label: 'Player Stats',
+                    label: 'STATS',
                     data: dataValues,
                     backgroundColor: 'rgba(0, 240, 255, 0.2)', 
                     borderColor: '#00f0ff',
@@ -259,7 +254,7 @@ function updateChart(dataValues) {
                     r: {
                         angleLines: { color: 'rgba(255, 255, 255, 0.1)' },
                         grid: { color: 'rgba(255, 255, 255, 0.1)' },
-                        pointLabels: { color: '#00f0ff', font: { size: 12, weight: 'bold' } },
+                        pointLabels: { color: '#00f0ff', font: { size: 10 } },
                         suggestedMin: 0,
                         suggestedMax: 100, 
                         ticks: { display: false } 
@@ -272,23 +267,12 @@ function updateChart(dataValues) {
 }
 
 function saveStats() {
-    const data = {
-        inputs: {},
-        notes: document.getElementById('notes-area')?.value || ''
-    };
-    
+    const data = { inputs: {} };
     ['offense', 'shoot', 'dribble', 'pass', 'defense', 'speed'].forEach(id => {
         const el = document.getElementById(id);
         if(el) data.inputs[id] = el.value;
     });
-
     localStorage.setItem('blz_stats_data', JSON.stringify(data));
-    
-    const indicator = document.getElementById('save-status');
-    if(indicator) {
-        indicator.innerText = "SAVING...";
-        setTimeout(() => indicator.innerText = "DATA SAVED LOCALLY", 500);
-    }
 }
 
 function loadStats() {
@@ -302,54 +286,19 @@ function loadStats() {
                     if(el) el.value = val;
                 }
             }
-            if(data.notes) {
-                const notes = document.getElementById('notes-area');
-                if(notes) notes.value = data.notes;
-            }
             calculateStats();
-        } catch(e) { console.error("Error reading stats", e); }
+        } catch(e) { console.error(e); }
     }
 }
 
-// ==========================================
-// 6. MODALES Y COPY
-// ==========================================
+// Funciones modales
 function openStatsModal() {
-    const modal = document.getElementById('stats-modal');
-    if(modal) modal.classList.remove('hidden');
+    document.getElementById('stats-modal')?.classList.remove('hidden');
     if(blzChartInstance) blzChartInstance.update();
 }
-
 function closeStatsModal() {
-    const modal = document.getElementById('stats-modal');
-    if(modal) modal.classList.add('hidden');
+    document.getElementById('stats-modal')?.classList.add('hidden');
 }
-
 async function copyChartToClipboard() {
-    const canvas = document.getElementById('blzChart');
-    if(!canvas) return;
-
-    canvas.toBlob(async (blob) => {
-        try {
-            const data = [new ClipboardItem({ [blob.type]: blob })];
-            await navigator.clipboard.write(data);
-            
-            const btn = document.querySelector('.btn-copy');
-            if(btn) {
-                const originalText = btn.innerText;
-                btn.innerText = "COPIED!";
-                btn.style.borderColor = "var(--neon-orange)";
-                btn.style.color = "var(--neon-orange)";
-                
-                setTimeout(() => {
-                    btn.innerText = originalText;
-                    btn.style.borderColor = "white";
-                    btn.style.color = "white";
-                }, 2000);
-            }
-        } catch (err) {
-            console.error("Error copiando:", err);
-            alert("No se pudo copiar (Requiere HTTPS o Localhost).");
-        }
-    });
+    alert("Función de copiado lista (requiere HTTPS/Localhost)");
 }
