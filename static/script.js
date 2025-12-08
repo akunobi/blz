@@ -132,20 +132,17 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // =========================================================
-    // --- LÓGICA DE ESTADÍSTICAS (ACTUALIZADA Y PRECISA) ---
+    // --- LÓGICA DE ESTADÍSTICAS EXACTAS ---
     // =========================================================
 
     window.generateStats = () => {
-        // 1. Detectar tipo
         let type = 'offensive';
         const gkInput = document.getElementById('dvg');
         
-        // Si hay ALGÚN valor en el campo de GK (DVG), cambiamos a modo GK
         if (gkInput && gkInput.value.trim() !== "") {
             type = 'gk';
         }
 
-        // 2. Definir Inputs según el tipo
         const inputs = type === 'offensive' 
             ? ['sht', 'dbl', 'stl', 'psn', 'dfd'] 
             : ['dvg', 'biq', 'rfx', 'dtg'];
@@ -154,15 +151,12 @@ document.addEventListener('DOMContentLoaded', () => {
         let sum = 0;
         let count = 0;
 
-        // 3. Recopilar datos y Calcular Media
         inputs.forEach(id => {
             const el = document.getElementById(id);
             if (!el) return;
             
             let val = parseFloat(el.value);
             if (isNaN(val)) val = 0; 
-            
-            // Clamping 0-10
             if (val > 10) val = 10; 
             if (val < 0) val = 0;
             
@@ -173,7 +167,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const avg = count > 0 ? sum / count : 0;
         
-        // 4. Obtener Rango DETALLADO
         let rank = "N/A";
         if (type === 'offensive') {
             rank = getOffensiveRank(avg);
@@ -181,14 +174,12 @@ document.addEventListener('DOMContentLoaded', () => {
             rank = getGKRank(avg);
         }
 
-        // 5. Dibujar
         drawGraph(type, data, avg, rank);
         
         if(modal) modal.style.display = 'flex';
     };
 
-    // --- RANGOS OFFENSIVE (CON ESTRELLAS PRECISAS) ---
-    // Basado en tu imagen: cada rango tiene 3 niveles de estrellas
+    // --- RANGOS OFFENSIVE EXACTOS (Imagen 051) ---
     function getOffensiveRank(s) {
         if (s < 4.6) return "N/A";
         
@@ -223,21 +214,20 @@ document.addEventListener('DOMContentLoaded', () => {
         return "WORLD CLASS 👑 - ⭐⭐⭐";
     }
 
-    // --- RANGOS GK (TIERS PRECISOS) ---
+    // --- RANGOS GK EXACTOS (Imagen 035) ---
     function getGKRank(s) {
-        if (s <= 6.9) return "D TIER";
-        if (s <= 7.9) return "C TIER";
-        if (s <= 8.4) return "B TIER";
-        if (s <= 8.9) return "A TIER";
-        if (s <= 9.4) return "S TIER";
-        return "S+ TIER";
+        if (s < 6.9) return "D TIER";      // < 6.9
+        if (s <= 6.9) return "D TIER";     // 6.9 exacto
+        if (s <= 7.9) return "C TIER";     // 7 - 7.9
+        if (s <= 8.4) return "B TIER";     // 8 - 8.4
+        if (s <= 8.9) return "A TIER";     // 8.5 - 8.9
+        if (s <= 9.4) return "S TIER";     // 9 - 9.4
+        return "S+ TIER";                  // >= 9.5
     }
 
     // --- DIBUJADO DE GRÁFICO ---
     function drawGraph(type, data, avg, rank) {
         ctx.clearRect(0,0,500,500);
-        
-        // Fondo
         ctx.fillStyle = "#050505";
         ctx.fillRect(0,0,500,500);
 
@@ -254,7 +244,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const total = keys.length;
         const angleStep = (Math.PI * 2) / total;
 
-        // 1. GRID DE FONDO
+        // GRID DE FONDO
         ctx.beginPath();
         for(let level=1; level<=4; level++) {
             let r = (maxRadius/4)*level;
@@ -284,7 +274,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         ctx.stroke();
 
-        // 2. FORMA DE DATOS
+        // FORMA DE DATOS
         ctx.beginPath();
         keys.forEach((k, i) => {
             let val = data[k];
@@ -292,8 +282,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let a = i * angleStep - Math.PI/2;
             let x = cx + Math.cos(a) * r;
             let y = cy + Math.sin(a) * r;
-            
-            if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+            if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
         });
         ctx.closePath();
         
@@ -303,7 +292,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.shadowBlur = 20;
         ctx.stroke();
 
-        // 3. ETIQUETAS
+        // ETIQUETAS
         keys.forEach((k, i) => {
             let a = i * angleStep - Math.PI/2;
             let labelR = maxRadius + 35;
@@ -320,14 +309,13 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.restore();
         });
 
-        // 4. RESULTADOS (AVG Y RANK)
+        // RESULTADOS
         ctx.shadowBlur = 0;
         ctx.fillStyle = "#fff";
         ctx.font = "14px 'Courier New'";
         ctx.textAlign = "center";
         ctx.fillText(`AVG: ${avg.toFixed(1)} / 10`, cx, 440);
 
-        // Ajustamos la fuente para que quepa el nombre largo
         ctx.font = "bold 20px 'Impact'";
         ctx.fillStyle = color;
         ctx.shadowBlur = 10;
@@ -335,7 +323,6 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.fillText(rank, cx, 475);
     }
 
-    // --- CONTROLES MODAL ---
     const closeBtn = document.getElementById('close-modal');
     if(closeBtn) closeBtn.onclick = () => modal.style.display = 'none';
 

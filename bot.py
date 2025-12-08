@@ -17,11 +17,11 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 # Configuración de Categoría
 try:
+    # Render usa 'CATEGORY_ID', intenta leerla
     raw_id = os.getenv("CATEGORY_ID")
     if not raw_id:
-        # Fallback si no está configurado en Render
+        print("!!! [ALERTA] Variable CATEGORY_ID no encontrada. Usando 0.")
         TARGET_CATEGORY_ID = 0
-        print("!!! [ALERTA] Variable CATEGORY_ID no encontrada.")
     else:
         TARGET_CATEGORY_ID = int(raw_id)
 except ValueError:
@@ -66,6 +66,7 @@ def init_db():
 @client.event
 async def on_ready():
     print(f'>>> [DISCORD]: Conectado como {client.user}')
+    print(f'>>> [DISCORD]: ID Categoría: {TARGET_CATEGORY_ID}')
     bot_ready_event.set()
 
 @client.event
@@ -73,6 +74,7 @@ async def on_message(message):
     if message.author == client.user:
         return
 
+    # Guardar solo mensajes de la categoría correcta
     if hasattr(message.channel, 'category') and message.channel.category:
         if message.channel.category.id == TARGET_CATEGORY_ID:
             try:
@@ -98,13 +100,12 @@ async def on_message(message):
 def index():
     return render_template('index.html')
 
-# --- RUTA DE RESETEO (LA NUEVA FUNCIÓN) ---
+# --- RUTA DE RESETEO (IMPORTANTE: Úsala si te da "Canal no encontrado") ---
 @app.route('/api/admin/reset')
 def reset_database():
     """Borra todo el contenido de la base de datos para limpiar canales viejos."""
     try:
         conn = get_db_connection()
-        # Borramos la tabla entera
         conn.execute('DROP TABLE IF EXISTS messages')
         conn.commit()
         conn.close()
@@ -132,7 +133,7 @@ def get_channels():
                 try:
                     category = await client.fetch_channel(TARGET_CATEGORY_ID)
                 except:
-                    pass # Si falla, devolveremos lista vacía o de DB
+                    pass
             
             if category:
                 text_channels = [c for c in category.channels if isinstance(c, discord.TextChannel)]
@@ -148,11 +149,10 @@ def get_channels():
         future = asyncio.run_coroutine_threadsafe(get_channels_async(), bot_loop)
         channels = future.result(timeout=5)
         
-        # Si Discord devuelve canales, perfecto.
         if channels:
             return jsonify(channels)
         
-        # Si no (error de conexión), intentamos leer de la DB (que acabamos de limpiar si usaste reset)
+        # Si falla conexión con Discord, leemos de DB
         conn = get_db_connection()
         db_chans = conn.execute('SELECT DISTINCT channel_name as name, channel_id as id FROM messages').fetchall()
         conn.close()
