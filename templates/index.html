@@ -3,124 +3,112 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BLZ-T</title>
+    <title>EGO-CHAKRA // OVERFLOW</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    </head>
+</head>
 <body>
 
-    <div class="background-grid"></div>
-    <div class="vignette"></div>
+    <div class="bg-layer kurama-fire"></div>
+    <div class="bg-layer bluelock-grid"></div>
+    <div class="screen-glitch-overlay"></div>
 
-    <button class="stats-toggle-btn" onclick="toggleDrawer()">
-        /// SYS.METRICS
-    </button>
+    <main class="chaos-container">
 
-    <div class="hud-left">
-        <div class="brand-glitch" data-text="BLUE LOCK">BLUE LOCK</div>
-        
-        <div class="channel-container" id="channel-list">
-            <div class="loading-text">SYNCING NEURAL LINK...</div>
-        </div>
-        
-        <div class="status-indicator">
-            <span style="color:var(--cyan)">SYSTEM:</span> ONLINE
-            <br>
-            <span style="color:var(--red)">EGO:</span> UNSTABLE
-        </div>
-    </div>
-
-    <div class="chat-void">
-        <div class="chat-feed" id="chat-feed">
-            <div class="empty-state">
-                /// SELECT TARGET CHANNEL ///<br>
-                WAITING FOR INPUT STREAM...
+        <aside class="chakra-seal-sidebar">
+            <div class="seal-header">
+                <span class="glitch-text" data-text="EGO">EGO</span>
+                <span class="seal-divider">⚡🏮</span>
+                <span class="burn-text">BEAST</span>
             </div>
-        </div>
+            
+            <div class="channel-scroll-area" id="channel-list">
+                <div class="loading-seal">BREAKING SEAL...</div>
+            </div>
+
+            <div class="power-readout">
+                 SYNC RATE: <span style="color:var(--neon-orange)">99.9%</span> UNSTABLE
+            </div>
+        </aside>
+
+        <section class="chat-core-shard">
+            <div class="shard-header">
+                /// NEURAL-CHAKRA LINK ESTABLISHED
+            </div>
+
+            <div class="chat-void-feed" id="chat-feed">
+                 <div class="empty-void">
+                    <div class="kurama-eye-icon">👁‍🗨</div>
+                    AWAITING TARGET FOCUS...
+                 </div>
+            </div>
+
+            <div class="injection-port">
+                <input type="text" id="msg-input" placeholder="INJECT WILLPOWER / COMMAND..." autocomplete="off">
+                <button id="send-btn">MANIFEST</button>
+            </div>
+        </section>
+
+        <button class="kurama-release-btn" onclick="toggleDrawer()">
+            <span class="btn-glitch">UNLEASH</span>
+            <span class="btn-sub">FULL COWL MODE</span>
+        </button>
+
+    </main>
+
+    <div class="beast-mode-drawer" id="stats-drawer">
+        <div class="drawer-background-fx"></div>
         
-        <div class="input-deck">
-            <input type="text" id="msg-input" placeholder="ENTER COMMAND / MESSAGE...">
-            <button id="send-btn" onclick="sendMessage()">SEND</button>
-        </div>
-    </div>
+        <div class="drawer-content-wrapper">
+            <div class="drawer-header-chaotic">
+                <h2>/// EGOIST DATA: <span style="color:var(--neon-orange)">TAILED FORM</span></h2>
+                <button class="close-seal" onclick="toggleDrawer()">SEAL ✖</button>
+            </div>
 
-    <div class="stats-drawer" id="stats-drawer">
-        <div class="drawer-header">
-            <h3>/// EGOIST DATA</h3>
-            <button class="close-drawer" onclick="toggleDrawer()">×</button>
-        </div>
-
-        <div class="drawer-content">
-            <div class="stat-block offensive">
-                <div class="block-label" style="color:var(--cyan)">OFFENSIVE [0-10]</div>
-                <div class="input-grid">
-                    <div class="input-group">
-                        <label>SHT</label>
-                        <input type="number" id="sht" placeholder="0.0" step="0.1" min="0" max="10">
-                    </div>
-                    <div class="input-group">
-                        <label>DBL</label>
-                        <input type="number" id="dbl" placeholder="0.0" step="0.1" min="0" max="10">
-                    </div>
-                    <div class="input-group">
-                        <label>STL</label>
-                        <input type="number" id="stl" placeholder="0.0" step="0.1" min="0" max="10">
-                    </div>
-                    <div class="input-group">
-                        <label>PSN</label>
-                        <input type="number" id="psn" placeholder="0.0" step="0.1" min="0" max="10">
-                    </div>
-                    <div class="input-group">
-                        <label>DFD</label>
-                        <input type="number" id="dfd" placeholder="0.0" step="0.1" min="0" max="10">
+            <div class="stats-chaos-grid">
+                <div class="stat-cluster cyber-cluster">
+                    <h3 class="cyber-title">OFFENSIVE [LOGIC]</h3>
+                    <div class="hex-inputs">
+                        <div class="hex-field"><label>SHT</label><input type="number" id="sht" placeholder="0-10"></div>
+                        <div class="hex-field"><label>DBL</label><input type="number" id="dbl" placeholder="0-10"></div>
+                        <div class="hex-field"><label>STL</label><input type="number" id="stl" placeholder="0-10"></div>
+                        <div class="hex-field"><label>PSN</label><input type="number" id="psn" placeholder="0-10"></div>
+                        <div class="hex-field wide"><label>DFD</label><input type="number" id="dfd" placeholder="0-10"></div>
                     </div>
                 </div>
-            </div>
 
-            <div class="stat-block gk">
-                <div class="block-label" style="color:var(--red)">GK [0-10]</div>
-                <div class="input-grid">
-                    <div class="input-group">
-                        <label>DVG</label>
-                        <input type="number" id="dvg" placeholder="0.0" step="0.1" min="0" max="10">
-                    </div>
-                    <div class="input-group">
-                        <label>BIQ</label>
-                        <input type="number" id="biq" placeholder="0.0" step="0.1" min="0" max="10">
-                    </div>
-                    <div class="input-group">
-                        <label>RFX</label>
-                        <input type="number" id="rfx" placeholder="0.0" step="0.1" min="0" max="10">
-                    </div>
-                    <div class="input-group">
-                        <label>DTG</label>
-                        <input type="number" id="dtg" placeholder="0.0" step="0.1" min="0" max="10">
+                <div class="chaos-divider">VS</div>
+
+                <div class="stat-cluster beast-cluster">
+                    <h3 class="beast-title">GOALKEEPER [INSTINCT]</h3>
+                    <div class="circle-inputs">
+                        <div class="orb-field"><label>DVG</label><input type="number" id="dvg" placeholder="-"></div>
+                        <div class="orb-field"><label>BIQ</label><input type="number" id="biq" placeholder="-"></div>
+                        <div class="orb-field"><label>RFX</label><input type="number" id="rfx" placeholder="-"></div>
+                        <div class="orb-field"><label>DTG</label><input type="number" id="dtg" placeholder="-"></div>
                     </div>
                 </div>
             </div>
 
             <button id="ui-stats-btn" onclick="generateStats()">
-                MATERIALIZE DATA
+                <span class="btn-burn">MATERIALIZE FULL POWER GRAPH</span>
             </button>
         </div>
     </div>
 
     <div id="stats-modal" class="modal-overlay">
-        <div class="modal-card">
+        <div class="modal-shard">
             <canvas id="stats-canvas" width="500" height="500"></canvas>
-            
             <div class="modal-actions">
-                <button id="close-modal" class="action-btn cancel">CLOSE</button>
-                <button id="copy-stats-btn" class="action-btn confirm">COPY EGO</button>
+                <button id="close-modal" class="shard-btn close">CLOSE RIFT</button>
+                <button id="copy-stats-btn" class="shard-btn copy">CAPTURE ESSENCE</button>
             </div>
         </div>
     </div>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
     <script>
-        // Función simple para abrir/cerrar el cajón lateral
         function toggleDrawer() {
-            const drawer = document.getElementById('stats-drawer');
-            drawer.classList.toggle('open');
+            document.getElementById('stats-drawer').classList.toggle('active');
         }
     </script>
 </body>
