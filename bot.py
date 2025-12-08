@@ -6,7 +6,7 @@ import asyncio
 from flask import Flask, render_template, jsonify, request
 from dotenv import load_dotenv
 
-# Cargar variables locales
+# Cargar variables
 load_dotenv()
 
 # --- CONFIGURACIÓN ---
@@ -15,9 +15,8 @@ app.secret_key = os.urandom(24)
 
 TOKEN = os.getenv("DISCORD_TOKEN") 
 
-# Configuración de Categoría
+# Configuración de Categoría (Render vs Local)
 try:
-    # Render usa 'CATEGORY_ID', intenta leerla
     raw_id = os.getenv("CATEGORY_ID")
     if not raw_id:
         print("!!! [ALERTA] Variable CATEGORY_ID no encontrada. Usando 0.")
@@ -26,7 +25,6 @@ try:
         TARGET_CATEGORY_ID = int(raw_id)
 except ValueError:
     TARGET_CATEGORY_ID = 0
-    print("!!! [ERROR] CATEGORY_ID no es numérico.")
 
 # --- SETUP DISCORD ---
 intents = discord.Intents.default()
@@ -58,7 +56,6 @@ def init_db():
         ''')
         conn.commit()
         conn.close()
-        print(">>> [DB]: Inicializada.")
     except Exception as e:
         print(f"!!! [DB ERROR]: {e}")
 
@@ -71,8 +68,7 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-    if message.author == client.user:
-        return
+    if message.author == client.user: return
 
     # Guardar solo mensajes de la categoría correcta
     if hasattr(message.channel, 'category') and message.channel.category:
@@ -91,31 +87,32 @@ async def on_message(message):
                 ))
                 conn.commit()
                 conn.close()
+                print(f">>> [MSG SAVED]: {message.author.name} -> #{message.channel.name}")
             except Exception as e:
                 print(f"!!! [SAVE ERROR]: {e}")
 
 # --- RUTAS FLASK ---
-
 @app.route('/')
 def index():
     return render_template('index.html')
 
-# --- RUTA DE RESETEO (IMPORTANTE: Úsala si te da "Canal no encontrado") ---
 @app.route('/api/admin/reset')
 def reset_database():
-    """Borra todo el contenido de la base de datos para limpiar canales viejos."""
+    """Limpia la base de datos sin borrar el archivo físico (más seguro)."""
     try:
         conn = get_db_connection()
-        conn.execute('DROP TABLE IF EXISTS messages')
+        # Usamos DELETE en lugar de DROP para evitar bloqueos de archivo
+        cursor = conn.execute('DELETE FROM messages')
+        deleted_count = cursor.rowcount
+        
+        # VACUUM reduce el tamaño del archivo tras borrar
+        conn.execute('VACUUM')
         conn.commit()
         conn.close()
         
-        # La volvemos a crear limpia
-        init_db()
-        
         return jsonify({
             "status": "SUCCESS", 
-            "message": "Base de datos purgada. Canales viejos eliminados. Escribe en Discord para ver nuevos canales."
+            "message": f"Base de datos limpiada. {deleted_count} mensajes eliminados."
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -127,7 +124,7 @@ def get_channels():
 
     async def get_channels_async():
         try:
-            # Intentamos obtener fresca la categoría de Discord
+            # 1. Intentar obtener canales EN VIVO desde Discord
             category = client.get_channel(TARGET_CATEGORY_ID)
             if not category:
                 try:
@@ -152,7 +149,7 @@ def get_channels():
         if channels:
             return jsonify(channels)
         
-        # Si falla conexión con Discord, leemos de DB
+        # 2. Fallback: Si Discord falla, leer de la DB
         conn = get_db_connection()
         db_chans = conn.execute('SELECT DISTINCT channel_name as name, channel_id as id FROM messages').fetchall()
         conn.close()
@@ -191,7 +188,6 @@ def send_message():
             channel = await client.fetch_channel(c_id)
             await channel.send(content)
             return {"success": True}
-        
         except discord.NotFound:
             print(f"!!! [ERROR] Canal {c_id} NO EXISTE.")
             return {"success": False, "error": "Canal no encontrado (Borrado o ID vieja)."}
@@ -233,6 +229,5 @@ if __name__ == '__main__':
     init_db()
     t = threading.Thread(target=run_discord_bot, daemon=True)
     t.start()
-    
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)

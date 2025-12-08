@@ -7,7 +7,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('stats-canvas');
     const ctx = canvas.getContext('2d');
     
-    // Estado
     let currentChannelId = null;
     let isFetching = false;
 
@@ -29,10 +28,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/channels');
             const channels = await res.json();
 
+            // Limpiamos la lista para evitar duplicados
             if (channels.length > 0) channelList.innerHTML = '';
             
             channels.forEach(ch => {
-                const cName = ch.name || ch.channel_name || "Unknown Channel";
+                const cName = ch.name || ch.channel_name || "Unknown";
                 const cId = ch.id || ch.channel_id;
 
                 const btn = document.createElement('button');
@@ -132,7 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // =========================================================
-    // --- LÓGICA DE ESTADÍSTICAS EXACTAS ---
+    // --- LÓGICA DE ESTADÍSTICAS ---
     // =========================================================
 
     window.generateStats = () => {
@@ -179,50 +179,43 @@ document.addEventListener('DOMContentLoaded', () => {
         if(modal) modal.style.display = 'flex';
     };
 
-    // --- RANGOS OFFENSIVE EXACTOS (Imagen 051) ---
+    // --- RANGOS OFFENSIVE EXACTOS ---
     function getOffensiveRank(s) {
         if (s < 4.6) return "N/A";
-        
-        // Rookie Strikers 🥉
         if (s <= 4.8) return "ROOKIE STRIKERS 🥉 - ⭐";
         if (s <= 5.1) return "ROOKIE STRIKERS 🥉 - ⭐⭐";
         if (s <= 5.4) return "ROOKIE STRIKERS 🥉 - ⭐⭐⭐";
         
-        // Amateur Striker ⚽
         if (s <= 5.7) return "AMATEUR STRIKER ⚽ - ⭐";
         if (s <= 6.0) return "AMATEUR STRIKER ⚽ - ⭐⭐";
         if (s <= 6.3) return "AMATEUR STRIKER ⚽ - ⭐⭐⭐";
         
-        // Elite ⚡
         if (s <= 6.6) return "ELITE ⚡ - ⭐";
         if (s <= 6.9) return "ELITE ⚡ - ⭐⭐";
         if (s <= 7.2) return "ELITE ⚡ - ⭐⭐⭐";
         
-        // Prodigy 🏅
         if (s <= 7.5) return "PRODIGY 🏅 - ⭐";
         if (s <= 7.8) return "PRODIGY 🏅 - ⭐⭐";
         if (s <= 8.1) return "PRODIGY 🏅 - ⭐⭐⭐";
         
-        // New Gen XI
         if (s <= 8.4) return "NEW GEN XI - ⭐";
         if (s <= 8.7) return "NEW GEN XI - ⭐⭐";
         if (s <= 9.0) return "NEW GEN XI - ⭐⭐⭐";
         
-        // World Class 👑
         if (s <= 9.3) return "WORLD CLASS 👑 - ⭐";
         if (s <= 9.6) return "WORLD CLASS 👑 - ⭐⭐";
         return "WORLD CLASS 👑 - ⭐⭐⭐";
     }
 
-    // --- RANGOS GK EXACTOS (Imagen 035) ---
+    // --- RANGOS GK EXACTOS ---
     function getGKRank(s) {
-        if (s < 6.9) return "D TIER";      // < 6.9
-        if (s <= 6.9) return "D TIER";     // 6.9 exacto
-        if (s <= 7.9) return "C TIER";     // 7 - 7.9
-        if (s <= 8.4) return "B TIER";     // 8 - 8.4
-        if (s <= 8.9) return "A TIER";     // 8.5 - 8.9
-        if (s <= 9.4) return "S TIER";     // 9 - 9.4
-        return "S+ TIER";                  // >= 9.5
+        if (s < 6.9) return "D TIER";      
+        if (s <= 6.9) return "D TIER";     
+        if (s <= 7.9) return "C TIER";     
+        if (s <= 8.4) return "B TIER";     
+        if (s <= 8.9) return "A TIER";     
+        if (s <= 9.4) return "S TIER";     
+        return "S+ TIER";                  
     }
 
     // --- DIBUJADO DE GRÁFICO ---
