@@ -1,333 +1,294 @@
-/* =========================================
-   CORE: SYSTEM RESET
-   ========================================= */
 :root {
-    --void-bg: #030305;
-    --panel-bg: rgba(10, 15, 20, 0.85);
-    --bl-cyan: #00f2ff;       /* Blue Lock: Logic */
-    --kurama-red: #ff2a00;    /* Kurama: Chaos */
-    --kurama-glow: rgba(255, 42, 0, 0.4);
-    --tech-font: 'Consolas', 'Courier New', monospace;
-    --header-font: 'Impact', sans-serif;
+    --cyan: #00f2ff;
+    --red: #ff0040;
+    --dark: #050505;
+    --glass: rgba(10, 10, 15, 0.85);
+    --font-main: 'Courier New', monospace;
+    --font-head: 'Impact', sans-serif;
 }
-
-* { box-sizing: border-box; }
 
 body {
-    margin: 0;
-    padding: 0;
-    background-color: var(--void-bg);
+    background-color: var(--dark);
     color: #fff;
-    font-family: var(--tech-font);
+    font-family: var(--font-main);
+    margin: 0;
+    overflow: hidden; /* El body no hace scroll, solo el chat */
     height: 100vh;
-    overflow: hidden;
-    /* Fondo: Grid Tecnológico con Aura Roja */
-    background-image: 
-        linear-gradient(rgba(0, 242, 255, 0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0, 242, 255, 0.03) 1px, transparent 1px),
-        radial-gradient(circle at 50% 50%, rgba(255, 42, 0, 0.1) 0%, transparent 60%);
-    background-size: 40px 40px, 40px 40px, 100% 100%;
 }
 
-/* Scrollbars Cyberpunk */
-::-webkit-scrollbar { width: 6px; background: #000; }
-::-webkit-scrollbar-thumb { background: var(--bl-cyan); }
-
-/* =========================================
-   LAYOUT STRATEGY
-   ========================================= */
-.main-interface {
-    display: grid;
-    grid-template-columns: 250px 1fr 350px; /* Sidebar | Chat | Stats */
-    height: 100vh;
-    border: 1px solid #333;
+/* FONDO "ROTO" */
+.background-grid {
+    position: fixed;
+    top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: 
+        linear-gradient(transparent 95%, var(--cyan) 96%),
+        linear-gradient(90deg, transparent 95%, var(--red) 96%);
+    background-size: 100px 100px;
+    opacity: 0.1;
+    transform: perspective(500px) rotateX(60deg) translateY(100px) translateZ(-200px);
+    z-index: -1;
+    animation: gridMove 20s linear infinite;
 }
 
-/* =========================================
-   1. SIDEBAR (CHANNELS)
-   ========================================= */
-.sidebar {
-    background: rgba(0,0,0,0.6);
-    border-right: 1px solid var(--bl-cyan);
+@keyframes gridMove { 0% { transform: perspective(500px) rotateX(60deg) translateY(0); } 100% { transform: perspective(500px) rotateX(60deg) translateY(100px); } }
+
+/* ==================================================
+   1. HUD LEFT (CANALES) - FLOTANTE Y TORCIDO
+   ================================================== */
+.hud-left {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    bottom: 20px;
+    width: 220px;
+    background: var(--glass);
+    border: 1px solid var(--cyan);
+    z-index: 100;
     display: flex;
     flex-direction: column;
-    padding: 10px;
+    /* ANTILÓGICA: Forma trapezoidal */
+    clip-path: polygon(0 0, 100% 0, 85% 100%, 0% 100%);
+    padding: 20px;
+    backdrop-filter: blur(5px);
 }
 
-.brand {
-    font-family: var(--header-font);
-    font-size: 2rem;
-    color: var(--bl-cyan);
-    text-transform: uppercase;
-    text-align: center;
-    padding: 20px 0;
-    text-shadow: 2px 2px 0px var(--kurama-red);
-    border-bottom: 2px solid var(--kurama-red);
-    margin-bottom: 10px;
+.brand-glitch {
+    font-family: var(--font-head);
+    font-size: 2.5rem;
+    color: var(--cyan);
+    text-shadow: 3px 3px 0 var(--red);
+    margin-bottom: 20px;
+    transform: skewX(-10deg);
 }
 
-.channel-list {
-    overflow-y: auto;
+.channel-container {
     flex: 1;
+    overflow-y: auto; /* SCROLL PARA CANALES SI HAY MUCHOS */
+    padding-right: 10px;
 }
 
 .channel-btn {
-    padding: 12px;
+    display: block;
+    padding: 10px;
     margin-bottom: 5px;
+    background: rgba(0,0,0,0.5);
+    border-left: 2px solid #333;
     cursor: pointer;
-    border-left: 3px solid #333;
-    transition: 0.3s;
+    transition: 0.2s;
+    font-size: 0.8rem;
     text-transform: uppercase;
-    font-size: 0.9rem;
-    color: #888;
 }
 
 .channel-btn:hover {
-    color: var(--bl-cyan);
-    background: rgba(0, 242, 255, 0.05);
-    padding-left: 20px; /* Movimiento tecnológico */
+    background: var(--cyan);
+    color: #000;
+    transform: translateX(10px); /* Se sale del contenedor */
 }
 
 .channel-btn.active {
-    border-left-color: var(--kurama-red);
+    border-left: 5px solid var(--red);
+    background: linear-gradient(90deg, rgba(255,0,64,0.2), transparent);
     color: #fff;
-    background: linear-gradient(90deg, rgba(255, 42, 0, 0.2), transparent);
     font-weight: bold;
-    text-shadow: 0 0 5px var(--kurama-red);
+    text-shadow: 0 0 5px var(--red);
 }
 
-/* =========================================
-   2. CHAT FEED (CENTRAL CORE)
-   ========================================= */
-.chat-section {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    background: rgba(0,0,0,0.3);
-}
-
-#chat-feed {
-    flex: 1;
-    overflow-y: auto;
+/* ==================================================
+   2. HUD RIGHT (STATS) - FLOTANTE Y SUPERPUESTO
+   ================================================== */
+.hud-right {
+    position: fixed;
+    top: 50px;
+    right: 30px;
+    width: 280px;
+    background: rgba(0, 0, 0, 0.9);
+    border: 1px solid var(--red);
+    z-index: 100;
     padding: 20px;
+    /* ANTILÓGICA: Inclinado hacia el otro lado */
+    transform: skewY(-2deg);
+    box-shadow: -10px 10px 0px rgba(255, 0, 64, 0.2);
+}
+
+.panel-header {
+    border-bottom: 2px solid var(--cyan);
+    margin-bottom: 15px;
+    color: var(--cyan);
+    text-align: right;
+    font-weight: bold;
+}
+
+.input-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 5px;
+    margin-bottom: 15px;
+}
+
+input {
+    width: 100%;
+    background: transparent;
+    border: 1px solid #444;
+    color: #fff;
+    text-align: center;
+    padding: 5px;
+    font-family: var(--font-main);
+}
+
+input:focus {
+    border-color: var(--cyan);
+    outline: none;
+    background: rgba(0, 242, 255, 0.1);
+}
+
+.gk input:focus { border-color: var(--red); background: rgba(255, 0, 64, 0.1); }
+
+#ui-stats-btn {
+    width: 100%;
+    padding: 15px;
+    margin-top: 10px;
+    background: var(--cyan);
+    color: #000;
+    border: none;
+    font-family: var(--font-head);
+    font-size: 1.2rem;
+    letter-spacing: 2px;
+    cursor: pointer;
+    /* Efecto roto */
+    clip-path: polygon(10% 0, 100% 0, 100% 80%, 90% 100%, 0 100%, 0 20%);
+    transition: 0.2s;
+}
+
+#ui-stats-btn:hover {
+    background: #fff;
+    box-shadow: 0 0 20px var(--cyan);
+    transform: scale(1.05);
+}
+
+/* ==================================================
+   3. CHAT VOID (CENTRO) - SCROLL ARREGLADO
+   ================================================== */
+.chat-void {
+    /* Ocupa toda la pantalla, pero con margen para los HUDs */
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    padding-left: 260px; /* Espacio para el Sidebar */
+    padding-right: 320px; /* Espacio para Stats */
+    padding-top: 20px;
+    padding-bottom: 80px; /* Espacio para input */
     display: flex;
     flex-direction: column;
-    gap: 20px;
 }
 
-/* Mensajes Estilo Tarjeta de Datos */
+.chat-feed {
+    flex: 1;
+    overflow-y: auto; /* SCROLL HABILITADO */
+    padding-right: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+/* SCROLLBAR PERSONALIZADO */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #000; }
+::-webkit-scrollbar-thumb { background: #333; border: 1px solid #555; }
+::-webkit-scrollbar-thumb:hover { background: var(--cyan); }
+
+/* MENSAJES */
 .msg-card {
-    background: #080a10;
-    border: 1px solid #333;
-    padding: 0;
+    background: rgba(20, 20, 20, 0.8);
+    border-left: 3px solid var(--cyan);
+    padding: 10px;
+    max-width: 90%;
     position: relative;
-    max-width: 85%;
-    /* Esquina cortada */
-    clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
-    box-shadow: 0 0 10px rgba(0,0,0,0.5);
-    animation: fadeIn 0.3s ease-out;
+    animation: fadeIn 0.3s ease;
 }
 
-@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-
-/* Header del mensaje (Avatar + Nombre) */
 .msg-header {
-    background: rgba(255, 255, 255, 0.03);
-    padding: 8px 12px;
     display: flex;
     align-items: center;
     gap: 10px;
-    border-bottom: 1px solid #222;
+    margin-bottom: 5px;
+    font-size: 0.8rem;
+    color: var(--cyan);
 }
 
-.msg-avatar {
-    width: 25px; height: 25px;
-    border: 1px solid var(--bl-cyan);
-    border-radius: 2px;
-}
+.msg-avatar { width: 20px; height: 20px; border: 1px solid #fff; }
 
-.msg-author {
-    color: var(--bl-cyan);
-    font-weight: bold;
-    font-size: 0.9rem;
-    letter-spacing: 1px;
-}
+.msg-body { color: #eee; font-size: 0.95rem; line-height: 1.4; }
 
-.msg-body {
-    padding: 12px;
-    color: #ddd;
-    line-height: 1.4;
-    font-size: 0.95rem;
-}
-
-.msg-time {
-    position: absolute;
-    bottom: 2px;
-    right: 5px;
-    font-size: 0.6rem;
-    color: #555;
-}
-
-/* INPUT AREA (Inferior) */
-.input-zone {
-    padding: 15px;
-    background: #050505;
-    border-top: 1px solid var(--bl-cyan);
+/* INPUT DECK (ABAJO CENTRO) */
+.input-deck {
+    position: fixed;
+    bottom: 20px;
+    left: 260px;
+    right: 30px; /* Se mete debajo del panel de stats */
+    background: #000;
+    border: 1px solid var(--red);
     display: flex;
-    gap: 10px;
+    z-index: 90;
+    /* Inclinación sutil */
+    transform: skewX(-15deg);
 }
 
 #msg-input {
     flex: 1;
-    background: #111;
-    border: 1px solid #333;
-    color: var(--bl-cyan);
-    padding: 12px;
-    font-family: var(--tech-font);
-    outline: none;
+    border: none;
+    padding: 15px;
+    color: var(--red);
+    font-size: 1.1rem;
+    transform: skewX(15deg); /* Contrarrestar skew padre */
 }
-#msg-input:focus { border-color: var(--bl-cyan); box-shadow: 0 0 10px rgba(0, 242, 255, 0.1); }
 
 #send-btn {
-    background: var(--kurama-red);
+    background: var(--red);
     color: #000;
     border: none;
-    padding: 0 25px;
+    padding: 0 30px;
     font-weight: bold;
     cursor: pointer;
-    text-transform: uppercase;
-    transition: 0.2s;
-    clip-path: polygon(15% 0, 100% 0, 100% 100%, 0% 100%);
-}
-#send-btn:hover { background: #fff; box-shadow: 0 0 15px var(--kurama-red); }
-
-/* =========================================
-   3. STATS PANEL (RIGHT WING)
-   ========================================= */
-.stats-panel {
-    background: rgba(5, 5, 8, 0.95);
-    border-left: 1px solid var(--kurama-red);
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 25px;
-    overflow-y: auto;
+    transform: skewX(15deg); /* Contrarrestar skew padre */
 }
 
-.panel-title {
-    color: #666;
-    font-size: 0.8rem;
-    border-bottom: 1px solid #333;
-    padding-bottom: 5px;
-    margin-bottom: 10px;
-}
-
-.stat-group h4 {
-    margin: 0 0 10px 0;
-    color: var(--bl-cyan);
-    font-size: 0.9rem;
-    text-transform: uppercase;
-}
-.stat-group.kurama h4 { color: var(--kurama-red); }
-
-.stat-inputs {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-}
-
-.stat-field {
-    background: transparent;
-    border: 1px solid #333;
-    border-left: 2px solid var(--bl-cyan);
-    color: #fff;
-    padding: 8px;
-    text-align: center;
-    font-family: var(--tech-font);
-    font-size: 1rem;
-    transition: 0.3s;
-}
-.stat-field:focus {
-    background: rgba(0, 242, 255, 0.1);
-    border-color: var(--bl-cyan);
-}
-.kurama .stat-field { border-left-color: var(--kurama-red); }
-.kurama .stat-field:focus { 
-    background: rgba(255, 42, 0, 0.1); 
-    border-color: var(--kurama-red); 
-}
-
-#ui-stats-btn {
-    margin-top: auto;
-    padding: 15px;
-    background: transparent;
-    border: 1px solid var(--bl-cyan);
-    color: var(--bl-cyan);
-    font-family: var(--header-font);
-    font-size: 1.2rem;
-    cursor: pointer;
-    transition: 0.3s;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-}
-
-#ui-stats-btn:hover {
-    background: var(--bl-cyan);
-    color: #000;
-    box-shadow: 0 0 20px var(--bl-cyan);
-}
-
-/* =========================================
-   4. POPUP MODAL (FIXED CENTER)
-   ========================================= */
+/* ==================================================
+   4. MODAL POPUP
+   ================================================== */
 .modal-overlay {
-    display: none; /* JS lo cambia a flex */
-    position: fixed; /* FIJA LA POSICIÓN RELATIVA A LA VENTANA */
-    top: 0; 
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0, 0, 0, 0.85);
-    backdrop-filter: blur(8px); /* Efecto cristal borroso */
-    z-index: 10000; /* POR ENCIMA DE TODO */
+    display: none; /* JS controla esto */
+    position: fixed; top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background: rgba(0,0,0,0.9);
+    z-index: 9999;
     justify-content: center;
     align-items: center;
 }
 
-.modal-box {
-    background: #000;
-    border: 2px solid var(--kurama-red);
-    box-shadow: 0 0 50px rgba(255, 42, 0, 0.3);
+.modal-card {
+    background: #050505;
+    border: 2px solid var(--cyan);
+    box-shadow: 0 0 50px rgba(0, 242, 255, 0.3);
     padding: 10px;
-    position: relative;
-    animation: modalGlitch 0.3s ease-out;
+    transform: rotate(-2deg);
 }
 
-@keyframes modalGlitch {
-    0% { transform: scale(0.8) skewX(20deg); opacity: 0; }
-    80% { transform: scale(1.05) skewX(-5deg); opacity: 1; }
-    100% { transform: scale(1) skewX(0); }
-}
-
-canvas { display: block; background: #050510; }
-
-.modal-controls {
+.modal-actions {
     display: flex;
     gap: 10px;
     margin-top: 10px;
 }
 
-.mod-btn {
+.action-btn {
     flex: 1;
-    padding: 10px;
+    padding: 15px;
+    border: 1px solid #fff;
     background: transparent;
-    border: 1px solid #444;
     color: #fff;
-    cursor: pointer;
-    font-family: var(--tech-font);
     font-weight: bold;
-    transition: 0.2s;
+    cursor: pointer;
 }
 
-.mod-btn.copy:hover { background: var(--bl-cyan); color: #000; border-color: var(--bl-cyan); }
-.mod-btn.close:hover { background: var(--kurama-red); color: #000; border-color: var(--kurama-red); }
+.action-btn.confirm:hover { background: var(--cyan); color: #000; }
+.action-btn.cancel:hover { background: var(--red); color: #000; }

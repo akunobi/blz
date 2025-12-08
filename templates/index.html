@@ -3,73 +3,71 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BLZ | SYSTEM V.2</title>
+    <title>PROJECT: EGOIST</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 
-    <div class="main-interface">
+    <div class="background-grid"></div>
+    <div class="vignette"></div>
+
+    <div class="hud-left">
+        <div class="brand-glitch" data-text="BLUE LOCK">BLUE LOCK</div>
+        <div class="channel-container" id="channel-list">
+            <div class="loading-text">SYNCING NEURAL LINK...</div>
+        </div>
+        <div class="status-indicator">SYSTEM: ONLINE</div>
+    </div>
+
+    <div class="chat-void">
+        <div class="chat-feed" id="chat-feed">
+            <div class="empty-state">
+                /// SELECT TARGET CHANNEL ///<br>
+                WAITING FOR INPUT
+            </div>
+        </div>
         
-        <div class="sidebar">
-            <div class="brand">EGOIST<br><span style="font-size:1rem; color:#fff;">SYSTEM</span></div>
-            <div id="channel-list" class="channel-list">
-                <div style="padding:20px; text-align:center; color:#555;">SCANNING...</div>
-            </div>
-            <div style="font-size:0.7rem; color:#444; text-align:center; padding:10px;">
-                CONNECTED: <span style="color:var(--bl-cyan)">TRUE</span>
+        <div class="input-deck">
+            <input type="text" id="msg-input" placeholder="ENTER DATA...">
+            <button id="send-btn" onclick="sendMessage()">TRANSMIT</button>
+        </div>
+    </div>
+
+    <div class="hud-right">
+        <div class="panel-header">/// EGOIST METRICS</div>
+        
+        <div class="stat-block offensive">
+            <div class="block-label">OFFENSIVE [BL]</div>
+            <div class="input-grid">
+                <input type="number" id="sht" placeholder="SHT">
+                <input type="number" id="dbl" placeholder="DBL">
+                <input type="number" id="stl" placeholder="STL">
+                <input type="number" id="psn" placeholder="PSN">
+                <input type="number" id="dfd" placeholder="DFD">
             </div>
         </div>
 
-        <div class="chat-section">
-            <div id="chat-feed">
-                <div style="text-align:center; margin-top:50px; color:#555;">
-                    /// SELECT A CHANNEL TO INITIALIZE LINK ///
-                </div>
-            </div>
-            
-            <div class="input-zone">
-                <input type="text" id="msg-input" placeholder="ENTER COMMAND / MESSAGE...">
-                <button id="send-btn" onclick="sendMessage()">SEND</button>
+        <div class="stat-block gk">
+            <div class="block-label" style="color:var(--red)">GK [KURAMA]</div>
+            <div class="input-grid">
+                <input type="number" id="dvg" placeholder="DVG">
+                <input type="number" id="biq" placeholder="BIQ">
+                <input type="number" id="rfx" placeholder="RFX">
+                <input type="number" id="dtg" placeholder="DTG">
             </div>
         </div>
 
-        <div class="stats-panel">
-            <div class="panel-title">/// PLAYER METRICS CONFIG</div>
-
-            <div class="stat-group">
-                <h4>[BL] OFFENSIVE</h4>
-                <div class="stat-inputs">
-                    <input type="number" id="sht" class="stat-field" placeholder="SHT" min="0" max="100">
-                    <input type="number" id="dbl" class="stat-field" placeholder="DBL" min="0" max="100">
-                    <input type="number" id="stl" class="stat-field" placeholder="STL" min="0" max="100">
-                    <input type="number" id="psn" class="stat-field" placeholder="PSN" min="0" max="100">
-                    <input type="number" id="dfd" class="stat-field" placeholder="DFD" min="0" max="100">
-                </div>
-            </div>
-
-            <div class="stat-group kurama">
-                <h4>[KYUBI] GOALKEEPER</h4>
-                <div class="stat-inputs">
-                    <input type="number" id="dvg" class="stat-field" placeholder="DVG" min="0" max="100">
-                    <input type="number" id="biq" class="stat-field" placeholder="BIQ" min="0" max="100">
-                    <input type="number" id="rfx" class="stat-field" placeholder="RFX" min="0" max="100">
-                    <input type="number" id="dtg" class="stat-field" placeholder="DTG" min="0" max="100">
-                </div>
-            </div>
-
-            <button id="ui-stats-btn" onclick="generateStats()">
-                GENERATE UI GRAPH
-            </button>
-        </div>
-
+        <button id="ui-stats-btn" onclick="generateStats()">
+            MATERIALIZE DATA
+        </button>
     </div>
 
     <div id="stats-modal" class="modal-overlay">
-        <div class="modal-box">
+        <div class="modal-card">
             <canvas id="stats-canvas" width="500" height="500"></canvas>
-            <div class="modal-controls">
-                <button id="close-modal" class="mod-btn close">CLOSE</button>
-                <button id="copy-stats-btn" class="mod-btn copy">COPY IMAGE</button>
+            <div class="modal-actions">
+                <button id="close-modal" class="action-btn cancel">CLOSE</button>
+                <button id="copy-stats-btn" class="action-btn confirm">COPY EGO</button>
             </div>
         </div>
     </div>
