@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchChannels();
     setInterval(() => {
         if (!isFetching && currentChannelId) fetchMessages();
-    }, 500);
+    }, 1000); // 1 segundo de refresh
 
     if(msgInput) {
         msgInput.addEventListener('keypress', (e) => {
@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             channels.forEach(ch => {
                 const cName = ch.name || "Unknown";
-                const cId = ch.id; // ES UN STRING, NO TOCAR
+                const cId = ch.id; 
 
                 const btn = document.createElement('button');
                 btn.className = 'channel-btn';
@@ -44,7 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     currentChannelId = cId;
                     document.querySelectorAll('.channel-btn').forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
-                    chatFeed.innerHTML = '<div style="padding:20px; text-align:center; opacity:0.5; color:var(--cyan);">/// ESTABLISHING UPLINK...</div>';
+                    chatFeed.innerHTML = '<div style="padding:20px; text-align:center; opacity:0.5; color:var(--accent-dim);">/// SYNCING FREQUENCY...</div>';
                     fetchMessages();
                 };
                 
@@ -52,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         } catch(e) { 
             console.error("Chan Error", e);
-            channelList.innerHTML = '<div style="color:var(--red); padding:10px;">[OFFLINE MODE]</div>';
+            channelList.innerHTML = '<div style="color:var(--glow-pink); padding:10px;">[OFFLINE MODE]</div>';
         }
     }
 
@@ -64,14 +64,13 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await fetch('/api/messages');
             const allMsgs = await res.json();
-            // Comparación de Strings
             const msgs = allMsgs.filter(m => m.channel_id === currentChannelId).reverse();
             const isScrolledToBottom = (chatFeed.scrollHeight - chatFeed.scrollTop - chatFeed.clientHeight) < 150;
 
             chatFeed.innerHTML = '';
             
             if (msgs.length === 0) {
-                chatFeed.innerHTML = '<div class="empty-state" style="text-align:center; padding:20px; color:#555;">NO DATA FOUND</div>';
+                chatFeed.innerHTML = '<div class="void-message"><span class="icon">✴</span><p>VOID SIGNAL</p></div>';
             } else {
                 msgs.forEach(msg => {
                     const card = document.createElement('div');
@@ -116,13 +115,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ channel_id: currentChannelId, content: content })
             });
-            
             const data = await res.json();
 
-            if (!res.ok) {
-                throw new Error(data.error || "Server Reject");
-            }
-            setTimeout(fetchMessages, 500);
+            if (!res.ok) throw new Error(data.error || "Server Reject");
+            
+            setTimeout(fetchMessages, 200);
             
         } catch(e) {
             alert("TRANSMISSION ERROR: " + e.message);
@@ -134,17 +131,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // =========================================================
-    // --- LÓGICA DE ESTADÍSTICAS ---
-    // =========================================================
-
+    // --- ESTADÍSTICAS ---
     window.generateStats = () => {
         let type = 'offensive';
         const gkInput = document.getElementById('dvg');
         
-        if (gkInput && gkInput.value.trim() !== "") {
-            type = 'gk';
-        }
+        if (gkInput && gkInput.value.trim() !== "") type = 'gk';
 
         const inputs = type === 'offensive' 
             ? ['sht', 'dbl', 'stl', 'psn', 'dfd'] 
@@ -157,31 +149,18 @@ document.addEventListener('DOMContentLoaded', () => {
         inputs.forEach(id => {
             const el = document.getElementById(id);
             if (!el) return;
-            
             let val = parseFloat(el.value);
-            if (isNaN(val)) val = 0; 
-            if (val > 10) val = 10; 
-            if (val < 0) val = 0;
-            
-            data[id] = val;
-            sum += val;
-            count++;
+            if (isNaN(val)) val = 0; if (val > 10) val = 10; if (val < 0) val = 0;
+            data[id] = val; sum += val; count++;
         });
 
         const avg = count > 0 ? sum / count : 0;
-        
-        let rank = "N/A";
-        if (type === 'offensive') {
-            rank = getOffensiveRank(avg);
-        } else {
-            rank = getGKRank(avg);
-        }
+        let rank = type === 'offensive' ? getOffensiveRank(avg) : getGKRank(avg);
 
         drawGraph(type, data, avg, rank);
         
         if(modal) modal.style.display = 'flex';
-        const drawer = document.getElementById('stats-drawer');
-        if(drawer) drawer.classList.remove('active');
+        document.getElementById('stats-drawer').classList.remove('active');
     };
 
     function getOffensiveRank(s) {
@@ -189,23 +168,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (s <= 4.8) return "ROOKIE STRIKERS 🥉 - ⭐";
         if (s <= 5.1) return "ROOKIE STRIKERS 🥉 - ⭐⭐";
         if (s <= 5.4) return "ROOKIE STRIKERS 🥉 - ⭐⭐⭐";
-        
         if (s <= 5.7) return "AMATEUR STRIKER ⚽ - ⭐";
         if (s <= 6.0) return "AMATEUR STRIKER ⚽ - ⭐⭐";
         if (s <= 6.3) return "AMATEUR STRIKER ⚽ - ⭐⭐⭐";
-        
         if (s <= 6.6) return "ELITE ⚡ - ⭐";
         if (s <= 6.9) return "ELITE ⚡ - ⭐⭐";
         if (s <= 7.2) return "ELITE ⚡ - ⭐⭐⭐";
-        
         if (s <= 7.5) return "PRODIGY 🏅 - ⭐";
         if (s <= 7.8) return "PRODIGY 🏅 - ⭐⭐";
         if (s <= 8.1) return "PRODIGY 🏅 - ⭐⭐⭐";
-        
         if (s <= 8.4) return "NEW GEN XI - ⭐";
         if (s <= 8.7) return "NEW GEN XI - ⭐⭐";
         if (s <= 9.0) return "NEW GEN XI - ⭐⭐⭐";
-        
         if (s <= 9.3) return "WORLD CLASS 👑 - ⭐";
         if (s <= 9.6) return "WORLD CLASS 👑 - ⭐⭐";
         return "WORLD CLASS 👑 - ⭐⭐⭐";
@@ -222,16 +196,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function drawGraph(type, data, avg, rank) {
         ctx.clearRect(0,0,500,500);
-        ctx.fillStyle = "#050505";
+        ctx.fillStyle = "#0a0a0a"; 
         ctx.fillRect(0,0,500,500);
 
         const cx = 250, cy = 250;
         const maxRadius = 140;
-        const color = type === 'offensive' ? '#00f2ff' : '#ff0040'; 
+        
+        // Colores nuevos: Cyan vs Magenta
+        const color = type === 'offensive' ? '#00f2ff' : '#ff0055'; 
 
         ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.shadowBlur = 15;
+        ctx.lineWidth = 1.5;
+        ctx.shadowBlur = 10;
         ctx.shadowColor = color;
         
         const keys = Object.keys(data);
@@ -255,15 +231,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         ctx.strokeStyle = "rgba(255,255,255,0.1)"; 
-        ctx.shadowBlur = 0;
-        ctx.stroke();
-
-        ctx.beginPath();
-        for(let i=0; i<total; i++) {
-            let a = i * angleStep - Math.PI/2;
-            ctx.moveTo(cx, cy);
-            ctx.lineTo(cx + Math.cos(a) * maxRadius, cy + Math.sin(a) * maxRadius);
-        }
         ctx.stroke();
 
         ctx.beginPath();
@@ -277,10 +244,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         ctx.closePath();
         
-        ctx.fillStyle = type === 'offensive' ? "rgba(0, 242, 255, 0.2)" : "rgba(255, 0, 64, 0.2)";
+        ctx.fillStyle = type === 'offensive' ? "rgba(0, 242, 255, 0.1)" : "rgba(255, 0, 85, 0.1)";
         ctx.fill();
         ctx.strokeStyle = color;
-        ctx.shadowBlur = 20;
         ctx.stroke();
 
         keys.forEach((k, i) => {
@@ -291,7 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             ctx.save();
             ctx.fillStyle = "#fff";
-            ctx.font = "bold 16px 'Courier New'";
+            ctx.font = "12px 'Space Mono'"; 
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.shadowBlur = 0;
@@ -301,11 +267,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         ctx.shadowBlur = 0;
         ctx.fillStyle = "#fff";
-        ctx.font = "14px 'Courier New'";
+        ctx.font = "12px 'Space Mono'"; 
         ctx.textAlign = "center";
         ctx.fillText(`AVG: ${avg.toFixed(1)} / 10`, cx, 440);
 
-        ctx.font = "bold 20px 'Impact'";
+        ctx.font = "bold 24px 'Syncopate'"; 
         ctx.fillStyle = color;
         ctx.shadowBlur = 10;
         ctx.shadowColor = color;

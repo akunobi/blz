@@ -3,95 +3,95 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PROTOCOL: CHAOS // LINK</title>
+    <title>EGOIST // VOID</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Teko:wght@400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syncopate:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
 
-    <div class="void-layer"></div>
-    <div class="glitch-grid"></div>
+    <div class="ambient-light"></div>
+    <div class="noise-overlay"></div>
 
-    <main class="anti-layout">
+    <main class="architect-layout">
 
-        <aside class="shard-sidebar">
-            <div class="shard-header">
-                <h1 class="glitch-title" data-text="BLUE LOCK">BLUE LOCK</h1>
-                <div class="sys-status">SYS.KURAMA: <span class="blink">UNSTABLE</span></div>
+        <aside class="glass-monolith">
+            <div class="monolith-header">
+                <h1>BLUE<br>LOCK</h1>
+                <div class="subtitle">SYSTEM.V9</div>
             </div>
             
-            <div class="channel-void" id="channel-list">
-                <div class="loading-shard">/// DECRYPTING...</div>
+            <div class="channel-stream" id="channel-list">
+                <div class="loading-state">/// SEARCHING FREQUENCY</div>
             </div>
         </aside>
 
-        <section class="chat-construct">
-            
-            <div class="construct-header">
-                <span>TARGET:// FOCUS_STREAM</span>
-                <button class="stats-trigger" onclick="toggleDrawer()">
-                    [ OPEN_EGO_METRICS ]
+        <section class="prism-chat">
+            <div class="prism-top">
+                <span class="decor-line"></span>
+                <button class="ghost-btn" onclick="toggleDrawer()">
+                    VIEW_METRICS +
                 </button>
             </div>
 
-            <div class="chat-window" id="chat-feed">
-                <div class="empty-feed">
-                    <div class="eye-icon">👁</div>
-                    NO LINK ESTABLISHED
+            <div class="chat-levitation" id="chat-feed">
+                <div class="void-message">
+                    <span class="icon">✴</span>
+                    <p>NO SIGNAL DETECTED</p>
                 </div>
             </div>
 
-            <div class="parasite-input">
-                <input type="text" id="msg-input" placeholder="INJECT COMMAND..." autocomplete="off">
-                <button id="send-btn">TRANSMIT</button>
+            <div class="floating-input-bar">
+                <input type="text" id="msg-input" placeholder="Initiate Protocol..." autocomplete="off">
+                <button id="send-btn">SEND</button>
             </div>
-
         </section>
 
     </main>
 
-    <div class="chaos-drawer" id="stats-drawer">
-        <div class="drawer-inner">
-            <div class="drawer-bar">
-                <h2>// EGOIST_METRICS</h2>
-                <button class="close-x" onclick="toggleDrawer()">ABORT</button>
+    <div class="phantom-drawer" id="stats-drawer">
+        <div class="drawer-glass">
+            <div class="drawer-head">
+                <h2>EGOIST DATA</h2>
+                <button class="close-minimal" onclick="toggleDrawer()">✕</button>
             </div>
 
-            <div class="metrics-split">
-                <div class="metric-zone logic">
-                    <h3>OFFENSIVE_LOGIC</h3>
-                    <div class="inputs-angled">
-                        <div class="inp-row"><label>SHT</label><input type="number" id="sht" placeholder="0"></div>
-                        <div class="inp-row"><label>DBL</label><input type="number" id="dbl" placeholder="0"></div>
-                        <div class="inp-row"><label>STL</label><input type="number" id="stl" placeholder="0"></div>
-                        <div class="inp-row"><label>PSN</label><input type="number" id="psn" placeholder="0"></div>
-                        <div class="inp-row"><label>DFD</label><input type="number" id="dfd" placeholder="0"></div>
+            <div class="stats-container">
+                <div class="stat-group">
+                    <h3>OFFENSIVE [LOGIC]</h3>
+                    <div class="minimal-inputs">
+                        <div class="inp"><label>SHT</label><input type="number" id="sht" placeholder="0"></div>
+                        <div class="inp"><label>DBL</label><input type="number" id="dbl" placeholder="0"></div>
+                        <div class="inp"><label>STL</label><input type="number" id="stl" placeholder="0"></div>
+                        <div class="inp"><label>PSN</label><input type="number" id="psn" placeholder="0"></div>
+                        <div class="inp"><label>DFD</label><input type="number" id="dfd" placeholder="0"></div>
                     </div>
                 </div>
 
-                <div class="metric-zone instinct">
-                    <h3>GK_INSTINCT</h3>
-                    <div class="inputs-angled">
-                        <div class="inp-row"><label>DVG</label><input type="number" id="dvg" placeholder="-"></div>
-                        <div class="inp-row"><label>BIQ</label><input type="number" id="biq" placeholder="-"></div>
-                        <div class="inp-row"><label>RFX</label><input type="number" id="rfx" placeholder="-"></div>
-                        <div class="inp-row"><label>DTG</label><input type="number" id="dtg" placeholder="-"></div>
+                <div class="separator"></div>
+
+                <div class="stat-group">
+                    <h3>GK [INSTINCT]</h3>
+                    <div class="minimal-inputs">
+                        <div class="inp"><label>DVG</label><input type="number" id="dvg" placeholder="-"></div>
+                        <div class="inp"><label>BIQ</label><input type="number" id="biq" placeholder="-"></div>
+                        <div class="inp"><label>RFX</label><input type="number" id="rfx" placeholder="-"></div>
+                        <div class="inp"><label>DTG</label><input type="number" id="dtg" placeholder="-"></div>
                     </div>
                 </div>
             </div>
 
             <button id="ui-stats-btn" onclick="generateStats()">
-                MANIFEST_DATA
+                MATERIALIZE
             </button>
         </div>
     </div>
 
-    <div id="stats-modal" class="modal-void">
-        <div class="modal-prism">
+    <div id="stats-modal" class="modal-backdrop">
+        <div class="modal-content">
             <canvas id="stats-canvas" width="500" height="500"></canvas>
-            <div class="modal-controls">
-                <button id="close-modal" class="ctl-btn">DISCARD</button>
-                <button id="copy-stats-btn" class="ctl-btn save">SAVE_IMAGE</button>
+            <div class="modal-opts">
+                <button id="close-modal" class="opt-btn">CLOSE</button>
+                <button id="copy-stats-btn" class="opt-btn primary">COPY GRAPH</button>
             </div>
         </div>
     </div>
