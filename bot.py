@@ -109,11 +109,27 @@ def get_messages():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# --- EN bot.py ---
+
 @app.route('/api/channels')
 def get_channels():
+    # INTENTO 1: Obtener canales en TIEMPO REAL desde Discord
+    if client.is_ready():
+        try:
+            category = client.get_channel(TARGET_CATEGORY_ID)
+            if category:
+                # Ordenamos por posición en Discord para que salgan en orden
+                channels = sorted(category.channels, key=lambda x: x.position)
+                return jsonify([{
+                    "channel_name": c.name, 
+                    "channel_id": c.id
+                } for c in channels])
+        except Exception as e:
+            print(f"Error leyendo live channels: {e}")
+
+    # INTENTO 2: Fallback a la Base de Datos (Si el bot aún no cargó)
     try:
         conn = get_db_connection()
-        # Seleccionamos canales únicos que tengan mensajes guardados
         channels = conn.execute('SELECT DISTINCT channel_name, channel_id FROM messages').fetchall()
         conn.close()
         return jsonify([dict(row) for row in channels])
