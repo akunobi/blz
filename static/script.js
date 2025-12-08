@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
         msgInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') window.sendMessage();
         });
-        // Soporte para botón de enviar si existe
+        // Soporte para botón si existe
         const sendBtn = document.getElementById('send-btn');
         if(sendBtn) sendBtn.onclick = window.sendMessage;
     }
@@ -31,7 +31,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/channels');
             const channels = await res.json();
 
-            // Evitar redibujar si no hay cambios drásticos o está vacío
             if (channels.length > 0) channelList.innerHTML = '';
             
             channels.forEach(ch => {
@@ -49,6 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     chatFeed.innerHTML = '<div style="padding:20px; text-align:center; opacity:0.5; color:var(--cyan);">/// ESTABLISHING UPLINK...</div>';
                     fetchMessages();
                 };
+                
                 channelList.appendChild(btn);
             });
         } catch(e) { 
@@ -119,10 +119,10 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const data = await res.json();
 
+            // Si falla, lanzamos error con el mensaje del servidor
             if (!res.ok) {
                 throw new Error(data.error || "Server Reject");
             }
-            // Éxito
             setTimeout(fetchMessages, 500);
             
         } catch(e) {
@@ -136,13 +136,14 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // =========================================================
-    // --- LÓGICA DE ESTADÍSTICAS EXACTAS ---
+    // --- LÓGICA DE ESTADÍSTICAS ---
     // =========================================================
 
     window.generateStats = () => {
         let type = 'offensive';
         const gkInput = document.getElementById('dvg');
         
+        // Detección automática de tipo
         if (gkInput && gkInput.value.trim() !== "") {
             type = 'gk';
         }
@@ -181,7 +182,6 @@ document.addEventListener('DOMContentLoaded', () => {
         drawGraph(type, data, avg, rank);
         
         if(modal) modal.style.display = 'flex';
-        // Cerrar drawer si está abierto
         const drawer = document.getElementById('stats-drawer');
         if(drawer) drawer.classList.remove('active');
     };
@@ -190,32 +190,26 @@ document.addEventListener('DOMContentLoaded', () => {
     function getOffensiveRank(s) {
         if (s < 4.6) return "N/A";
         
-        // Rookie Strikers 🥉
         if (s <= 4.8) return "ROOKIE STRIKERS 🥉 - ⭐";
         if (s <= 5.1) return "ROOKIE STRIKERS 🥉 - ⭐⭐";
         if (s <= 5.4) return "ROOKIE STRIKERS 🥉 - ⭐⭐⭐";
         
-        // Amateur Striker ⚽
         if (s <= 5.7) return "AMATEUR STRIKER ⚽ - ⭐";
         if (s <= 6.0) return "AMATEUR STRIKER ⚽ - ⭐⭐";
         if (s <= 6.3) return "AMATEUR STRIKER ⚽ - ⭐⭐⭐";
         
-        // Elite ⚡
         if (s <= 6.6) return "ELITE ⚡ - ⭐";
         if (s <= 6.9) return "ELITE ⚡ - ⭐⭐";
         if (s <= 7.2) return "ELITE ⚡ - ⭐⭐⭐";
         
-        // Prodigy 🏅
         if (s <= 7.5) return "PRODIGY 🏅 - ⭐";
         if (s <= 7.8) return "PRODIGY 🏅 - ⭐⭐";
         if (s <= 8.1) return "PRODIGY 🏅 - ⭐⭐⭐";
         
-        // New Gen XI
         if (s <= 8.4) return "NEW GEN XI - ⭐";
         if (s <= 8.7) return "NEW GEN XI - ⭐⭐";
         if (s <= 9.0) return "NEW GEN XI - ⭐⭐⭐";
         
-        // World Class 👑
         if (s <= 9.3) return "WORLD CLASS 👑 - ⭐";
         if (s <= 9.6) return "WORLD CLASS 👑 - ⭐⭐";
         return "WORLD CLASS 👑 - ⭐⭐⭐";

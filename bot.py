@@ -14,16 +14,17 @@ app.secret_key = os.urandom(24)
 
 TOKEN = os.getenv("DISCORD_TOKEN") 
 
-# Configuración de Categoría (Prioridad: Render > Local > Default)
+# Configuración de Categoría
 try:
     raw_id = os.getenv("CATEGORY_ID")
     if not raw_id:
-        print("!!! [ALERTA] Variable CATEGORY_ID no encontrada. Usando 0.")
+        print("!!! [ALERTA] Variable CATEGORY_ID no encontrada en Render. Usando 0.")
         TARGET_CATEGORY_ID = 0
     else:
         TARGET_CATEGORY_ID = int(raw_id)
 except ValueError:
     TARGET_CATEGORY_ID = 0
+    print("!!! [ERROR] CATEGORY_ID no es numérico.")
 
 # --- SETUP DISCORD ---
 intents = discord.Intents.default()
@@ -56,13 +57,13 @@ def init_db():
         conn.commit()
         conn.close()
     except Exception as e:
-        print(f"[DB ERROR]: {e}")
+        print(f"!!! [DB ERROR]: {e}")
 
 # --- EVENTOS DEL BOT ---
 @client.event
 async def on_ready():
     print(f'>>> [DISCORD]: Conectado como {client.user}')
-    print(f'>>> [DISCORD]: ID Categoría: {TARGET_CATEGORY_ID}')
+    print(f'>>> [DISCORD]: ID Categoría Objetivo: {TARGET_CATEGORY_ID}')
     bot_ready_event.set()
 
 @client.event
@@ -78,10 +79,10 @@ async def on_message(message):
                     INSERT INTO messages (channel_id, channel_name, author_name, author_avatar, content)
                     VALUES (?, ?, ?, ?, ?)
                 ''', (
-                    message.channel.id, 
-                    message.channel.name, 
-                    message.author.name, 
-                    str(message.author.avatar.url) if message.author.avatar else "https://cdn.discordapp.com/embed/avatars/0.png", 
+                    message.channel.id,
+                    message.channel.name,
+                    message.author.name,
+                    str(message.author.avatar.url) if message.author.avatar else "https://cdn.discordapp.com/embed/avatars/0.png",
                     message.content
                 ))
                 conn.commit()
@@ -97,14 +98,14 @@ def index():
 
 @app.route('/api/admin/reset')
 def reset_database():
-    """Limpia la base de datos de canales antiguos."""
+    """Limpia la base de datos (Use esto si los canales dan error 404)."""
     try:
         conn = get_db_connection()
-        conn.execute('DELETE FROM messages') # Usamos DELETE para no bloquear el archivo
+        conn.execute('DELETE FROM messages') 
         conn.execute('VACUUM')
         conn.commit()
         conn.close()
-        return jsonify({"status": "SUCCESS", "message": "Base de datos purgada."})
+        return jsonify({"status": "SUCCESS", "message": "Base de datos purgada. Escribe en Discord para recargar canales."})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -115,7 +116,7 @@ def get_channels():
 
     async def get_channels_async():
         try:
-            # Intentar obtener la categoría (API o Caché)
+            # Prioridad: API Discord
             category = client.get_channel(TARGET_CATEGORY_ID)
             if not category:
                 try:
@@ -138,7 +139,7 @@ def get_channels():
         if channels:
             return jsonify(channels)
         
-        # Fallback a DB si Discord falla
+        # Fallback: DB
         conn = get_db_connection()
         db_chans = conn.execute('SELECT DISTINCT channel_name as name, channel_id as id FROM messages').fetchall()
         conn.close()
@@ -159,13 +160,12 @@ def get_messages():
 @app.route('/api/send', methods=['POST'])
 def send_message():
     """
-    Ruta CRÍTICA de envío. Maneja errores para evitar el 500.
+    Envía mensajes. Devuelve 400 si el canal no existe, 500 si falla el server.
     """
     data = request.json
     channel_id = data.get('channel_id')
     content = data.get('content')
     
-    # Log para ver qué llega
     print(f"\n>>> [WEB SEND] ID: {channel_id} | Msg: {content}")
     
     if not channel_id or not content:
@@ -177,30 +177,29 @@ def send_message():
     async def send_async():
         try:
             c_id = int(channel_id)
-            # Usamos fetch_channel para asegurar que el canal existe REALMENTE
+            # Fetch channel fuerza la comprobación real con Discord
             channel = await client.fetch_channel(c_id)
             await channel.send(content)
             return {"success": True}
         except discord.NotFound:
-            print(f"!!! [ERROR] Canal {c_id} NO EXISTE en Discord.")
-            return {"success": False, "error": "Canal no encontrado (ID inválida/Borrado)."}
+            print(f"!!! [ERROR] Canal {c_id} NO ENCONTRADO.")
+            return {"success": False, "error": "Canal no encontrado en Discord (ID vieja)."}
         except discord.Forbidden:
             print(f"!!! [ERROR] SIN PERMISOS en {c_id}.")
-            return {"success": False, "error": "Bot sin permisos."}
+            return {"success": False, "error": "Bot sin permisos para escribir."}
         except Exception as e:
             print(f"!!! [ERROR CRÍTICO]: {e}")
             return {"success": False, "error": str(e)}
 
     try:
-        # Ejecutar en el hilo del bot
         future = asyncio.run_coroutine_threadsafe(send_async(), bot_loop)
-        result = future.result(timeout=8) # Timeout seguro
+        result = future.result(timeout=10)
         
         if result["success"]:
             return jsonify({"status": "OK"})
         else:
-            # Aquí evitamos el 500 devolviendo el error controlado
-            return jsonify({"error": result["error"]}), 404 # 404 o 400 según el error
+            # Devolvemos 400 Bad Request porque el error es del cliente (ID mala o permisos)
+            return jsonify({"error": result["error"]}), 400 
             
     except Exception as e:
         return jsonify({"error": f"Internal Error: {e}"}), 500
