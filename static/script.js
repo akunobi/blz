@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // --- REFERENCIAS ---
     const channelList = document.getElementById('channel-list');
     const chatFeed = document.getElementById('chat-feed');
     const msgInput = document.getElementById('msg-input');
@@ -56,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     const now = new Date();
                     hudDate.innerText = now.toLocaleDateString();
-                    startTimer(); // Reiniciar contador de tiempo
+                    startTimer(); 
 
                     chatFeed.innerHTML = '<div style="text-align:center; margin-top:50px; color:var(--bl-cyan); font-family:\'Koulen\'">SYNCING DATA...</div>';
                     fetchMessages();
@@ -145,7 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- ESTADÍSTICAS (Igual que antes) ---
+    // --- ESTADÍSTICAS ---
     window.generateStats = () => {
         let type = 'offensive';
         if (document.getElementById('dvg').value.trim() !== "") type = 'gk';
@@ -165,6 +166,7 @@ document.addEventListener('DOMContentLoaded', () => {
         drawGraph(type, data, avg, rank);
         
         if(modal) modal.style.display = 'flex';
+        // Cerramos el drawer al mostrar el modal (para que se vea bien)
         document.getElementById('stats-drawer').classList.remove('active');
     };
 
@@ -245,8 +247,15 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.fillText(rank, cx, 480);
     }
 
+    // --- AQUÍ ESTÁ EL CAMBIO ---
     const closeBtn = document.getElementById('close-modal');
-    if(closeBtn) closeBtn.onclick = () => modal.style.display = 'none';
+    if(closeBtn) closeBtn.onclick = () => {
+        // 1. Cierra el Modal
+        modal.style.display = 'none';
+        // 2. Abre de nuevo el Drawer de Stats
+        document.getElementById('stats-drawer').classList.add('active');
+    };
+
     const copyBtn = document.getElementById('copy-stats-btn');
     if(copyBtn) copyBtn.onclick = () => {
         canvas.toBlob(blob => {
