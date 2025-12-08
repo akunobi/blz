@@ -9,18 +9,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentChannelId = null;
 
-    // --- 1. CARGA INICIAL ---
+    // --- INIT ---
     fetchChannels();
     setInterval(fetchMessages, 3000);
 
-    // --- 2. CANALES Y MENSAJES ---
+    // --- CHAT LOGIC ---
     async function fetchChannels() {
         try {
             const res = await fetch('/api/channels');
             const channels = await res.json();
-            
             if (channels.length > 0) channelList.innerHTML = '';
-            
             channels.forEach(ch => {
                 const btn = document.createElement('div');
                 btn.className = 'channel-btn';
@@ -33,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
                 channelList.appendChild(btn);
             });
-        } catch(e) { console.error("Error Channels", e); }
+        } catch(e) { console.error("Chan Error", e); }
     }
 
     async function fetchMessages() {
@@ -57,29 +55,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
                 chatFeed.appendChild(card);
             });
-            // SCROLL DOWN AUTOMÁTICO
             chatFeed.scrollTop = chatFeed.scrollHeight;
-        } catch(e) { console.error("Error Msgs", e); }
+        } catch(e) { console.error("Msg Error", e); }
     }
 
     window.sendMessage = async () => {
         const content = msgInput.value;
         if (!content || !currentChannelId) return;
         try {
-            await fetch('/api/send', {
+            const res = await fetch('/api/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ channel_id: currentChannelId, content: content })
             });
+            if (!res.ok) throw new Error("Server Reject");
             msgInput.value = '';
             setTimeout(fetchMessages, 500);
-        } catch(e) { alert("ERROR TRANSMISIÓN"); }
+        } catch(e) { alert("ERROR SENDING MSG: " + e); }
     };
 
-    // --- 3. UI STATS (PENTÁGONO VS CÍRCULO) ---
+    // --- STATS LOGIC (0-10 SCALE) ---
     window.generateStats = () => {
-        // Lógica: Si hay algo escrito en GK (dvg), es GK. Si no, Ofensivo.
         let type = 'offensive';
+        // Si hay valor en el primer campo de GK, asumimos GK
         if (document.getElementById('dvg').value !== "") {
             type = 'gk';
         }
@@ -93,102 +91,141 @@ document.addEventListener('DOMContentLoaded', () => {
         let count = 0;
 
         inputs.forEach(id => {
+            // Obtener valor (puede ser decimal, ej: 8.5)
             let val = parseFloat(document.getElementById(id).value) || 0;
-            if (val > 100) val = 100;
+            // Clamping 0-10
+            if (val > 10) val = 10;
+            if (val < 0) val = 0;
+            
             data[id] = val;
             sum += val;
             count++;
         });
 
         const avg = count > 0 ? sum / count : 0;
-        const rank = getRankText(avg, type); // Tu funcion de rangos previa
+        const rank = getRankText(avg, type);
 
         drawGraph(type, data, avg, rank);
         modal.style.display = 'flex';
     };
 
-    function getRankText(avg, type) {
-        let s = parseFloat((avg / 10).toFixed(1));
+    function getRankText(s, type) {
+        // s ya viene en escala 0-10
         if (type === 'offensive') {
+            if (s < 4.6) return "UNRANKED";
             if (s <= 5.4) return "ROOKIE 🥉";
+            if (s <= 6.3) return "AMATEUR ⚽";
             if (s <= 7.2) return "ELITE ⚡";
+            if (s <= 8.1) return "PRODIGY 🏅";
             if (s <= 9.0) return "NEW GEN XI ⭐";
             return "WORLD CLASS 👑";
         } else {
             if (s <= 6.9) return "D TIER";
+            if (s <= 7.9) return "C TIER";
             if (s <= 8.4) return "B TIER";
+            if (s <= 8.9) return "A TIER";
             if (s <= 9.4) return "S TIER";
             return "S+ TIER";
         }
     }
 
     function drawGraph(type, data, avg, rank) {
-        // Reset Canvas
+        // Reset
         ctx.clearRect(0,0,500,500);
         ctx.fillStyle = "#020205";
         ctx.fillRect(0,0,500,500);
 
-        const cx = 250, cy = 230, radius = 130;
+        const cx = 250, cy = 230;
+        const maxRadius = 130; // Radio máximo
         const color = type === 'offensive' ? '#00f2ff' : '#ff0040';
 
         ctx.strokeStyle = color;
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 2;
         ctx.shadowBlur = 15;
         ctx.shadowColor = color;
         
         const keys = Object.keys(data);
-        const step = (Math.PI * 2) / keys.length;
+        const total = keys.length;
+        const angleStep = (Math.PI * 2) / total;
 
-        // 1. DIBUJAR BASE (Pentágono o Círculo)
+        // --- DIBUJAR BASE ---
         ctx.beginPath();
-        if (type === 'gk') {
-            // Círculos Concentricos (GK)
-            for(let i=1; i<=4; i++) {
-                ctx.moveTo(cx + (radius/4)*i, cy);
-                ctx.arc(cx, cy, (radius/4)*i, 0, Math.PI*2);
-            }
-        } else {
-            // Pentágono Grid (Offensive)
-            for (let i = 1; i <= 4; i++) {
-                let r = (radius / 4) * i;
-                for (let j = 0; j < keys.length; j++) {
-                    let a = j * step - Math.PI/2;
-                    let x = cx + Math.cos(a) * r;
-                    let y = cy + Math.sin(a) * r;
-                    if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-                }
-                ctx.closePath();
-            }
+        // Círculos de guía (al 25%, 50%, 75%, 100% de 10)
+        for(let i=1; i<=4; i++) {
+            let r = (maxRadius/4)*i;
+            ctx.moveTo(cx + r, cy);
+            ctx.arc(cx, cy, r, 0, Math.PI*2);
         }
-        ctx.save();
-        ctx.strokeStyle = "rgba(255,255,255,0.1)"; // Grid tenue
+        ctx.strokeStyle = "rgba(255,255,255,0.1)";
         ctx.stroke();
-        ctx.restore();
 
-        // 2. DIBUJAR FORMA DE DATOS
-        ctx.beginPath();
+        // --- DIBUJAR DATOS ---
+        
+        if (type === 'gk') {
+            // === GK: SECTORES (Pie Slices / Polar Area) ===
+            keys.forEach((k, i) => {
+                let val = data[k];
+                let r = (val / 10) * maxRadius; // Escala sobre 10
+                
+                // Angulo inicio y fin del sector
+                let startAngle = i * angleStep - Math.PI/2;
+                let endAngle = (i + 1) * angleStep - Math.PI/2;
+
+                ctx.beginPath();
+                ctx.moveTo(cx, cy); // Centro
+                ctx.arc(cx, cy, r, startAngle, endAngle); // Arco externo
+                ctx.lineTo(cx, cy); // Volver al centro
+                ctx.fillStyle = "rgba(255, 0, 64, 0.4)"; // Relleno solido
+                ctx.fill();
+                ctx.strokeStyle = color;
+                ctx.stroke();
+            });
+
+        } else {
+            // === OFFENSIVE: PENTAGONO ===
+            ctx.beginPath();
+            keys.forEach((k, i) => {
+                let val = data[k];
+                let r = (val / 10) * maxRadius; // Escala sobre 10
+                let a = i * angleStep - Math.PI/2;
+                let x = cx + Math.cos(a) * r;
+                let y = cy + Math.sin(a) * r;
+                
+                if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+            });
+            ctx.closePath();
+            ctx.fillStyle = "rgba(0, 242, 255, 0.2)";
+            ctx.fill();
+            ctx.stroke();
+        }
+
+        // --- ETIQUETAS ---
         keys.forEach((k, i) => {
-            let val = data[k];
-            let r = (val / 100) * radius;
-            let a = i * step - Math.PI/2;
-            let x = cx + Math.cos(a) * r;
-            let y = cy + Math.sin(a) * r;
-            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            // Posicion etiqueta fija afuera
+            let a = type === 'gk' 
+                ? (i * angleStep + (angleStep/2)) - Math.PI/2 // GK: Centrado en el sector
+                : i * angleStep - Math.PI/2; // Off: En el vértice
             
-            // Labels
-            drawLabel(k.toUpperCase(), a, cx, cy, radius + 25);
+            let labelR = maxRadius + 30;
+            let lx = cx + Math.cos(a) * labelR;
+            let ly = cy + Math.sin(a) * labelR;
+            
+            ctx.save();
+            ctx.fillStyle = "#fff";
+            ctx.font = "bold 16px Consolas";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.shadowBlur = 0;
+            ctx.fillText(k.toUpperCase(), lx, ly);
+            ctx.restore();
         });
-        ctx.closePath();
-        ctx.fillStyle = type === 'offensive' ? "rgba(0, 242, 255, 0.2)" : "rgba(255, 0, 64, 0.2)";
-        ctx.fill();
-        ctx.stroke();
 
-        // 3. TEXTOS
+        // --- RESULTADOS TEXTO ---
         ctx.shadowBlur = 0;
         ctx.fillStyle = "#fff";
         ctx.font = "20px Courier New";
         ctx.textAlign = "center";
-        ctx.fillText(`AVG: ${avg.toFixed(1)}`, cx, 430);
+        ctx.fillText(`AVG: ${avg.toFixed(1)} / 10`, cx, 430);
 
         ctx.font = "bold 28px Impact";
         ctx.fillStyle = color;
@@ -196,24 +233,23 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.fillText(rank, cx, 465);
     }
 
-    function drawLabel(text, angle, cx, cy, r) {
-        let x = cx + Math.cos(angle) * r;
-        let y = cy + Math.sin(angle) * r;
-        ctx.save();
-        ctx.fillStyle = "#fff";
-        ctx.font = "bold 14px Consolas";
-        ctx.textAlign = "center";
-        ctx.fillText(text, x, y);
-        ctx.restore();
-    }
-
-    // BOTONES MODAL
+    // --- MODAL CONTROLS ---
     document.getElementById('close-modal').onclick = () => modal.style.display = 'none';
+    
     document.getElementById('copy-stats-btn').onclick = () => {
         canvas.toBlob(blob => {
-            const item = new ClipboardItem({ "image/png": blob });
-            navigator.clipboard.write([item]);
-            alert("IMAGE COPIED TO CLIPBOARD");
+            // Clipboard API requiere contexto seguro (https o localhost)
+            try {
+                const item = new ClipboardItem({ "image/png": blob });
+                navigator.clipboard.write([item]).then(() => {
+                    const btn = document.getElementById('copy-stats-btn');
+                    const prev = btn.innerText;
+                    btn.innerText = "COPIED!";
+                    setTimeout(() => btn.innerText = prev, 2000);
+                }).catch(err => alert("Clipboard Error: " + err));
+            } catch (e) {
+                alert("Browser not supporting direct clipboard write. Right click image to save.");
+            }
         });
     };
 });
