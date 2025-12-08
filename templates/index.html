@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PROJECT: EGOIST</title>
+    <title>PROJECT: EGOIST | TERMINAL</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -13,22 +13,28 @@
 
     <div class="hud-left">
         <div class="brand-glitch" data-text="BLUE LOCK">BLUE LOCK</div>
+        
         <div class="channel-container" id="channel-list">
             <div class="loading-text">SYNCING NEURAL LINK...</div>
         </div>
-        <div class="status-indicator">SYSTEM: ONLINE</div>
+        
+        <div class="status-indicator">
+            <span style="color:var(--cyan)">SYSTEM:</span> ONLINE
+            <br>
+            <span style="color:var(--red)">EGO:</span> UNSTABLE
+        </div>
     </div>
 
     <div class="chat-void">
         <div class="chat-feed" id="chat-feed">
             <div class="empty-state">
                 /// SELECT TARGET CHANNEL ///<br>
-                WAITING FOR INPUT
+                WAITING FOR INPUT STREAM...
             </div>
         </div>
         
         <div class="input-deck">
-            <input type="text" id="msg-input" placeholder="ENTER DATA...">
+            <input type="text" id="msg-input" placeholder="ENTER COMMAND / MESSAGE...">
             <button id="send-btn" onclick="sendMessage()">TRANSMIT</button>
         </div>
     </div>
@@ -37,23 +43,23 @@
         <div class="panel-header">/// EGOIST METRICS</div>
         
         <div class="stat-block offensive">
-            <div class="block-label">OFFENSIVE [BL]</div>
+            <div class="block-label">OFFENSIVE [0-10]</div>
             <div class="input-grid">
-                <input type="number" id="sht" placeholder="SHT">
-                <input type="number" id="dbl" placeholder="DBL">
-                <input type="number" id="stl" placeholder="STL">
-                <input type="number" id="psn" placeholder="PSN">
-                <input type="number" id="dfd" placeholder="DFD">
+                <input type="number" id="sht" placeholder="SHT" step="0.1" min="0" max="10">
+                <input type="number" id="dbl" placeholder="DBL" step="0.1" min="0" max="10">
+                <input type="number" id="stl" placeholder="STL" step="0.1" min="0" max="10">
+                <input type="number" id="psn" placeholder="PSN" step="0.1" min="0" max="10">
+                <input type="number" id="dfd" placeholder="DFD" step="0.1" min="0" max="10">
             </div>
         </div>
 
         <div class="stat-block gk">
-            <div class="block-label" style="color:var(--red)">GK [KURAMA]</div>
+            <div class="block-label" style="color:var(--red)">GK [0-10]</div>
             <div class="input-grid">
-                <input type="number" id="dvg" placeholder="DVG">
-                <input type="number" id="biq" placeholder="BIQ">
-                <input type="number" id="rfx" placeholder="RFX">
-                <input type="number" id="dtg" placeholder="DTG">
+                <input type="number" id="dvg" placeholder="DVG" step="0.1" min="0" max="10">
+                <input type="number" id="biq" placeholder="BIQ" step="0.1" min="0" max="10">
+                <input type="number" id="rfx" placeholder="RFX" step="0.1" min="0" max="10">
+                <input type="number" id="dtg" placeholder="DTG" step="0.1" min="0" max="10">
             </div>
         </div>
 
@@ -65,6 +71,7 @@
     <div id="stats-modal" class="modal-overlay">
         <div class="modal-card">
             <canvas id="stats-canvas" width="500" height="500"></canvas>
+            
             <div class="modal-actions">
                 <button id="close-modal" class="action-btn cancel">CLOSE</button>
                 <button id="copy-stats-btn" class="action-btn confirm">COPY EGO</button>
@@ -73,5 +80,13 @@
     </div>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
+    
+    <script>
+        document.getElementById('msg-input').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                window.sendMessage();
+            }
+        });
+    </script>
 </body>
 </html>

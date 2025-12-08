@@ -7,32 +7,30 @@ from flask import Flask, render_template, jsonify, request
 
 # --- CONFIGURACIÓN ---
 app = Flask(__name__)
-# El token debe estar en las Environment Variables de Render como DISCORD_TOKEN
 TOKEN = os.getenv("DISCORD_TOKEN") 
-TARGET_CATEGORY_ID = 1355062396322058287
+# Asegúrate de que este ID sea correcto y el bot tenga acceso a ver/escribir en esos canales
+TARGET_CATEGORY_ID = 1355062396322058287 
 
-# --- DISCORD BOT SETUP ---
+# --- SETUP DISCORD ---
 intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
 
-# --- GESTIÓN DE BASE DE DATOS ---
+# Variable global para guardar el bucle de eventos del bot
+bot_loop = None
+
+# --- BASE DE DATOS ---
 def get_db_connection():
-    # check_same_thread=False permite que Flask y Discord accedan (aunque es mejor abrir/cerrar)
+    # check_same_thread=False es vital para que Flask y el Bot compartan la DB
     conn = sqlite3.connect('database.db', check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
 def init_db_automatically():
-    """
-    Esta función se ejecuta SIEMPRE al iniciar para asegurar que las tablas existen.
-    Soluciona el error 'no such table: messages' en Render.
-    """
+    """Inicializa la DB al arrancar para evitar errores en Render"""
     try:
         conn = get_db_connection()
         c = conn.cursor()
-        
-        # Tabla para mensajes (Sistema de Tickets/Chat)
         c.execute('''
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,56 +42,45 @@ def init_db_automatically():
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-
-        # Tabla simple para Stats (Opcional)
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS stats (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                type TEXT,
-                data TEXT
-            )
-        ''')
-        
         conn.commit()
         conn.close()
-        print(">>> [SYSTEM]: DATABASE INTEGRITY VERIFIED. EGOIST MEMORY READY.")
+        print(">>> [SYSTEM]: DATABASE INTEGRITY VERIFIED.")
     except Exception as e:
-        print(f"!!! [CRITICAL ERROR]: DATABASE INIT FAILED: {e}")
+        print(f"!!! [DB ERROR]: {e}")
 
-# --- EVENTOS DE DISCORD ---
+# --- EVENTOS DEL BOT ---
 @client.event
 async def on_ready():
-    print(f'>>> [LOCKED IN]: Bot conectado como {client.user}')
+    print(f'>>> [BOT]: CONNECTED AS {client.user}')
 
 @client.event
 async def on_message(message):
-    # Ignorar mensajes del propio bot
     if message.author == client.user:
         return
 
-    # Verificar si el canal pertenece a la categoría especificada
-    # Nota: A veces category_id puede ser None si es DM o canal suelto, protegemos con try
-    try:
-        if message.channel.category and message.channel.category.id == TARGET_CATEGORY_ID:
-            conn = get_db_connection()
-            c = conn.cursor()
-            c.execute('''
-                INSERT INTO messages (channel_id, channel_name, author_name, author_avatar, content)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (
-                message.channel.id,
-                message.channel.name,
-                message.author.name,
-                str(message.author.avatar.url) if message.author.avatar else "https://cdn.discordapp.com/embed/avatars/0.png",
-                message.content
-            ))
-            conn.commit()
-            conn.close()
-            print(f">>> [DATA DEVOURED]: Mensaje guardado de {message.author.name} en #{message.channel.name}")
-    except Exception as e:
-        print(f"!!! [ERROR SAVING MSG]: {e}")
+    # Verificar si el mensaje viene de la categoría correcta
+    # Usamos hasattr para evitar errores si es un DM
+    if hasattr(message.channel, 'category') and message.channel.category:
+        if message.channel.category.id == TARGET_CATEGORY_ID:
+            try:
+                conn = get_db_connection()
+                conn.execute('''
+                    INSERT INTO messages (channel_id, channel_name, author_name, author_avatar, content)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (
+                    message.channel.id,
+                    message.channel.name,
+                    message.author.name,
+                    str(message.author.avatar.url) if message.author.avatar else "https://cdn.discordapp.com/embed/avatars/0.png",
+                    message.content
+                ))
+                conn.commit()
+                conn.close()
+                print(f">>> [MSG SAVED]: {message.author.name} in #{message.channel.name}")
+            except Exception as e:
+                print(f"!!! [SAVE ERROR]: {e}")
 
-# --- RUTAS DE FLASK (WEB) ---
+# --- RUTAS FLASK ---
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -102,44 +89,46 @@ def index():
 def get_messages():
     try:
         conn = get_db_connection()
-        # Traemos los últimos 100 mensajes para no saturar
-        messages = conn.execute('SELECT * FROM messages ORDER BY timestamp DESC LIMIT 100').fetchall()
+        # Traer los últimos 100 mensajes
+        msgs = conn.execute('SELECT * FROM messages ORDER BY timestamp DESC LIMIT 100').fetchall()
         conn.close()
-        return jsonify([dict(row) for row in messages])
+        return jsonify([dict(row) for row in msgs])
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- EN bot.py ---
-
 @app.route('/api/channels')
 def get_channels():
-    # INTENTO 1: Obtener canales en TIEMPO REAL desde Discord
+    # Intento 1: Obtener canales en TIEMPO REAL desde Discord
     if client.is_ready():
         try:
+            # Usamos fetch_channel para asegurar que tenemos datos frescos
+            # Nota: fetch_channel es asíncrono, pero aquí estamos en contexto síncrono.
+            # Usaremos get_channel que lee de caché, si falla, el usuario verá la lista vacía hasta que el bot cargue.
             category = client.get_channel(TARGET_CATEGORY_ID)
+            
             if category:
-                # Ordenamos por posición en Discord para que salgan en orden
+                # Ordenar por posición
                 channels = sorted(category.channels, key=lambda x: x.position)
                 return jsonify([{
                     "channel_name": c.name, 
                     "channel_id": c.id
                 } for c in channels])
+            else:
+                print("!!! [ERROR]: Category ID not found in cache. Bot might need a restart or ID is wrong.")
         except Exception as e:
-            print(f"Error leyendo live channels: {e}")
+            print(f"Error live channels: {e}")
 
-    # INTENTO 2: Fallback a la Base de Datos (Si el bot aún no cargó)
-    try:
-        conn = get_db_connection()
-        channels = conn.execute('SELECT DISTINCT channel_name, channel_id FROM messages').fetchall()
-        conn.close()
-        return jsonify([dict(row) for row in channels])
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    # Intento 2: Fallback a Base de Datos (si el bot no está listo)
+    conn = get_db_connection()
+    channels = conn.execute('SELECT DISTINCT channel_name, channel_id FROM messages').fetchall()
+    conn.close()
+    return jsonify([dict(row) for row in channels])
 
 @app.route('/api/send', methods=['POST'])
 def send_message():
     """
-    Permite enviar mensajes desde la Web hacia Discord.
+    Ruta crítica para enviar mensajes.
+    Usa fetch_channel y run_coroutine_threadsafe.
     """
     data = request.json
     channel_id = data.get('channel_id')
@@ -148,47 +137,58 @@ def send_message():
     if not channel_id or not content:
         return jsonify({"error": "Missing data"}), 400
 
+    if not bot_loop:
+        return jsonify({"error": "Bot loop not ready"}), 500
+
+    # Función interna asíncrona para hacer el envío
+    async def send_async_task():
+        try:
+            # fetch_channel hace una llamada API (más lento pero seguro)
+            # get_channel usa caché (rápido pero a veces falla si no está en caché)
+            channel = await client.fetch_channel(int(channel_id))
+            await channel.send(content)
+            return True
+        except Exception as e:
+            print(f"!!! [SEND ERROR]: {e}")
+            return False
+
+    # Ejecutar la tarea en el hilo del bot
     try:
-        # Convertimos ID a entero
-        c_id_int = int(channel_id)
+        future = asyncio.run_coroutine_threadsafe(send_async_task(), bot_loop)
+        # Esperamos el resultado (timeout de 5s para no bloquear la web si Discord va lento)
+        success = future.result(timeout=5)
         
-        # Obtenemos el canal desde el cache del bot
-        channel = client.get_channel(c_id_int)
-        
-        if channel:
-            # Ejecutar el envío asíncrono desde el hilo síncrono de Flask
-            future = asyncio.run_coroutine_threadsafe(channel.send(content), client.loop)
-            future.result() # Esperar a que se envíe (opcional, para confirmar éxito)
+        if success:
             return jsonify({"status": "sent"})
         else:
-            return jsonify({"error": "Channel not found or Bot not ready"}), 404
-            
+            return jsonify({"error": "Discord Error"}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- ARRANQUE HÍBRIDO ---
+# --- ARRANQUE ---
 def run_discord_bot():
-    if not TOKEN:
-        print("!!! [ERROR]: NO DISCORD TOKEN FOUND. CHECK .ENV OR RENDER SETTINGS.")
-        return
+    global bot_loop
+    bot_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(bot_loop)
     
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    if not TOKEN:
+        print("!!! [CRITICAL]: NO TOKEN FOUND. CHECK ENV VARIABLES.")
+        return
+
     try:
-        loop.run_until_complete(client.start(TOKEN))
+        bot_loop.run_until_complete(client.start(TOKEN))
     except Exception as e:
         print(f"!!! [BOT CRASH]: {e}")
 
 if __name__ == '__main__':
-    # 1. INICIALIZAR LA BASE DE DATOS ANTES DE NADA
-    # Esto arregla el error "no such table: messages"
+    # 1. Inicializar DB
     init_db_automatically()
-
-    # 2. Iniciar el bot en un hilo separado (background)
-    bot_thread = threading.Thread(target=run_discord_bot)
-    bot_thread.start()
     
-    # 3. Iniciar servidor Web (Render asigna el puerto en la variable PORT)
+    # 2. Hilo del Bot
+    t = threading.Thread(target=run_discord_bot)
+    t.start()
+    
+    # 3. Servidor Web
     port = int(os.environ.get("PORT", 5000))
-    # debug=False es importante en producción con hilos
+    # debug=False es importante al usar hilos
     app.run(host='0.0.0.0', port=port, debug=False)
