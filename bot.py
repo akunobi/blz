@@ -14,6 +14,7 @@ app.secret_key = os.urandom(24)
 
 TOKEN = os.getenv("DISCORD_TOKEN") 
 
+# Configuración de Categoría
 try:
     raw_id = os.getenv("CATEGORY_ID")
     if not raw_id:
@@ -67,8 +68,8 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-    if message.author == client.user: return
-
+    # NOTA: Eliminamos la restricción de 'client.user' para ver mensajes de la web
+    
     if hasattr(message.channel, 'category') and message.channel.category:
         if message.channel.category.id == TARGET_CATEGORY_ID:
             try:
@@ -96,7 +97,6 @@ def index():
 
 @app.route('/api/admin/reset')
 def reset_database():
-    """Limpia la base de datos."""
     try:
         conn = get_db_connection()
         conn.execute('DELETE FROM messages')
@@ -121,7 +121,7 @@ def get_channels():
             if category:
                 text_channels = [c for c in category.channels if isinstance(c, discord.TextChannel)]
                 text_channels.sort(key=lambda x: x.position)
-                # IMPORTANTE: Convertimos ID a string para evitar errores de JS
+                # IMPORTANTE: ID como string
                 return [{"id": str(c.id), "name": c.name} for c in text_channels]
             return []
         except: return []
@@ -133,7 +133,6 @@ def get_channels():
         if channels: return jsonify(channels)
         
         conn = get_db_connection()
-        # ID a String también aquí
         db_chans = conn.execute('SELECT DISTINCT channel_name as name, channel_id as id FROM messages').fetchall()
         conn.close()
         return jsonify([{"id": str(row["id"]), "name": row["name"]} for row in db_chans])
@@ -147,7 +146,6 @@ def get_messages():
         conn = get_db_connection()
         msgs = conn.execute('SELECT * FROM messages ORDER BY timestamp DESC LIMIT 50').fetchall()
         conn.close()
-        # Convertimos channel_id a string
         results = []
         for row in msgs:
             d = dict(row)
@@ -160,7 +158,7 @@ def get_messages():
 @app.route('/api/send', methods=['POST'])
 def send_message():
     data = request.json
-    channel_id = data.get('channel_id') # Llega como string
+    channel_id = data.get('channel_id')
     content = data.get('content')
     
     print(f"\n>>> [WEB SEND] ID: {channel_id} | Msg: {content}")
@@ -170,7 +168,6 @@ def send_message():
 
     async def send_async():
         try:
-            # Convertimos String a Int para Discord
             c_id = int(channel_id)
             channel = await client.fetch_channel(c_id)
             await channel.send(content)
