@@ -1,291 +1,372 @@
 /* =========================================
-   CORE CONFIG & FONTS
+   CORE CONFIG & VARIABLES
    ========================================= */
-@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&family=Orbitron:wght@900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@500;700&display=swap');
 
 :root {
-    /* BLUE LOCK PALETTE (ORDER & LOGIC) */
-    --ego-blue: #00f7ff;
-    --ego-dark: #001e2b;
-    --puzzle-bg: rgba(0, 247, 255, 0.05);
+    /* Main Theme Colors */
+    --void-bg: #05050A; /* Deep Space Navy */
+    --text-main: #E0E0E0;
     
-    /* KURAMA PALETTE (CHAOS & POWER) */
-    --kurama-orange: #ff4800;
-    --kurama-gold: #ffae00;
-    --kurama-blood: #3d0a00;
+    /* Blue Lock: Precision & Tech */
+    --ego-cyan: #00f7ff;
+    --ego-glow: 0 0 10px rgba(0, 247, 255, 0.4);
     
-    /* SHARED */
-    --void: #050505;
-    --text: #ffffff;
+    /* Kurama: Energy & Danger */
+    --kurama-orange: #ff5500;
+    --kurama-shadow: 0 0 10px rgba(255, 85, 0, 0.6);
+
+    /* UI Structure */
+    --border-color: rgba(255, 255, 255, 0.1);
+    --panel-bg: rgba(10, 10, 15, 0.7);
 }
 
 * {
     box-sizing: border-box;
+    cursor: crosshair;
 }
 
 /* =========================================
-   BACKGROUND: THE BATTLEFIELD
+   BACKGROUND & SCANLINES
    ========================================= */
 body {
     margin: 0;
     padding: 0;
-    font-family: 'Rajdhani', sans-serif;
-    background-color: var(--void);
-    color: var(--text);
+    background-color: var(--void-bg);
+    color: var(--text-main);
+    font-family: 'Share Tech Mono', monospace;
     height: 100vh;
+    overflow: hidden;
     display: flex;
     justify-content: center;
     align-items: center;
-    overflow: hidden;
     
-    /* Fondo dual: Grietas azules vs Fuego naranja */
-    background: 
-        /* Piezas de puzzle sutiles (Blue Lock) */
-        linear-gradient(45deg, transparent 48%, var(--ego-dark) 49%, var(--ego-dark) 51%, transparent 52%),
-        linear-gradient(-45deg, transparent 48%, var(--ego-dark) 49%, var(--ego-dark) 51%, transparent 52%),
-        /* El chakra de fondo */
-        radial-gradient(circle at 10% 90%, rgba(255, 72, 0, 0.2) 0%, transparent 60%),
-        radial-gradient(circle at 90% 10%, rgba(0, 247, 255, 0.15) 0%, transparent 60%);
-    background-size: 60px 60px, 60px 60px, 100% 100%, 100% 100%;
-    animation: pulse-aura 10s infinite alternate;
+    /* Grid Subtile (Like the Field Visualization) */
+    background-image: 
+        linear-gradient(to right, var(--void-bg) 9px, rgba(0, 247, 255, 0.05) 1px), 
+        linear-gradient(to bottom, var(--void-bg) 9px, rgba(0, 247, 255, 0.05) 1px);
+    background-size: 10px 10px;
 }
 
 /* =========================================
-   MAIN CONTAINER: "THE STRATUM"
+   HUD STRUCTURE
    ========================================= */
-.chat-container {
-    width: 95%;
-    max-width: 900px;
-    height: 90vh;
-    position: relative;
-    background: rgba(10, 10, 15, 0.85);
-    /* Borde doble: Azul fuera, Naranja dentro */
-    border: 2px solid var(--ego-blue);
-    box-shadow: 
-        0 0 30px rgba(0, 247, 255, 0.1),
-        inset 0 0 50px rgba(255, 72, 0, 0.05);
-    
-    /* Forma recortada tecnológica (Blue Lock aesthetic) */
-    clip-path: polygon(
-        0 0, 
-        100% 0, 
-        100% 85%, 
-        95% 100%, 
-        0 100%, 
-        0 15%
-    );
-    
-    display: flex;
-    flex-direction: column;
-}
-
-/* DECORACIÓN SUPERIOR: EL SELLO */
-.chat-container::before {
-    content: "SYSTEM :: RELEASE_LIMITER";
+.vignette {
+    /* Darkens edges for focus */
     position: absolute;
-    top: 0;
-    left: 0;
-    background: var(--ego-blue);
-    color: var(--void);
-    padding: 5px 15px;
-    font-family: 'Orbitron', sans-serif;
-    font-size: 0.8rem;
-    letter-spacing: 2px;
-    clip-path: polygon(0 0, 100% 0, 85% 100%, 0 100%);
+    top: 0; left: 0; right: 0; bottom: 0;
+    box-shadow: inset 0 0 150px rgba(0,0,0,0.8);
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* Main Layout Grid */
+body > div:not(.modal-overlay):not(.background-grid):not(.vignette) {
+    position: relative;
+    z-index: 5;
+    /* Use Margin for space instead of padding */
+}
+
+/* LEFT HUD (CHANNELS) */
+.hud-left {
+    position: absolute;
+    left: 20px;
+    top: 20px;
+    width: 250px;
+    height: 95vh;
+    padding: 15px;
+    border-right: 2px solid var(--ego-cyan); /* Blue Lock border */
+    background: var(--panel-bg);
+    backdrop-filter: blur(4px);
+}
+/* RIGHT HUD (STATS) */
+.hud-right {
+    position: absolute;
+    right: 20px;
+    top: 20px;
+    width: 300px;
+    height: 95vh;
+    padding: 15px;
+    border-left: 2px solid var(--kurama-orange); /* Kurama Energy Border */
+    background: var(--panel-bg);
+    backdrop-filter: blur(4px);
 }
 
 /* =========================================
-   MESSAGES AREA
+   HUD LEFT COMPONENTS
    ========================================= */
-.messages-area {
-    flex: 1;
-    padding: 60px 20px 20px 20px;
+.brand-glitch {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 1.5rem;
+    color: var(--ego-cyan);
+    text-shadow: var(--ego-glow);
+    padding-bottom: 15px;
+    border-bottom: 1px dashed var(--border-color);
+    margin-bottom: 15px;
+    text-align: center;
+}
+.loading-text, .empty-state {
+    color: var(--text-main);
+    opacity: 0.6;
+    font-size: 0.9rem;
+    text-align: center;
+    padding: 50px 0;
+}
+.status-indicator {
+    position: absolute;
+    bottom: 20px;
+    left: 15px;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--text-main);
+}
+.channel-container {
+    height: calc(100% - 150px);
     overflow-y: auto;
+}
+.channel-container::-webkit-scrollbar {
+    width: 3px;
+}
+.channel-container::-webkit-scrollbar-thumb {
+    background: var(--ego-cyan);
+    border-radius: 5px;
+}
+
+
+/* =========================================
+   CENTER CHAT VOID (DATA FLOW)
+   ========================================= */
+.chat-void {
+    position: absolute;
+    left: 300px;
+    right: 350px;
+    height: 95vh;
     display: flex;
     flex-direction: column;
-    gap: 25px;
 }
 
-/* SCROLLBAR PERSONALIZADA */
-.messages-area::-webkit-scrollbar { width: 6px; }
-.messages-area::-webkit-scrollbar-track { background: var(--void); }
-.messages-area::-webkit-scrollbar-thumb { 
-    background: linear-gradient(to bottom, var(--ego-blue), var(--kurama-orange)); 
+.chat-feed {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 10px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    /* Scrollbar style */
+    scrollbar-width: thin;
+    scrollbar-color: var(--kurama-orange) transparent;
+}
+.chat-feed::-webkit-scrollbar-thumb {
+    background-color: var(--kurama-orange);
+}
+.chat-feed::-webkit-scrollbar-track {
+    background: transparent;
 }
 
-/* ESTILOS COMUNES DE MENSAJE */
+
+/* Input Deck (Command Line) */
+.input-deck {
+    padding-top: 15px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    gap: 10px;
+}
+
+#msg-input {
+    flex-grow: 1;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--ego-cyan);
+    color: var(--text-main);
+    padding: 10px 15px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 1rem;
+    outline: none;
+    transition: 0.2s;
+}
+
+#msg-input:focus {
+    box-shadow: var(--ego-glow);
+    border-color: white;
+}
+
+#send-btn {
+    background: var(--kurama-orange);
+    color: var(--void-bg);
+    border: none;
+    padding: 10px 20px;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
+    cursor: pointer;
+    transition: 0.3s;
+    /* Kurama-style energy effect */
+    box-shadow: var(--kurama-shadow);
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 20% 100%, 0 80%);
+}
+
+#send-btn:hover {
+    background: var(--ego-cyan);
+    box-shadow: var(--ego-glow);
+    color: var(--void-bg);
+}
+
+/* Message Styling */
 .msg {
-    max-width: 80%;
-    padding: 15px 25px;
-    font-size: 1.1rem;
-    font-weight: 500;
+    max-width: 85%;
+    padding: 8px 12px;
+    border-radius: 4px;
+    line-height: 1.4;
+    font-size: 0.9rem;
     position: relative;
-    backdrop-filter: blur(5px);
-    transition: transform 0.2s;
+    /* Reset background transparency */
+    background: transparent !important;
 }
 
-.msg:hover {
-    transform: scale(1.02);
-}
-
-/* -----------------------------------------
-   USER MESSAGE: "THE EGOIST" (BLUE LOCK)
-   ----------------------------------------- */
+/* USER: The Egoist (Precision Blue) */
 .msg.user {
     align-self: flex-end;
     text-align: right;
-    color: var(--ego-blue);
-    background: linear-gradient(90deg, transparent, rgba(0, 247, 255, 0.08));
-    border-right: 4px solid var(--ego-blue);
-    
-    /* Forma poligonal agresiva (Puzzle Piece) */
-    clip-path: polygon(10% 0, 100% 0, 100% 100%, 0 100%, 0 40%);
-    
-    text-shadow: 0 0 10px rgba(0, 247, 255, 0.4);
+    color: var(--ego-cyan);
+    border-right: 3px solid var(--ego-cyan);
+    padding-right: 15px;
+    text-shadow: 0 0 3px rgba(0, 247, 255, 0.2);
 }
 
-/* Etiqueta flotante del usuario */
-.msg.user::after {
-    content: "EGOIST_RANK_Z";
-    position: absolute;
-    bottom: -20px;
-    right: 0;
-    font-size: 0.7rem;
-    color: var(--ego-blue);
-    opacity: 0.6;
-    font-family: 'Orbitron';
-}
-
-/* -----------------------------------------
-   BOT MESSAGE: "THE BEAST" (KURAMA)
-   ----------------------------------------- */
+/* BOT: The Beast (Raw Orange Energy) */
 .msg.bot {
     align-self: flex-start;
     text-align: left;
-    color: var(--kurama-gold);
-    background: linear-gradient(135deg, rgba(61, 10, 0, 0.6), transparent);
-    border-left: 4px solid var(--kurama-orange);
-    
-    /* Bordes irregulares como llamas o papel quemado */
-    border-radius: 0 20px 20px 0;
-    box-shadow: -5px 0 20px rgba(255, 72, 0, 0.2);
-    
-    /* Animación de respiración de chakra */
-    animation: kurama-breath 3s infinite ease-in-out;
-}
-
-.msg.bot::before {
-    content: ""; /* Orbe de chakra */
-    position: absolute;
-    top: 50%;
-    left: -14px;
-    width: 20px;
-    height: 20px;
-    background: var(--kurama-orange);
-    border-radius: 50%;
-    transform: translateY(-50%);
-    box-shadow: 0 0 10px var(--kurama-orange);
+    color: var(--kurama-orange);
+    border-left: 3px solid var(--kurama-orange);
+    padding-left: 15px;
+    text-shadow: 0 0 3px rgba(255, 85, 0, 0.4);
 }
 
 /* =========================================
-   INPUT AREA: "THE AWAKENING"
+   HUD RIGHT COMPONENTS (METRICS)
    ========================================= */
-.input-area {
-    padding: 25px;
-    background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
-    display: flex;
-    gap: 15px;
-    align-items: flex-end;
-    position: relative;
-    z-index: 10;
-}
-
-/* CADENAS DECORATIVAS (Blue Lock Chains) */
-.input-area::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 2px;
-    background: repeating-linear-gradient(
-        90deg,
-        var(--ego-blue),
-        var(--ego-blue) 10px,
-        transparent 10px,
-        transparent 20px
-    );
-    opacity: 0.5;
-}
-
-input[type="text"] {
-    flex: 1;
-    background: rgba(0, 30, 43, 0.6);
-    border: 1px solid var(--ego-blue);
-    color: white;
-    padding: 15px 20px;
-    font-family: 'Rajdhani', sans-serif;
-    font-size: 1.2rem;
-    font-weight: bold;
-    clip-path: polygon(0 0, 95% 0, 100% 30%, 100% 100%, 5% 100%, 0 70%);
-    transition: 0.3s;
-}
-
-input[type="text"]:focus {
-    outline: none;
-    box-shadow: 0 0 20px rgba(0, 247, 255, 0.3);
-    background: rgba(0, 30, 43, 0.9);
-}
-
-/* EL BOTÓN (FUSIÓN) */
-button {
-    background: var(--kurama-orange);
-    color: black;
-    border: none;
-    padding: 15px 30px;
+.panel-header {
     font-family: 'Orbitron', sans-serif;
-    font-weight: 900;
-    letter-spacing: 1px;
+    color: var(--text-main);
+    font-size: 0.8rem;
+    letter-spacing: 2px;
+    padding-bottom: 10px;
+    border-bottom: 1px dashed var(--border-color);
+    margin-bottom: 20px;
+}
+
+.stat-block {
+    margin-bottom: 25px;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+}
+.block-label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.75rem;
+    margin-bottom: 10px;
+    color: var(--ego-cyan);
+}
+.stat-block.gk .block-label {
+    color: var(--kurama-orange);
+}
+
+.input-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+}
+
+input[type="number"] {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    padding: 8px;
+    width: 100%;
+    font-size: 0.9rem;
+    text-align: center;
+}
+input[type="number"]:focus {
+    border-color: var(--ego-cyan);
+    outline: none;
+}
+
+/* Buttons for metrics */
+#ui-stats-btn {
+    width: 100%;
+    background: var(--ego-cyan);
+    color: var(--void-bg);
+    border: none;
+    padding: 10px;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
     cursor: pointer;
-    text-transform: uppercase;
-    
-    /* Forma de garra o fragmento */
-    clip-path: polygon(20% 0, 100% 0, 100% 100%, 0 100%, 0 30%);
-    
-    transition: all 0.2s;
-    position: relative;
-    overflow: hidden;
+    transition: 0.2s;
+    box-shadow: var(--ego-glow);
+    margin-top: 10px;
 }
-
-/* Efecto Hover: Cambia de Kurama (Naranja) a Ego (Azul) */
-button:hover {
-    background: var(--ego-blue);
-    color: black;
-    box-shadow: 0 0 30px var(--ego-blue);
-    transform: translateY(-2px);
-}
-
-button:active {
-    transform: scale(0.95);
+#ui-stats-btn:hover {
+    background: var(--kurama-orange);
+    box-shadow: var(--kurama-shadow);
 }
 
 /* =========================================
-   ANIMATIONS
+   MODAL (STATS CANVAS)
    ========================================= */
-
-@keyframes kurama-breath {
-    0% { box-shadow: -5px 0 10px rgba(255, 72, 0, 0.1); }
-    50% { box-shadow: -5px 0 25px rgba(255, 72, 0, 0.4); }
-    100% { box-shadow: -5px 0 10px rgba(255, 72, 0, 0.1); }
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.9);
+    display: none; /* Hidden by default */
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+    backdrop-filter: blur(8px);
 }
 
-@keyframes pulse-aura {
-    0% { background-position: 0% 50%; }
-    100% { background-position: 100% 50%; }
+.modal-card {
+    background: var(--panel-bg);
+    border: 3px solid var(--kurama-orange); /* Strong Kurama energy box */
+    padding: 20px;
+    box-shadow: 0 0 50px rgba(255, 85, 0, 0.3);
+    width: 550px;
 }
 
-/* RESPONSIVE */
-@media (max-width: 600px) {
-    .chat-container { width: 100%; height: 100vh; border: none; }
-    .msg { max-width: 90%; }
+#stats-canvas {
+    width: 100%;
+    height: auto;
+    background: var(--void-bg);
+    border: 1px solid var(--border-color);
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.action-btn {
+    background: var(--ego-cyan);
+    color: var(--void-bg);
+    border: none;
+    padding: 10px 15px;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.action-btn.cancel {
+    background: var(--border-color);
+    color: var(--text-main);
+}
+.action-btn.cancel:hover {
+    background: var(--text-main);
+    color: var(--void-bg);
+}
+
+.action-btn.confirm {
+    background: var(--kurama-orange);
+}
+.action-btn.confirm:hover {
+    background: var(--ego-cyan);
 }
