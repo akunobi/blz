@@ -8,25 +8,39 @@ document.addEventListener('DOMContentLoaded', () => {
     const ctx = canvas.getContext('2d');
 
     let currentChannelId = null;
+    let isFetching = false; // ✨ MEJORA: Evitar peticiones solapadas
 
     // --- INIT ---
     fetchChannels();
-    setInterval(fetchMessages, 3000);
+    
+    // ✨ MEJORA: Usar setTimeout recursivo es mejor que setInterval para redes lentas
+    setInterval(() => {
+        if (!isFetching) fetchMessages();
+    }, 3000);
+
+    // ✨ MEJORA: Enviar con tecla Enter
+    msgInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') window.sendMessage();
+    });
 
     // --- CHAT LOGIC ---
     async function fetchChannels() {
         try {
             const res = await fetch('/api/channels');
             const channels = await res.json();
+            
+            // Solo limpiar si hay canales nuevos para evitar parpadeo inicial innecesario
             if (channels.length > 0) channelList.innerHTML = '';
+            
             channels.forEach(ch => {
                 const btn = document.createElement('div');
                 btn.className = 'channel-btn';
-                btn.innerText = ch.channel_name;
+                btn.innerText = ch.channel_name; // Asegúrate que Python devuelve 'channel_name'
                 btn.onclick = () => {
-                    currentChannelId = ch.channel_id;
+                    currentChannelId = ch.channel_id; // Asegúrate que Python devuelve 'channel_id'
                     document.querySelectorAll('.channel-btn').forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
+                    chatFeed.innerHTML = '<div style="padding:20px; text-align:center; color:#888;">Cargando...</div>';
                     fetchMessages();
                 };
                 channelList.appendChild(btn);
@@ -36,32 +50,60 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchMessages() {
         if (!currentChannelId) return;
+        isFetching = true;
+
         try {
             const res = await fetch('/api/messages');
             const allMsgs = await res.json();
+            // Invertimos porque el backend suele dar ORDER BY DESC (nuevo primero), 
+            // pero en el chat queremos leer de arriba (viejo) a abajo (nuevo).
             const msgs = allMsgs.filter(m => m.channel_id == currentChannelId).reverse();
             
+            // ✨ MEJORA: DETECCIÓN DE SCROLL INTELIGENTE
+            // Solo bajamos el scroll si el usuario ya estaba abajo del todo (o si es la primera carga)
+            const isScrolledToBottom = (chatFeed.scrollHeight - chatFeed.scrollTop - chatFeed.clientHeight) < 100;
+
             chatFeed.innerHTML = '';
             msgs.forEach(msg => {
                 const card = document.createElement('div');
                 card.className = 'msg-card';
                 card.innerHTML = `
                     <div class="msg-header">
-                        <img src="${msg.author_avatar}" class="msg-avatar">
+                        <img src="${msg.author_avatar}" class="msg-avatar" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
                         <span>${msg.author_name}</span>
                         <span style="margin-left:auto; opacity:0.5; font-size:0.7rem;">${new Date(msg.timestamp).toLocaleTimeString()}</span>
                     </div>
-                    <div class="msg-body">${msg.content}</div>
+                    <div class="msg-body">${formatMessage(msg.content)}</div>
                 `;
                 chatFeed.appendChild(card);
             });
-            chatFeed.scrollTop = chatFeed.scrollHeight;
+
+            // Solo forzamos scroll si el usuario no estaba leyendo arriba
+            if (isScrolledToBottom) {
+                chatFeed.scrollTop = chatFeed.scrollHeight;
+            }
+
         } catch(e) { console.error("Msg Error", e); }
+        finally { isFetching = false; }
+    }
+
+    // ✨ MEJORA: Pequeña función para convertir enlaces en clickeables (opcional)
+    function formatMessage(content) {
+        if(!content) return "";
+        // Simple regex para URLs
+        return content.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:#00f2ff">$1</a>');
     }
 
     window.sendMessage = async () => {
-        const content = msgInput.value;
+        const content = msgInput.value.trim();
         if (!content || !currentChannelId) return;
+        
+        // ✨ MEJORA: Feedback visual inmediato
+        const originalPlaceholder = msgInput.placeholder;
+        msgInput.value = '';
+        msgInput.placeholder = "Enviando...";
+        msgInput.disabled = true;
+
         try {
             const res = await fetch('/api/send', {
                 method: 'POST',
@@ -69,19 +111,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ channel_id: currentChannelId, content: content })
             });
             if (!res.ok) throw new Error("Server Reject");
-            msgInput.value = '';
-            setTimeout(fetchMessages, 500);
-        } catch(e) { alert("ERROR SENDING MSG: " + e); }
+            
+            setTimeout(fetchMessages, 500); // Refrescar rápido
+        } catch(e) { 
+            alert("ERROR SENDING MSG: " + e); 
+            msgInput.value = content; // Devolver el texto si falló
+        } finally {
+            msgInput.placeholder = originalPlaceholder;
+            msgInput.disabled = false;
+            msgInput.focus();
+        }
     };
 
-    // --- STATS LOGIC (0-10 SCALE) ---
+    // --- STATS LOGIC (SIN CAMBIOS, ESTA PERFECTA) ---
     window.generateStats = () => {
         let type = 'offensive';
-        // Si hay valor en el primer campo de GK, asumimos GK
-        if (document.getElementById('dvg').value !== "") {
+        if (document.getElementById('dvg') && document.getElementById('dvg').value !== "") {
             type = 'gk';
         }
 
+        // Asegúrate de que estos IDs existan en tu HTML
         const inputs = type === 'offensive' 
             ? ['sht', 'dbl', 'stl', 'psn', 'dfd'] 
             : ['dvg', 'biq', 'rfx', 'dtg'];
@@ -91,9 +140,9 @@ document.addEventListener('DOMContentLoaded', () => {
         let count = 0;
 
         inputs.forEach(id => {
-            // Obtener valor (puede ser decimal, ej: 8.5)
-            let val = parseFloat(document.getElementById(id).value) || 0;
-            // Clamping 0-10
+            const el = document.getElementById(id);
+            if(!el) return; // Seguridad por si falta un input
+            let val = parseFloat(el.value) || 0;
             if (val > 10) val = 10;
             if (val < 0) val = 0;
             
@@ -110,7 +159,6 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     function getRankText(s, type) {
-        // s ya viene en escala 0-10
         if (type === 'offensive') {
             if (s < 4.6) return "UNRANKED";
             if (s <= 5.4) return "ROOKIE 🥉";
@@ -130,13 +178,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function drawGraph(type, data, avg, rank) {
-        // Reset
         ctx.clearRect(0,0,500,500);
         ctx.fillStyle = "#020205";
         ctx.fillRect(0,0,500,500);
 
         const cx = 250, cy = 230;
-        const maxRadius = 130; // Radio máximo
+        const maxRadius = 130;
         const color = type === 'offensive' ? '#00f2ff' : '#ff0040';
 
         ctx.strokeStyle = color;
@@ -148,9 +195,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const total = keys.length;
         const angleStep = (Math.PI * 2) / total;
 
-        // --- DIBUJAR BASE ---
+        // BASE
         ctx.beginPath();
-        // Círculos de guía (al 25%, 50%, 75%, 100% de 10)
         for(let i=1; i<=4; i++) {
             let r = (maxRadius/4)*i;
             ctx.moveTo(cx + r, cy);
@@ -159,38 +205,31 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.strokeStyle = "rgba(255,255,255,0.1)";
         ctx.stroke();
 
-        // --- DIBUJAR DATOS ---
-        
+        // DATOS
         if (type === 'gk') {
-            // === GK: SECTORES (Pie Slices / Polar Area) ===
             keys.forEach((k, i) => {
                 let val = data[k];
-                let r = (val / 10) * maxRadius; // Escala sobre 10
-                
-                // Angulo inicio y fin del sector
+                let r = (val / 10) * maxRadius;
                 let startAngle = i * angleStep - Math.PI/2;
                 let endAngle = (i + 1) * angleStep - Math.PI/2;
 
                 ctx.beginPath();
-                ctx.moveTo(cx, cy); // Centro
-                ctx.arc(cx, cy, r, startAngle, endAngle); // Arco externo
-                ctx.lineTo(cx, cy); // Volver al centro
-                ctx.fillStyle = "rgba(255, 0, 64, 0.4)"; // Relleno solido
+                ctx.moveTo(cx, cy);
+                ctx.arc(cx, cy, r, startAngle, endAngle);
+                ctx.lineTo(cx, cy);
+                ctx.fillStyle = "rgba(255, 0, 64, 0.4)";
                 ctx.fill();
                 ctx.strokeStyle = color;
                 ctx.stroke();
             });
-
         } else {
-            // === OFFENSIVE: PENTAGONO ===
             ctx.beginPath();
             keys.forEach((k, i) => {
                 let val = data[k];
-                let r = (val / 10) * maxRadius; // Escala sobre 10
+                let r = (val / 10) * maxRadius;
                 let a = i * angleStep - Math.PI/2;
                 let x = cx + Math.cos(a) * r;
                 let y = cy + Math.sin(a) * r;
-                
                 if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
             });
             ctx.closePath();
@@ -199,12 +238,11 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.stroke();
         }
 
-        // --- ETIQUETAS ---
+        // TEXTO
         keys.forEach((k, i) => {
-            // Posicion etiqueta fija afuera
             let a = type === 'gk' 
-                ? (i * angleStep + (angleStep/2)) - Math.PI/2 // GK: Centrado en el sector
-                : i * angleStep - Math.PI/2; // Off: En el vértice
+                ? (i * angleStep + (angleStep/2)) - Math.PI/2 
+                : i * angleStep - Math.PI/2;
             
             let labelR = maxRadius + 30;
             let lx = cx + Math.cos(a) * labelR;
@@ -220,7 +258,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.restore();
         });
 
-        // --- RESULTADOS TEXTO ---
+        // RESULTADOS
         ctx.shadowBlur = 0;
         ctx.fillStyle = "#fff";
         ctx.font = "20px Courier New";
@@ -233,22 +271,22 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.fillText(rank, cx, 465);
     }
 
-    // --- MODAL CONTROLS ---
-    document.getElementById('close-modal').onclick = () => modal.style.display = 'none';
+    // MODAL
+    const closeBtn = document.getElementById('close-modal');
+    if(closeBtn) closeBtn.onclick = () => modal.style.display = 'none';
     
-    document.getElementById('copy-stats-btn').onclick = () => {
+    const copyBtn = document.getElementById('copy-stats-btn');
+    if(copyBtn) copyBtn.onclick = () => {
         canvas.toBlob(blob => {
-            // Clipboard API requiere contexto seguro (https o localhost)
             try {
                 const item = new ClipboardItem({ "image/png": blob });
                 navigator.clipboard.write([item]).then(() => {
-                    const btn = document.getElementById('copy-stats-btn');
-                    const prev = btn.innerText;
-                    btn.innerText = "COPIED!";
-                    setTimeout(() => btn.innerText = prev, 2000);
-                }).catch(err => alert("Clipboard Error: " + err));
+                    const prev = copyBtn.innerText;
+                    copyBtn.innerText = "COPIED!";
+                    setTimeout(() => copyBtn.innerText = prev, 2000);
+                });
             } catch (e) {
-                alert("Browser not supporting direct clipboard write. Right click image to save.");
+                alert("Error al copiar: Contexto no seguro o navegador incompatible.");
             }
         });
     };

@@ -4,11 +4,20 @@ import threading
 import os
 import asyncio
 from flask import Flask, render_template, jsonify, request
+from dotenv import load_dotenv
+
+# Cargar variables locales si estás probando en PC (en Render se configuran en el dashboard)
+load_dotenv()
 
 # --- CONFIGURACIÓN ---
 app = Flask(__name__)
+app.secret_key = os.urandom(24)
+
+# TOKEN: En Render, añádelo en las "Environment Variables"
 TOKEN = os.getenv("DISCORD_TOKEN") 
-# Asegúrate de que este ID sea correcto y el bot tenga acceso a ver/escribir en esos canales
+
+# ID de la categoría donde el bot puede leer/escribir
+# Asegúrate de que este número sea INT (sin comillas)
 TARGET_CATEGORY_ID = 1355062396322058287 
 
 # --- SETUP DISCORD ---
@@ -16,22 +25,22 @@ intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
 
-# Variable global para guardar el bucle de eventos del bot
+# Variables globales para controlar el hilo del bot
 bot_loop = None
+bot_ready_event = threading.Event()
 
 # --- BASE DE DATOS ---
 def get_db_connection():
-    # check_same_thread=False es vital para que Flask y el Bot compartan la DB
+    # check_same_thread=False permite que Flask acceda a la DB creada por el Bot
     conn = sqlite3.connect('database.db', check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
-def init_db_automatically():
-    """Inicializa la DB al arrancar para evitar errores en Render"""
+def init_db():
+    """Inicializa la tabla si no existe."""
     try:
         conn = get_db_connection()
-        c = conn.cursor()
-        c.execute('''
+        conn.execute('''
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 channel_id INTEGER,
@@ -44,22 +53,21 @@ def init_db_automatically():
         ''')
         conn.commit()
         conn.close()
-        print(">>> [SYSTEM]: DATABASE INTEGRITY VERIFIED.")
     except Exception as e:
-        print(f"!!! [DB ERROR]: {e}")
+        print(f"[DB ERROR]: {e}")
 
 # --- EVENTOS DEL BOT ---
 @client.event
 async def on_ready():
-    print(f'>>> [BOT]: CONNECTED AS {client.user}')
+    print(f'>>> [DISCORD]: Conectado como {client.user}')
+    bot_ready_event.set() # Señalizamos que el bot está listo
 
 @client.event
 async def on_message(message):
     if message.author == client.user:
         return
 
-    # Verificar si el mensaje viene de la categoría correcta
-    # Usamos hasattr para evitar errores si es un DM
+    # Filtrar por categoría para no llenar la DB de basura
     if hasattr(message.channel, 'category') and message.channel.category:
         if message.channel.category.id == TARGET_CATEGORY_ID:
             try:
@@ -71,124 +79,126 @@ async def on_message(message):
                     message.channel.id,
                     message.channel.name,
                     message.author.name,
-                    str(message.author.avatar.url) if message.author.avatar else "https://cdn.discordapp.com/embed/avatars/0.png",
+                    str(message.author.avatar.url) if message.author.avatar else "",
                     message.content
                 ))
                 conn.commit()
                 conn.close()
-                print(f">>> [MSG SAVED]: {message.author.name} in #{message.channel.name}")
             except Exception as e:
-                print(f"!!! [SAVE ERROR]: {e}")
+                print(f"[SAVE ERROR]: {e}")
 
 # --- RUTAS FLASK ---
+
 @app.route('/')
 def index():
+    # Flask buscará index.html dentro de la carpeta 'templates' que ya tienes
     return render_template('index.html')
+
+@app.route('/api/channels')
+def get_channels():
+    """Devuelve la lista de canales disponibles en la categoría."""
+    if not bot_ready_event.is_set():
+        return jsonify({"error": "Bot is starting..."}), 503
+
+    # Usamos una función async interna para pedirle datos al bot
+    async def get_channels_async():
+        try:
+            category = client.get_channel(TARGET_CATEGORY_ID)
+            if category:
+                # Filtramos solo canales de texto
+                return [{
+                    "id": c.id, 
+                    "name": c.name
+                } for c in category.channels if isinstance(c, discord.TextChannel)]
+            return []
+        except Exception as e:
+            print(f"Error fetching channels: {e}")
+            return []
+
+    # Ejecutamos la función async desde Flask
+    future = asyncio.run_coroutine_threadsafe(get_channels_async(), bot_loop)
+    try:
+        channels = future.result(timeout=5)
+        return jsonify(channels)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/messages')
 def get_messages():
+    """Lee mensajes de la DB local."""
     try:
         conn = get_db_connection()
-        # Traer los últimos 100 mensajes
-        msgs = conn.execute('SELECT * FROM messages ORDER BY timestamp DESC LIMIT 100').fetchall()
+        # Traemos los últimos 50 mensajes
+        msgs = conn.execute('SELECT * FROM messages ORDER BY timestamp DESC LIMIT 50').fetchall()
         conn.close()
         return jsonify([dict(row) for row in msgs])
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/channels')
-def get_channels():
-    # Intento 1: Obtener canales en TIEMPO REAL desde Discord
-    if client.is_ready():
-        try:
-            # Usamos fetch_channel para asegurar que tenemos datos frescos
-            # Nota: fetch_channel es asíncrono, pero aquí estamos en contexto síncrono.
-            # Usaremos get_channel que lee de caché, si falla, el usuario verá la lista vacía hasta que el bot cargue.
-            category = client.get_channel(TARGET_CATEGORY_ID)
-            
-            if category:
-                # Ordenar por posición
-                channels = sorted(category.channels, key=lambda x: x.position)
-                return jsonify([{
-                    "channel_name": c.name, 
-                    "channel_id": c.id
-                } for c in channels])
-            else:
-                print("!!! [ERROR]: Category ID not found in cache. Bot might need a restart or ID is wrong.")
-        except Exception as e:
-            print(f"Error live channels: {e}")
-
-    # Intento 2: Fallback a Base de Datos (si el bot no está listo)
-    conn = get_db_connection()
-    channels = conn.execute('SELECT DISTINCT channel_name, channel_id FROM messages').fetchall()
-    conn.close()
-    return jsonify([dict(row) for row in channels])
-
 @app.route('/api/send', methods=['POST'])
 def send_message():
-    """
-    Ruta crítica para enviar mensajes.
-    Usa fetch_channel y run_coroutine_threadsafe.
-    """
+    """Recibe mensaje de la web y lo manda a Discord."""
     data = request.json
     channel_id = data.get('channel_id')
     content = data.get('content')
     
     if not channel_id or not content:
-        return jsonify({"error": "Missing data"}), 400
+        return jsonify({"error": "Datos incompletos"}), 400
 
-    if not bot_loop:
-        return jsonify({"error": "Bot loop not ready"}), 500
+    if not bot_loop or not bot_ready_event.is_set():
+        return jsonify({"error": "El bot no está conectado aún"}), 503
 
-    # Función interna asíncrona para hacer el envío
-    async def send_async_task():
+    # Definimos la tarea asíncrona de envío
+    async def send_async():
         try:
-            # fetch_channel hace una llamada API (más lento pero seguro)
-            # get_channel usa caché (rápido pero a veces falla si no está en caché)
-            channel = await client.fetch_channel(int(channel_id))
+            channel = client.get_channel(int(channel_id))
+            if not channel:
+                # Si no está en caché, intentar fetch (más lento pero seguro)
+                channel = await client.fetch_channel(int(channel_id))
+            
             await channel.send(content)
             return True
         except Exception as e:
-            print(f"!!! [SEND ERROR]: {e}")
+            print(f"[SEND ERROR]: {e}")
             return False
 
-    # Ejecutar la tarea en el hilo del bot
+    # Cruzamos el puente hacia el hilo del bot
+    future = asyncio.run_coroutine_threadsafe(send_async(), bot_loop)
+    
     try:
-        future = asyncio.run_coroutine_threadsafe(send_async_task(), bot_loop)
-        # Esperamos el resultado (timeout de 5s para no bloquear la web si Discord va lento)
-        success = future.result(timeout=5)
-        
+        success = future.result(timeout=10)
         if success:
-            return jsonify({"status": "sent"})
+            return jsonify({"status": "Mensaje enviado"})
         else:
-            return jsonify({"error": "Discord Error"}), 500
+            return jsonify({"error": "No se pudo enviar al canal"}), 500
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Timeout comunicando con Discord"}), 500
 
-# --- ARRANQUE ---
-def run_discord_bot():
+# --- INICIO ---
+def run_bot_in_thread():
     global bot_loop
+    # Creamos un nuevo loop para este hilo
     bot_loop = asyncio.new_event_loop()
     asyncio.set_event_loop(bot_loop)
     
     if not TOKEN:
-        print("!!! [CRITICAL]: NO TOKEN FOUND. CHECK ENV VARIABLES.")
+        print("!!! ERROR: No se encontró DISCORD_TOKEN")
         return
 
-    try:
-        bot_loop.run_until_complete(client.start(TOKEN))
-    except Exception as e:
-        print(f"!!! [BOT CRASH]: {e}")
+    bot_loop.run_until_complete(client.start(TOKEN))
 
 if __name__ == '__main__':
     # 1. Inicializar DB
-    init_db_automatically()
+    init_db()
     
-    # 2. Hilo del Bot
-    t = threading.Thread(target=run_discord_bot)
+    # 2. Arrancar Bot en hilo separado
+    t = threading.Thread(target=run_bot_in_thread, daemon=True)
     t.start()
     
-    # 3. Servidor Web
+    # 3. Arrancar Web (Configuración para Render)
+    # Render asigna un puerto en la variable de entorno PORT
     port = int(os.environ.get("PORT", 5000))
-    # debug=False es importante al usar hilos
+    
+    print(f">>> Iniciando Servidor Web en puerto {port}...")
+    # host='0.0.0.0' es CRÍTICO para que Render exponga la web
     app.run(host='0.0.0.0', port=port, debug=False)

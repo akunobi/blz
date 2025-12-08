@@ -3,13 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PROJECT: EGOIST | TERMINAL</title>
+    <title>BLZ-T</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
+    </head>
 <body>
 
     <div class="background-grid"></div>
     <div class="vignette"></div>
+
+    <button class="stats-toggle-btn" onclick="toggleDrawer()">
+        /// SYS.METRICS
+    </button>
 
     <div class="hud-left">
         <div class="brand-glitch" data-text="BLUE LOCK">BLUE LOCK</div>
@@ -35,37 +39,69 @@
         
         <div class="input-deck">
             <input type="text" id="msg-input" placeholder="ENTER COMMAND / MESSAGE...">
-            <button id="send-btn" onclick="sendMessage()">TRANSMIT</button>
+            <button id="send-btn" onclick="sendMessage()">SEND</button>
         </div>
     </div>
 
-    <div class="hud-right">
-        <div class="panel-header">/// EGOIST METRICS</div>
-        
-        <div class="stat-block offensive">
-            <div class="block-label">OFFENSIVE [0-10]</div>
-            <div class="input-grid">
-                <input type="number" id="sht" placeholder="SHT" step="0.1" min="0" max="10">
-                <input type="number" id="dbl" placeholder="DBL" step="0.1" min="0" max="10">
-                <input type="number" id="stl" placeholder="STL" step="0.1" min="0" max="10">
-                <input type="number" id="psn" placeholder="PSN" step="0.1" min="0" max="10">
-                <input type="number" id="dfd" placeholder="DFD" step="0.1" min="0" max="10">
-            </div>
+    <div class="stats-drawer" id="stats-drawer">
+        <div class="drawer-header">
+            <h3>/// EGOIST DATA</h3>
+            <button class="close-drawer" onclick="toggleDrawer()">×</button>
         </div>
 
-        <div class="stat-block gk">
-            <div class="block-label" style="color:var(--red)">GK [0-10]</div>
-            <div class="input-grid">
-                <input type="number" id="dvg" placeholder="DVG" step="0.1" min="0" max="10">
-                <input type="number" id="biq" placeholder="BIQ" step="0.1" min="0" max="10">
-                <input type="number" id="rfx" placeholder="RFX" step="0.1" min="0" max="10">
-                <input type="number" id="dtg" placeholder="DTG" step="0.1" min="0" max="10">
+        <div class="drawer-content">
+            <div class="stat-block offensive">
+                <div class="block-label" style="color:var(--cyan)">OFFENSIVE [0-10]</div>
+                <div class="input-grid">
+                    <div class="input-group">
+                        <label>SHT</label>
+                        <input type="number" id="sht" placeholder="0.0" step="0.1" min="0" max="10">
+                    </div>
+                    <div class="input-group">
+                        <label>DBL</label>
+                        <input type="number" id="dbl" placeholder="0.0" step="0.1" min="0" max="10">
+                    </div>
+                    <div class="input-group">
+                        <label>STL</label>
+                        <input type="number" id="stl" placeholder="0.0" step="0.1" min="0" max="10">
+                    </div>
+                    <div class="input-group">
+                        <label>PSN</label>
+                        <input type="number" id="psn" placeholder="0.0" step="0.1" min="0" max="10">
+                    </div>
+                    <div class="input-group">
+                        <label>DFD</label>
+                        <input type="number" id="dfd" placeholder="0.0" step="0.1" min="0" max="10">
+                    </div>
+                </div>
             </div>
-        </div>
 
-        <button id="ui-stats-btn" onclick="generateStats()">
-            MATERIALIZE DATA
-        </button>
+            <div class="stat-block gk">
+                <div class="block-label" style="color:var(--red)">GK [0-10]</div>
+                <div class="input-grid">
+                    <div class="input-group">
+                        <label>DVG</label>
+                        <input type="number" id="dvg" placeholder="0.0" step="0.1" min="0" max="10">
+                    </div>
+                    <div class="input-group">
+                        <label>BIQ</label>
+                        <input type="number" id="biq" placeholder="0.0" step="0.1" min="0" max="10">
+                    </div>
+                    <div class="input-group">
+                        <label>RFX</label>
+                        <input type="number" id="rfx" placeholder="0.0" step="0.1" min="0" max="10">
+                    </div>
+                    <div class="input-group">
+                        <label>DTG</label>
+                        <input type="number" id="dtg" placeholder="0.0" step="0.1" min="0" max="10">
+                    </div>
+                </div>
+            </div>
+
+            <button id="ui-stats-btn" onclick="generateStats()">
+                MATERIALIZE DATA
+            </button>
+        </div>
     </div>
 
     <div id="stats-modal" class="modal-overlay">
@@ -80,13 +116,12 @@
     </div>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
-    
     <script>
-        document.getElementById('msg-input').addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') {
-                window.sendMessage();
-            }
-        });
+        // Función simple para abrir/cerrar el cajón lateral
+        function toggleDrawer() {
+            const drawer = document.getElementById('stats-drawer');
+            drawer.classList.toggle('open');
+        }
     </script>
 </body>
 </html>
