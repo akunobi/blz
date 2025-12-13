@@ -14,6 +14,7 @@ def init_db():
             author_name TEXT,
             author_avatar TEXT,
             content TEXT,
+            message_id INTEGER UNIQUE,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')

@@ -51,6 +51,7 @@ def init_db():
                 author_name TEXT,
                 author_avatar TEXT,
                 content TEXT,
+                message_id INTEGER UNIQUE,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -65,6 +66,16 @@ async def on_ready():
     print(f'>>> [DISCORD]: Conectado como {client.user}')
     print(f'>>> [DISCORD]: ID Categoría: {TARGET_CATEGORY_ID}')
     bot_ready_event.set()
+    # Backfill recent history from the target category so the web UI
+    # can display past messages without waiting for new messages.
+    try:
+        history_limit = int(os.getenv('HISTORY_LIMIT', '200'))
+    except ValueError:
+        history_limit = 200
+    try:
+        await sync_category_history(history_limit)
+    except Exception as e:
+        print(f"!!! [HISTORY ERROR ON READY]: {e}")
 
 @client.event
 async def on_message(message):
@@ -75,20 +86,65 @@ async def on_message(message):
             try:
                 conn = get_db_connection()
                 conn.execute('''
-                    INSERT INTO messages (channel_id, channel_name, author_name, author_avatar, content)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT OR IGNORE INTO messages (channel_id, channel_name, author_name, author_avatar, content, message_id)
+                    VALUES (?, ?, ?, ?, ?, ?)
                 ''', (
                     message.channel.id,
                     message.channel.name,
                     message.author.name,
                     str(message.author.avatar.url) if message.author.avatar else "https://cdn.discordapp.com/embed/avatars/0.png",
-                    message.content
+                    message.content,
+                    message.id
                 ))
                 conn.commit()
                 conn.close()
                 print(f">>> [MSG SAVED]: {message.author.name} -> #{message.channel.name}")
             except Exception as e:
                 print(f"!!! [SAVE ERROR]: {e}")
+
+
+async def sync_category_history(limit=200):
+    """Fetch recent messages from each text channel in the target category and
+    insert them into the local SQLite DB. Uses `message_id` UNIQUE constraint
+    + `INSERT OR IGNORE` to avoid duplicates.
+    """
+    try:
+        category = client.get_channel(TARGET_CATEGORY_ID)
+        if not category:
+            try:
+                category = await client.fetch_channel(TARGET_CATEGORY_ID)
+            except Exception:
+                print(f"!!! [HISTORY] Could not fetch category {TARGET_CATEGORY_ID}")
+                return
+
+        for c in getattr(category, 'channels', []):
+            if isinstance(c, discord.TextChannel):
+                print(f">>> [HISTORY] Syncing #{c.name} (limit={limit})")
+                try:
+                    async for msg in c.history(limit=limit):
+                        try:
+                            conn = get_db_connection()
+                            conn.execute('''
+                                INSERT OR IGNORE INTO messages (channel_id, channel_name, author_name, author_avatar, content, message_id, timestamp)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                            ''', (
+                                c.id,
+                                c.name,
+                                msg.author.name,
+                                str(msg.author.avatar.url) if msg.author.avatar else "https://cdn.discordapp.com/embed/avatars/0.png",
+                                msg.content,
+                                msg.id,
+                                msg.created_at.isoformat()
+                            ))
+                            conn.commit()
+                            conn.close()
+                        except Exception as e:
+                            print(f"!!! [HISTORY SAVE ERROR]: {e}")
+                except Exception as e:
+                    print(f"!!! [HISTORY FETCH ERROR] #{c.name}: {e}")
+        print(">>> [HISTORY]: Sync complete.")
+    except Exception as e:
+        print(f"!!! [HISTORY ERROR]: {e}")
 
 # --- RUTAS FLASK ---
 @app.route('/')
