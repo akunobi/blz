@@ -147,7 +147,7 @@ body {
     text-align: right;
 }
 .msg-fused.msg-me .msg-auth { color: #fff; opacity: 0.85; }
-.msg-fused.msg-me .msg-body { color: #00121a; }
+.msg-fused.msg-me .msg-body { color: #ffffff; }
 .msg-fused.msg-me .msg-meta { color: rgba(0,0,0,0.45); }
 
 /* === 3. INPUT (PERGAMINO FLOTANTE) === */

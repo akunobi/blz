@@ -92,6 +92,25 @@ document.addEventListener('DOMContentLoaded', () => {
     async function fetchMessages() {
         if (!currentChannelId) return;
         isFetching = true;
+        // Remove optimistic messages (client-side placeholders) before loading real ones
+        try {
+            const now = Date.now();
+            document.querySelectorAll('[data-optimistic="1"]').forEach(n => {
+                const ts = parseInt(n.dataset.optimisticTs || '0', 10);
+                // keep optimistic nodes for up to 5 seconds to avoid flicker; remove older ones
+                if (ts && (now - ts) > 5000) n.remove();
+            });
+        } catch (e) {}
+
+        // If we don't have the bot name yet, try fetching it so we can mark bot messages
+        if (!botName) {
+            try {
+                const r = await fetch('/api/botinfo');
+                if (r.ok) {
+                    const j = await r.json(); botName = j.name || null;
+                }
+            } catch (e) { /* ignore */ }
+        }
 
         try {
             const res = await fetch('/api/messages');
@@ -136,6 +155,23 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!content || !currentChannelId) return;
 
         const originalPlaceholder = msgInput.placeholder;
+        // Create optimistic UI element so message appears immediately
+        let optimisticNode = null;
+        try {
+            const author = botName || 'BOT';
+            optimisticNode = document.createElement('div');
+            optimisticNode.className = 'msg-fused msg-me';
+            optimisticNode.setAttribute('data-optimistic', '1');
+            optimisticNode.dataset.optimisticTs = String(Date.now());
+            optimisticNode.innerHTML = `
+                <div class="msg-auth">${author}</div>
+                <div class="msg-body">${formatLinks(content)}</div>
+                <div class="msg-meta">SENDING...</div>
+            `;
+            chatFeed.appendChild(optimisticNode);
+            chatFeed.scrollTop = chatFeed.scrollHeight;
+        } catch (e) { optimisticNode = null; }
+
         msgInput.value = '';
         msgInput.placeholder = "ROARING...";
         msgInput.disabled = true;
@@ -148,9 +184,12 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Server Reject");
+            // after successful send, refresh messages shortly (real message will arrive via bot->DB)
             setTimeout(fetchMessages, 200);
         } catch(e) {
             alert("SEAL ERROR: " + e.message);
+            // remove optimistic node if exists and restore content
+            if (optimisticNode && optimisticNode.parentNode) optimisticNode.remove();
             msgInput.value = content;
         } finally {
             msgInput.placeholder = originalPlaceholder;
