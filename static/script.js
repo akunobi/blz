@@ -406,6 +406,9 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.fillText(`AVG: ${avg.toFixed(1)} / 10`, cx, 440);
         ctx.font = "bold 30px 'Bebas Neue'"; ctx.fillStyle = color;
         ctx.fillText(rank, cx, 480);
+
+        // expose latest rank string to other UI handlers for copy
+        try { window.latestStatsRank = String(rank || ''); } catch (e) {}
     }
 
     const closeBtn = document.getElementById('close-modal');
@@ -425,6 +428,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             } catch (e) { alert("Right click to save"); }
         });
+    };
+
+    const copyRankBtn = document.getElementById('copy-rank-btn');
+    if (copyRankBtn) copyRankBtn.onclick = async () => {
+        try {
+            const rankText = window.latestStatsRank || '';
+            if (!rankText) {
+                copyRankBtn.innerText = 'NO RANK';
+                setTimeout(() => copyRankBtn.innerText = 'COPY RANK', 1400);
+                return;
+            }
+            await navigator.clipboard.writeText(rankText);
+            const prev = copyRankBtn.innerText;
+            copyRankBtn.innerText = 'COPIED';
+            setTimeout(() => copyRankBtn.innerText = prev, 1400);
+        } catch (e) {
+            alert('Copy failed: ' + (e && e.message ? e.message : e));
+        }
     };
 
     // Close stats drawer or stats modal with Escape key
