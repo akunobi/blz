@@ -137,6 +137,19 @@ body {
 .scroll-input-wrapper { grid-column: 2; justify-self: center; }
 .msg-meta { font-size: 0.75rem; color: rgba(230,251,255,0.5); margin-top:6px; }
 
+/* Messages authored by the bot (align to right) */
+.msg-fused.msg-me {
+    margin-left: auto;
+    margin-right: 6px;
+    background: linear-gradient(90deg, rgba(0,242,255,0.06), rgba(11,197,215,0.02));
+    border-left: none;
+    border-right: 6px solid rgba(0,242,255,0.14);
+    text-align: right;
+}
+.msg-fused.msg-me .msg-auth { color: #fff; opacity: 0.85; }
+.msg-fused.msg-me .msg-body { color: #00121a; }
+.msg-fused.msg-me .msg-meta { color: rgba(0,0,0,0.45); }
+
 /* === 3. INPUT (PERGAMINO FLOTANTE) === */
 .scroll-input-wrapper {
     position: sticky; bottom: 24px; margin: 0 auto; width: calc(100% - 80px); max-width: 920px; z-index: 120;

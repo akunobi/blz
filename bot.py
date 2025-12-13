@@ -196,6 +196,19 @@ def get_channels():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/api/botinfo')
+def bot_info():
+    """Return basic bot info for the web UI (name and id)."""
+    try:
+        if not bot_ready_event.is_set():
+            return jsonify({"ready": False}), 503
+        name = str(client.user.name) if client.user else None
+        uid = str(client.user.id) if client.user else None
+        return jsonify({"ready": True, "name": name, "id": uid})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/messages')
 def get_messages():
     try:

@@ -15,8 +15,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentChannelId = null;
     let isFetching = false;
+    let botName = null;
 
     // --- INICIO ---
+    // Fetch bot info used to mark bot-authored messages
+    (async function fetchBotInfo(){
+        try{
+            const r = await fetch('/api/botinfo');
+            if (r.ok){
+                const j = await r.json();
+                botName = j.name || null;
+            }
+        }catch(e){ console.warn('botinfo fetch failed', e); }
+    })();
     fetchChannels();
     setInterval(() => {
         if (!isFetching && currentChannelId) fetchMessages();
@@ -96,9 +107,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 msgs.forEach(msg => {
                     const fused = document.createElement('div');
                     fused.className = 'msg-fused';
+
+                    // If this message was authored by the bot, mark it so CSS can align it to the right
+                    if (botName && msg.author_name === botName) fused.classList.add('msg-me');
+
                     fused.innerHTML = `
                         <div class="msg-auth">${msg.author_name}</div>
                         <div class="msg-body">${formatLinks(msg.content)}</div>
+                        <div class="msg-meta">${msg.timestamp || ''}</div>
                     `;
                     chatFeed.appendChild(fused);
                 });
