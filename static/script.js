@@ -267,4 +267,22 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) { alert("Right click to save"); }
         });
     };
+
+    // Close stats drawer or stats modal with Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' || e.key === 'Esc') {
+            const drawer = document.getElementById('stats-drawer');
+            const modal = document.getElementById('stats-modal');
+
+            if (modal && modal.style.display === 'flex') {
+                modal.style.display = 'none';
+                if (drawer) drawer.classList.remove('active');
+                return;
+            }
+
+            if (drawer && drawer.classList.contains('active')) {
+                drawer.classList.remove('active');
+            }
+        }
+    });
 });
