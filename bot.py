@@ -51,6 +51,7 @@ def init_db():
                 author_name TEXT,
                 author_avatar TEXT,
                 content TEXT,
+                author_id INTEGER,
                 message_id INTEGER UNIQUE,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
@@ -59,6 +60,26 @@ def init_db():
         conn.close()
     except Exception as e:
         print(f"[DB ERROR]: {e}")
+
+
+def ensure_author_id_column():
+    """Ensure `author_id` column exists on messages table; add it if missing.
+    This performs a safe ALTER TABLE for older DBs created before this column existed.
+    """
+    try:
+        conn = get_db_connection()
+        cur = conn.execute("PRAGMA table_info(messages)").fetchall()
+        cols = [r['name'] for r in cur]
+        if 'author_id' not in cols:
+            try:
+                conn.execute('ALTER TABLE messages ADD COLUMN author_id INTEGER')
+                conn.commit()
+                print('>>> [DB MIGRATION] Added column author_id')
+            except Exception as e:
+                print(f'!!! [DB MIGRATION ERROR]: {e}')
+        conn.close()
+    except Exception as e:
+        print(f'!!! [DB CHECK ERROR]: {e}')
 
 # --- EVENTOS DEL BOT ---
 @client.event
@@ -86,14 +107,15 @@ async def on_message(message):
             try:
                 conn = get_db_connection()
                 conn.execute('''
-                    INSERT OR IGNORE INTO messages (channel_id, channel_name, author_name, author_avatar, content, message_id)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT OR IGNORE INTO messages (channel_id, channel_name, author_name, author_avatar, content, author_id, message_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     message.channel.id,
                     message.channel.name,
                     message.author.name,
                     str(message.author.avatar.url) if message.author.avatar else "https://cdn.discordapp.com/embed/avatars/0.png",
                     message.content,
+                    getattr(message.author, 'id', None),
                     message.id
                 ))
                 conn.commit()
@@ -125,14 +147,15 @@ async def sync_category_history(limit=200):
                         try:
                             conn = get_db_connection()
                             conn.execute('''
-                                INSERT OR IGNORE INTO messages (channel_id, channel_name, author_name, author_avatar, content, message_id, timestamp)
-                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                                INSERT OR IGNORE INTO messages (channel_id, channel_name, author_name, author_avatar, content, author_id, message_id, timestamp)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                             ''', (
                                 c.id,
                                 c.name,
                                 msg.author.name,
                                 str(msg.author.avatar.url) if msg.author.avatar else "https://cdn.discordapp.com/embed/avatars/0.png",
                                 msg.content,
+                                getattr(msg.author, 'id', None),
                                 msg.id,
                                 msg.created_at.isoformat()
                             ))
@@ -150,18 +173,6 @@ async def sync_category_history(limit=200):
 @app.route('/')
 def index():
     return render_template('index.html')
-
-@app.route('/api/admin/reset')
-def reset_database():
-    try:
-        conn = get_db_connection()
-        conn.execute('DELETE FROM messages')
-        conn.execute('VACUUM')
-        conn.commit()
-        conn.close()
-        return jsonify({"status": "SUCCESS", "message": "Base de datos purgada."})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/channels')
 def get_channels():
@@ -212,11 +223,37 @@ def bot_info():
 @app.route('/api/messages')
 def get_messages():
     try:
+        # Support optional channel filtering and limit to return more/older messages
+        channel_id = request.args.get('channel_id')
+        limit_q = request.args.get('limit')
+
         conn = get_db_connection()
-        msgs = conn.execute('SELECT * FROM messages ORDER BY timestamp DESC LIMIT 50').fetchall()
+        if channel_id:
+            # prefer numeric id
+            try:
+                cid = int(channel_id)
+            except ValueError:
+                cid = None
+
+            if limit_q and str(limit_q).lower() == 'all':
+                rows = conn.execute('SELECT * FROM messages WHERE channel_id = ? ORDER BY timestamp ASC', (cid,)).fetchall()
+            else:
+                try:
+                    lim = int(limit_q) if limit_q else 1000
+                except ValueError:
+                    lim = 1000
+                rows = conn.execute('SELECT * FROM messages WHERE channel_id = ? ORDER BY timestamp ASC LIMIT ?', (cid, lim)).fetchall()
+        else:
+            # no channel filter: return recent messages across channels
+            try:
+                lim = int(limit_q) if limit_q else 50
+            except ValueError:
+                lim = 50
+            rows = conn.execute('SELECT * FROM messages ORDER BY timestamp DESC LIMIT ?', (lim,)).fetchall()
+
         conn.close()
         results = []
-        for row in msgs:
+        for row in rows:
             d = dict(row)
             d['channel_id'] = str(d['channel_id'])
             results.append(d)
@@ -334,6 +371,11 @@ def start_periodic_sync_thread():
 
 if __name__ == '__main__':
     init_db()
+    # Ensure older databases get the new `author_id` column without destructive reset
+    try:
+        ensure_author_id_column()
+    except Exception as e:
+        print(f"!!! [MIGRATION STARTUP ERROR]: {e}")
     t = threading.Thread(target=run_discord_bot, daemon=True)
     t.start()
     # Start periodic background sync thread so missed or old messages are backfilled

@@ -113,14 +113,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const res = await fetch('/api/messages');
-            const allMsgs = await res.json();
-            const msgs = allMsgs.filter(m => m.channel_id === currentChannelId).reverse();
+            // Request messages for the active channel specifically (returns ASC ordered messages)
+            const res = await fetch(`/api/messages?channel_id=${encodeURIComponent(currentChannelId)}&limit=1000`);
+            const msgs = await res.json();
             const isScrolledToBottom = (chatFeed.scrollHeight - chatFeed.scrollTop - chatFeed.clientHeight) < 150;
 
             chatFeed.innerHTML = '';
             
-            if (msgs.length === 0) {
+            if (!msgs || msgs.length === 0) {
                 chatFeed.innerHTML = '<div class="seal-mark"><div class="mark-symbol">封</div><p>EMPTY VESSEL</p></div>';
             } else {
                 msgs.forEach(msg => {

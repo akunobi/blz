@@ -72,6 +72,9 @@ body {
 }
 .chains-scroll::-webkit-scrollbar { width: 8px; background: transparent; }
 .chains-scroll::-webkit-scrollbar-thumb { background: rgba(0,242,255,0.08); border-radius: 8px; }
+/* Hide native scrollbars visually but keep content scrollable */
+.chains-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+.chains-scroll::-webkit-scrollbar { display: none; }
 
 /* ESTILO TIPO TALISMÁN/CADENA */
 .chain-link {
@@ -118,6 +121,9 @@ body {
     background: linear-gradient(180deg, rgba(1,12,16,0.35), rgba(0,6,9,0.45));
     display: flex; flex-direction: column; gap: 18px; min-height: 0;
 }
+/* Hide scrollbar but keep scrolling via mouse/touch/keyboard */
+.beast-feed { scrollbar-width: none; -ms-overflow-style: none; }
+.beast-feed::-webkit-scrollbar { display: none; }
 
 .seal-mark { margin: auto; text-align: center; opacity: 0.12; color: var(--lock-blue-3); }
 .mark-symbol { font-size: 6.5rem; font-family: 'Times New Roman', serif; border: 3px solid rgba(127,242,255,0.08); border-radius: 50%; width: 140px; height: 140px; line-height: 136px; margin: 0 auto 18px; }
