@@ -220,6 +220,63 @@ def bot_info():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/api/mention_lookup', methods=['POST'])
+def mention_lookup():
+    """Resolve user and role IDs to human-friendly strings.
+    Expects JSON: { users: [id,...], roles: [id,...] }
+    Returns: { users: {id: display}, roles: {id: display} }
+    """
+    if not bot_loop or not bot_ready_event.is_set():
+        return jsonify({"error": "Bot not ready"}), 503
+
+    payload = request.get_json(force=True) or {}
+    user_ids = payload.get('users') or []
+    role_ids = payload.get('roles') or []
+
+    async def _lookup():
+        out = {'users': {}, 'roles': {}}
+        # Resolve users
+        for u in set(user_ids):
+            try:
+                uid = int(u)
+            except Exception:
+                continue
+            user = client.get_user(uid)
+            if not user:
+                try:
+                    user = await client.fetch_user(uid)
+                except Exception:
+                    user = None
+            if user:
+                out['users'][str(uid)] = f"@{user.name}"
+
+        # Resolve roles via guild derived from target category
+        try:
+            category = client.get_channel(TARGET_CATEGORY_ID) or await client.fetch_channel(TARGET_CATEGORY_ID)
+            guild = getattr(category, 'guild', None)
+        except Exception:
+            guild = None
+
+        if guild:
+            for r in set(role_ids):
+                try:
+                    rid = int(r)
+                except Exception:
+                    continue
+                role = guild.get_role(rid)
+                if role:
+                    out['roles'][str(rid)] = f"@{role.name}"
+
+        return out
+
+    try:
+        future = asyncio.run_coroutine_threadsafe(_lookup(), bot_loop)
+        res = future.result(timeout=10)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/messages')
 def get_messages():
     try:

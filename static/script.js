@@ -16,6 +16,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentChannelId = null;
     let isFetching = false;
     let botName = null;
+    let channelMap = {};
+    let mentionCache = { users: {}, roles: {} };
 
     // --- INICIO ---
     // Fetch bot info used to mark bot-authored messages
@@ -25,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (r.ok){
                 const j = await r.json();
                 botName = j.name || null;
+                window._botId = j.id || null;
             }
         }catch(e){ console.warn('botinfo fetch failed', e); }
     })();
@@ -51,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
             channels.forEach(ch => {
                 const cName = ch.name || "Unknown";
                 const cId = ch.id; 
+                channelMap[cId] = cName;
 
                 // Creamos el ESLABÓN DE LA CADENA
                 const link = document.createElement('div');
@@ -118,6 +122,33 @@ document.addEventListener('DOMContentLoaded', () => {
             const msgs = await res.json();
             const isScrolledToBottom = (chatFeed.scrollHeight - chatFeed.scrollTop - chatFeed.clientHeight) < 150;
 
+            // Collect mention ids (users and roles) from messages to batch-resolve
+            const userIds = new Set();
+            const roleIds = new Set();
+            const mentionUserRe = /<@!?(\d+)>/g;
+            const mentionRoleRe = /<@&(\d+)>/g;
+            msgs.forEach(m => {
+                let m1; while ((m1 = mentionUserRe.exec(m.content || '')) !== null) userIds.add(m1[1]);
+                let m2; while ((m2 = mentionRoleRe.exec(m.content || '')) !== null) roleIds.add(m2[1]);
+            });
+
+            // Request lookups for any ids not already cached
+            const usersToLookup = Array.from(userIds).filter(id => !mentionCache.users[id]);
+            const rolesToLookup = Array.from(roleIds).filter(id => !mentionCache.roles[id]);
+            if ((usersToLookup.length > 0 || rolesToLookup.length > 0) && (usersToLookup.length + rolesToLookup.length) <= 100) {
+                try {
+                    const r = await fetch('/api/mention_lookup', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ users: usersToLookup, roles: rolesToLookup })
+                    });
+                    if (r.ok) {
+                        const j = await r.json();
+                        if (j.users) Object.assign(mentionCache.users, j.users);
+                        if (j.roles) Object.assign(mentionCache.roles, j.roles);
+                    }
+                } catch (e) { console.warn('mention lookup failed', e); }
+            }
+
             chatFeed.innerHTML = '';
             
             if (!msgs || msgs.length === 0) {
@@ -128,11 +159,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     fused.className = 'msg-fused';
 
                     // If this message was authored by the bot, mark it so CSS can align it to the right
-                    if (botName && msg.author_name === botName) fused.classList.add('msg-me');
+                    if (botName && msg.author_id && String(msg.author_id) === String((window._botId || ''))) fused.classList.add('msg-me');
+                    else if (botName && msg.author_name === botName) fused.classList.add('msg-me');
+
+                    // Render content with Discord-like markdown and mentions
+                    const rendered = renderDiscordContent(msg.content || '');
 
                     fused.innerHTML = `
-                        <div class="msg-auth">${msg.author_name}</div>
-                        <div class="msg-body">${formatLinks(msg.content)}</div>
+                        <div class="msg-auth">${escapeHtml(msg.author_name || 'Unknown')}</div>
+                        <div class="msg-body">${rendered}</div>
                         <div class="msg-meta">${msg.timestamp || ''}</div>
                     `;
                     chatFeed.appendChild(fused);
@@ -148,6 +183,75 @@ document.addEventListener('DOMContentLoaded', () => {
     function formatLinks(text) {
         if (!text) return "";
         return text.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>');
+    }
+
+    // Simple HTML escape
+    function escapeHtml(s) {
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    // Render a subset of Discord markdown and replace mentions
+    function renderDiscordContent(text) {
+        if (!text) return '';
+        // Preserve code blocks first
+        const codeBlockRe = /```([\s\S]*?)```/g;
+        const codeBlocks = [];
+        text = text.replace(codeBlockRe, (m, p1) => {
+            const idx = codeBlocks.push(p1) - 1;
+            return `@@CODEBLOCK${idx}@@`;
+        });
+
+        // Escape html
+        text = escapeHtml(text);
+
+        // Inline code
+        text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+        // Bold
+        text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        // Underline
+        text = text.replace(/__([^_]+)__/g, '<u>$1</u>');
+        // Italic (single * or _)
+        text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+        text = text.replace(/_([^_]+)_/g, '<em>$1</em>');
+        // Strikethrough
+        text = text.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+        // Spoiler
+        text = text.replace(/\|\|([^|]+)\|\|/g, '<span class="spoiler">$1</span>');
+
+        // Channel mentions <#id>
+        text = text.replace(/<#(\d+)>/g, (m, id) => {
+            const name = channelMap[id];
+            return name ? `<span class="mention mention-channel">#${escapeHtml(name)}</span>` : `<span class="mention">#${id}</span>`;
+        });
+
+        // User mentions <@id> or <@!id>
+        text = text.replace(/<@!?(\d+)>/g, (m, id) => {
+            const resolved = mentionCache.users[id];
+            return resolved ? `<span class="mention mention-user">${escapeHtml(resolved)}</span>` : `<span class="mention">@${id}</span>`;
+        });
+
+        // Role mentions <@&id>
+        text = text.replace(/<@&(\d+)>/g, (m, id) => {
+            const resolved = mentionCache.roles[id];
+            return resolved ? `<span class="mention mention-role">${escapeHtml(resolved)}</span>` : `<span class="mention">@role:${id}</span>`;
+        });
+
+        // Links
+        text = formatLinks(text);
+
+        // Restore code blocks (escape inner HTML)
+        text = text.replace(/@@CODEBLOCK(\d+)@@/g, (m, idx) => {
+            const src = codeBlocks[Number(idx)] || '';
+            return `<pre><code>${escapeHtml(src)}</code></pre>`;
+        });
+
+        return text;
     }
 
     window.sendMessage = async () => {
