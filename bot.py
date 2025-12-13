@@ -224,6 +224,31 @@ def get_messages():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/api/admin/sync')
+def trigger_sync():
+    """Trigger a history sync. Query params: ?limit=200 or ?limit=all
+    Returns immediate acknowledgement; sync runs in bot loop.
+    """
+    if not bot_loop or not bot_ready_event.is_set():
+        return jsonify({"error": "Bot disconnected"}), 503
+
+    limit_q = request.args.get('limit', None)
+    if limit_q and str(limit_q).lower() == 'all':
+        limit = None
+    else:
+        try:
+            limit = int(limit_q) if limit_q else int(os.getenv('HISTORY_LIMIT', '1000'))
+        except ValueError:
+            limit = int(os.getenv('HISTORY_LIMIT', '1000'))
+
+    try:
+        future = asyncio.run_coroutine_threadsafe(sync_category_history(limit), bot_loop)
+        # don't block long; return accepted
+        return jsonify({"status": "accepted", "limit": ("all" if limit is None else limit)}), 202
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/send', methods=['POST'])
 def send_message():
     data = request.json
@@ -270,9 +295,48 @@ def run_discord_bot():
         try: bot_loop.run_until_complete(client.start(TOKEN))
         except Exception as e: print(f"!!! [BOT CRASH]: {e}")
 
+
+def start_periodic_sync_thread():
+    """Start a background thread that periodically triggers history sync via bot_loop.
+    This runs in a normal Python thread and schedules the async task on the bot event loop.
+    """
+    def _runner():
+        # wait until bot is ready
+        bot_ready_event.wait()
+        try:
+            interval = int(os.getenv('HISTORY_INTERVAL_MINUTES', '10'))
+        except ValueError:
+            interval = 10
+
+        history_limit = None
+        try:
+            history_limit = int(os.getenv('HISTORY_LIMIT', '1000'))
+        except ValueError:
+            history_limit = 1000
+
+        while True:
+            try:
+                if bot_loop:
+                    print(f">>> [PERIODIC SYNC] scheduling sync (limit={history_limit})")
+                    asyncio.run_coroutine_threadsafe(sync_category_history(history_limit), bot_loop)
+            except Exception as e:
+                print(f"!!! [PERIODIC SYNC ERROR]: {e}")
+            # sleep minutes
+            try:
+                for _ in range(interval * 6):
+                    # short sleeps to be responsive to shutdown (not strictly necessary)
+                    threading.Event().wait(10)
+            except Exception:
+                threading.Event().wait(interval * 60)
+
+    t = threading.Thread(target=_runner, daemon=True)
+    t.start()
+
 if __name__ == '__main__':
     init_db()
     t = threading.Thread(target=run_discord_bot, daemon=True)
     t.start()
+    # Start periodic background sync thread so missed or old messages are backfilled
+    start_periodic_sync_thread()
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
