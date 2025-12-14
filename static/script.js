@@ -260,67 +260,74 @@ document.addEventListener('DOMContentLoaded', () => {
     // Render a subset of Discord markdown and replace mentions
     function renderDiscordContent(text) {
         if (!text) return '';
+
         // Preserve code blocks first
         const codeBlockRe = /```([\s\S]*?)```/g;
         const codeBlocks = [];
-        text = text.replace(codeBlockRe, (m, p1) => {
+        const textWithoutCode = text.replace(codeBlockRe, (m, p1) => {
             const idx = codeBlocks.push(p1) - 1;
             return `@@CODEBLOCK${idx}@@`;
         });
 
-        // Escape html
-        text = escapeHtml(text);
+        // We'll replace mentions/channels/roles with placeholders first, then escape the whole string,
+        // then substitute placeholders with safe HTML. This avoids issues where escaping would hide <@...> tokens.
+        let working = textWithoutCode;
+
+        // channel mentions -> placeholder
+        working = working.replace(/<#(\d+)>/g, (m, id) => `@@CH_${id}@@`);
+        // user mentions
+        working = working.replace(/<@!?(\d+)>/g, (m, id) => `@@MU_${id}@@`);
+        // role mentions
+        working = working.replace(/<@&(\d+)>/g, (m, id) => `@@MR_${id}@@`);
+
+        // Now escape the rest
+        working = escapeHtml(working);
 
         // Inline code
-        text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
-
+        working = working.replace(/`([^`]+)`/g, '<code>$1</code>');
         // Bold
-        text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        working = working.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
         // Underline
-        text = text.replace(/__([^_]+)__/g, '<u>$1</u>');
-        // Italic (single * or _)
-        text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-        text = text.replace(/_([^_]+)_/g, '<em>$1</em>');
+        working = working.replace(/__([^_]+)__/g, '<u>$1</u>');
+        // Italic
+        working = working.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+        working = working.replace(/_([^_]+)_/g, '<em>$1</em>');
         // Strikethrough
-        text = text.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+        working = working.replace(/~~([^~]+)~~/g, '<del>$1</del>');
         // Spoiler
-        text = text.replace(/\|\|([^|]+)\|\|/g, '<span class="spoiler">$1</span>');
+        working = working.replace(/\|\|([^|]+)\|\|/g, '<span class="spoiler">$1</span>');
+        // Links
+        working = formatLinks(working);
 
-        // Channel mentions <#id>
-        text = text.replace(/<#(\d+)>/g, (m, id) => {
+        // Restore placeholders with safe HTML
+        working = working.replace(/@@CH_(\d+)@@/g, (m, id) => {
             const name = channelMap[id];
-            return name ? `<span class="mention mention-channel">#${escapeHtml(name)}</span>` : `<span class="mention">#${id}</span>`;
+            return name ? `<span class="mention mention-channel">#${escapeHtml(name)}</span>` : `<span class="mention">#${escapeHtml(id)}</span>`;
         });
 
-        // User mentions <@id> or <@!id>
-        text = text.replace(/<@!?(\d+)>/g, (m, id) => {
+        working = working.replace(/@@MU_(\d+)@@/g, (m, id) => {
             const resolved = mentionCache.users[id];
             if (resolved) {
-                // resolved may be a string (legacy) or an object {display, tag}
                 const display = (typeof resolved === 'string') ? resolved : (resolved.display || `@${id}`);
                 const tag = (typeof resolved === 'string') ? null : (resolved.tag || null);
                 const title = tag ? ` title="${escapeHtml(tag)}"` : '';
                 return `<span class="mention mention-user"${title}>${escapeHtml(display)}</span>`;
             }
-            return `<span class="mention">@${id}</span>`;
+            return `<span class="mention">@${escapeHtml(id)}</span>`;
         });
 
-        // Role mentions <@&id>
-        text = text.replace(/<@&(\d+)>/g, (m, id) => {
+        working = working.replace(/@@MR_(\d+)@@/g, (m, id) => {
             const resolved = mentionCache.roles[id];
-            return resolved ? `<span class="mention mention-role">${escapeHtml(resolved)}</span>` : `<span class="mention">@role:${id}</span>`;
+            return resolved ? `<span class="mention mention-role">${escapeHtml(resolved)}</span>` : `<span class="mention">@role:${escapeHtml(id)}</span>`;
         });
-
-        // Links
-        text = formatLinks(text);
 
         // Restore code blocks (escape inner HTML)
-        text = text.replace(/@@CODEBLOCK(\d+)@@/g, (m, idx) => {
+        working = working.replace(/@@CODEBLOCK(\d+)@@/g, (m, idx) => {
             const src = codeBlocks[Number(idx)] || '';
             return `<pre><code>${escapeHtml(src)}</code></pre>`;
         });
 
-        return text;
+        return working;
     }
 
     // Find unresolved mention placeholders in the DOM and batch-resolve them
