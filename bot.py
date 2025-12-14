@@ -242,6 +242,35 @@ def mention_lookup():
                 uid = int(u)
             except Exception:
                 continue
+            # Try to resolve as a guild Member first (so we can get display_name/nick)
+            member_display = None
+            if guild:
+                try:
+                    member = guild.get_member(uid)
+                    if not member:
+                        try:
+                            member = await guild.fetch_member(uid)
+                        except Exception:
+                            member = None
+                    if member:
+                        member_display = f"@{member.display_name}"
+                except Exception:
+                    member_display = None
+
+            if member_display:
+                # member_display already contains an '@' prefix
+                # Also include the global tag if available
+                try:
+                    uobj = member.user if hasattr(member, 'user') else None
+                    tag = None
+                    if uobj and getattr(uobj, 'discriminator', None):
+                        tag = f"{uobj.name}#{uobj.discriminator}"
+                except Exception:
+                    tag = None
+                out['users'][str(uid)] = { 'display': member_display, 'tag': tag }
+                continue
+
+            # Fallback to user object (global)
             user = client.get_user(uid)
             if not user:
                 try:
@@ -249,7 +278,7 @@ def mention_lookup():
                 except Exception:
                     user = None
             if user:
-                out['users'][str(uid)] = f"@{user.name}"
+                out['users'][str(uid)] = { 'display': f"@{user.name}", 'tag': f"{user.name}#{user.discriminator}" }
 
         # Resolve roles via guild derived from target category
         try:
@@ -264,9 +293,13 @@ def mention_lookup():
                     rid = int(r)
                 except Exception:
                     continue
-                role = guild.get_role(rid)
-                if role:
-                    out['roles'][str(rid)] = f"@{role.name}"
+                try:
+                    role = guild.get_role(rid)
+                    if role:
+                        out['roles'][str(rid)] = f"@{role.name}"
+                except Exception:
+                    # ignore
+                    pass
 
         return out
 
@@ -283,6 +316,7 @@ def get_messages():
         # Support optional channel filtering and limit to return more/older messages
         channel_id = request.args.get('channel_id')
         limit_q = request.args.get('limit')
+        since_id_q = request.args.get('since_id')
 
         conn = get_db_connection()
         if channel_id:
@@ -292,7 +326,17 @@ def get_messages():
             except ValueError:
                 cid = None
 
-            if limit_q and str(limit_q).lower() == 'all':
+            # If caller passed since_id, return messages with message_id > since_id (new messages only)
+            if since_id_q:
+                try:
+                    since_id = int(since_id_q)
+                except ValueError:
+                    since_id = None
+                if since_id is not None:
+                    rows = conn.execute('SELECT * FROM messages WHERE channel_id = ? AND message_id > ? ORDER BY timestamp ASC', (cid, since_id)).fetchall()
+                else:
+                    rows = []
+            elif limit_q and str(limit_q).lower() == 'all':
                 rows = conn.execute('SELECT * FROM messages WHERE channel_id = ? ORDER BY timestamp ASC', (cid,)).fetchall()
             else:
                 try:

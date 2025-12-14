@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let botName = null;
     let channelMap = {};
     let mentionCache = { users: {}, roles: {} };
+    let lastMessageId = {};
 
     // --- INICIO ---
     // Fetch bot info used to mark bot-authored messages
@@ -33,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
     })();
     fetchChannels();
     setInterval(() => {
-        if (!isFetching && currentChannelId) fetchMessages();
+        if (!isFetching && currentChannelId) fetchMessages(false);
     }, 1000);
 
     if(msgInput) {
@@ -72,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     startTimer();
 
                     chatFeed.innerHTML = '<div style="text-align:center; padding-top:50px; color:var(--lock-blue); font-family:\'Orbitron\'">BREAKING SEAL...</div>';
-                    fetchMessages();
+                    fetchMessages(true);
                 };
                 
                 channelList.appendChild(link);
@@ -93,7 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- MENSAJES (FUSED) ---
-    async function fetchMessages() {
+    async function fetchMessages(initial=false) {
         if (!currentChannelId) return;
         isFetching = true;
         // Remove optimistic messages (client-side placeholders) before loading real ones
@@ -117,8 +118,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            // Request messages for the active channel specifically (returns ASC ordered messages)
-            const res = await fetch(`/api/messages?channel_id=${encodeURIComponent(currentChannelId)}&limit=1000`);
+            // If initial, fetch full history; otherwise fetch only messages newer than lastMessageId
+            let res;
+            if (initial) {
+                res = await fetch(`/api/messages?channel_id=${encodeURIComponent(currentChannelId)}&limit=1000`);
+            } else {
+                const since = encodeURIComponent(lastMessageId[currentChannelId] || 0);
+                res = await fetch(`/api/messages?channel_id=${encodeURIComponent(currentChannelId)}&since_id=${since}`);
+            }
             const msgs = await res.json();
             const isScrolledToBottom = (chatFeed.scrollHeight - chatFeed.scrollTop - chatFeed.clientHeight) < 150;
 
@@ -143,38 +150,62 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                     if (r.ok) {
                         const j = await r.json();
-                        if (j.users) Object.assign(mentionCache.users, j.users);
-                        if (j.roles) Object.assign(mentionCache.roles, j.roles);
+                                        if (j.users) Object.assign(mentionCache.users, j.users);
+                                        if (j.roles) Object.assign(mentionCache.roles, j.roles);
                     }
                 } catch (e) { console.warn('mention lookup failed', e); }
             }
 
-            chatFeed.innerHTML = '';
-            
-            if (!msgs || msgs.length === 0) {
-                chatFeed.innerHTML = '<div class="seal-mark"><div class="mark-symbol">封</div><p>EMPTY VESSEL</p></div>';
+            // If initial load, replace content; otherwise append messages
+            if (initial) {
+                chatFeed.innerHTML = '';
+                if (!msgs || msgs.length === 0) {
+                    chatFeed.innerHTML = '<div class="seal-mark"><div class="mark-symbol">封</div><p>EMPTY VESSEL</p></div>';
+                } else {
+                    msgs.forEach(msg => {
+                        const fused = document.createElement('div');
+                        fused.className = 'msg-fused';
+
+                        if (botName && msg.author_id && String(msg.author_id) === String((window._botId || ''))) fused.classList.add('msg-me');
+                        else if (botName && msg.author_name === botName) fused.classList.add('msg-me');
+
+                        const rendered = renderDiscordContent(msg.content || '');
+
+                        fused.innerHTML = `
+                            <div class="msg-auth">${escapeHtml(msg.author_name || 'Unknown')}</div>
+                            <div class="msg-body">${rendered}</div>
+                            <div class="msg-meta">${msg.timestamp || ''}</div>
+                        `;
+                        chatFeed.appendChild(fused);
+
+                        if (msg.message_id) lastMessageId[currentChannelId] = Math.max(lastMessageId[currentChannelId] || 0, Number(msg.message_id));
+                    });
+                }
+
+                if (isScrolledToBottom) chatFeed.scrollTop = chatFeed.scrollHeight;
             } else {
-                msgs.forEach(msg => {
-                    const fused = document.createElement('div');
-                    fused.className = 'msg-fused';
+                // incremental append
+                if (msgs && msgs.length > 0) {
+                    msgs.forEach(msg => {
+                        const fused = document.createElement('div');
+                        fused.className = 'msg-fused';
 
-                    // If this message was authored by the bot, mark it so CSS can align it to the right
-                    if (botName && msg.author_id && String(msg.author_id) === String((window._botId || ''))) fused.classList.add('msg-me');
-                    else if (botName && msg.author_name === botName) fused.classList.add('msg-me');
+                        if (botName && msg.author_id && String(msg.author_id) === String((window._botId || ''))) fused.classList.add('msg-me');
+                        else if (botName && msg.author_name === botName) fused.classList.add('msg-me');
 
-                    // Render content with Discord-like markdown and mentions
-                    const rendered = renderDiscordContent(msg.content || '');
+                        const rendered = renderDiscordContent(msg.content || '');
+                        fused.innerHTML = `
+                            <div class="msg-auth">${escapeHtml(msg.author_name || 'Unknown')}</div>
+                            <div class="msg-body">${rendered}</div>
+                            <div class="msg-meta">${msg.timestamp || ''}</div>
+                        `;
+                        chatFeed.appendChild(fused);
+                        chatFeed.scrollTop = chatFeed.scrollHeight;
 
-                    fused.innerHTML = `
-                        <div class="msg-auth">${escapeHtml(msg.author_name || 'Unknown')}</div>
-                        <div class="msg-body">${rendered}</div>
-                        <div class="msg-meta">${msg.timestamp || ''}</div>
-                    `;
-                    chatFeed.appendChild(fused);
-                });
+                        if (msg.message_id) lastMessageId[currentChannelId] = Math.max(lastMessageId[currentChannelId] || 0, Number(msg.message_id));
+                    });
+                }
             }
-
-            if (isScrolledToBottom) chatFeed.scrollTop = chatFeed.scrollHeight;
 
         } catch(e) { console.error(e); }
         finally { isFetching = false; }
@@ -233,7 +264,14 @@ document.addEventListener('DOMContentLoaded', () => {
         // User mentions <@id> or <@!id>
         text = text.replace(/<@!?(\d+)>/g, (m, id) => {
             const resolved = mentionCache.users[id];
-            return resolved ? `<span class="mention mention-user">${escapeHtml(resolved)}</span>` : `<span class="mention">@${id}</span>`;
+            if (resolved) {
+                // resolved may be a string (legacy) or an object {display, tag}
+                const display = (typeof resolved === 'string') ? resolved : (resolved.display || `@${id}`);
+                const tag = (typeof resolved === 'string') ? null : (resolved.tag || null);
+                const title = tag ? ` title="${escapeHtml(tag)}"` : '';
+                return `<span class="mention mention-user"${title}>${escapeHtml(display)}</span>`;
+            }
+            return `<span class="mention">@${id}</span>`;
         });
 
         // Role mentions <@&id>
