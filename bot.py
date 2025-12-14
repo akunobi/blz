@@ -236,6 +236,13 @@ def mention_lookup():
 
     async def _lookup():
         out = {'users': {}, 'roles': {}}
+        # Resolve guild from target category so we can lookup members/roles
+        try:
+            category = client.get_channel(TARGET_CATEGORY_ID) or await client.fetch_channel(TARGET_CATEGORY_ID)
+            guild = getattr(category, 'guild', None)
+        except Exception:
+            guild = None
+
         # Resolve users
         for u in set(user_ids):
             try:
@@ -244,6 +251,7 @@ def mention_lookup():
                 continue
             # Try to resolve as a guild Member first (so we can get display_name/nick)
             member_display = None
+            member = None
             if guild:
                 try:
                     member = guild.get_member(uid)
@@ -280,13 +288,7 @@ def mention_lookup():
             if user:
                 out['users'][str(uid)] = { 'display': f"@{user.name}", 'tag': f"{user.name}#{user.discriminator}" }
 
-        # Resolve roles via guild derived from target category
-        try:
-            category = client.get_channel(TARGET_CATEGORY_ID) or await client.fetch_channel(TARGET_CATEGORY_ID)
-            guild = getattr(category, 'guild', None)
-        except Exception:
-            guild = None
-
+        # Resolve roles if we have a guild
         if guild:
             for r in set(role_ids):
                 try:
