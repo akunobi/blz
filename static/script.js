@@ -172,10 +172,16 @@ document.addEventListener('DOMContentLoaded', () => {
                         const rendered = renderDiscordContent(msg.content || '');
 
                         fused.innerHTML = `
-                            <div class="msg-auth">${escapeHtml(msg.author_name || 'Unknown')}</div>
-                            <div class="msg-body">${rendered}</div>
-                            <div class="msg-meta">${msg.timestamp || ''}</div>
-                        `;
+                                <div class="msg-auth">${escapeHtml(msg.author_name || 'Unknown')}</div>
+                                <div class="msg-body">${rendered}</div>
+                                <div class="msg-meta">${msg.timestamp || ''}</div>
+                            `;
+                        // dedupe: skip if message with same id already present
+                        if (msg.message_id) {
+                            const existing = chatFeed.querySelector(`[data-msg-id="${msg.message_id}"]`);
+                            if (existing) return; // skip this message
+                            fused.dataset.msgId = String(msg.message_id);
+                        }
                         chatFeed.appendChild(fused);
 
                         if (msg.message_id) lastMessageId[currentChannelId] = Math.max(lastMessageId[currentChannelId] || 0, Number(msg.message_id));
@@ -199,6 +205,18 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="msg-body">${rendered}</div>
                             <div class="msg-meta">${msg.timestamp || ''}</div>
                         `;
+                        // dedupe before appending
+                        if (msg.message_id) {
+                            const existing = chatFeed.querySelector(`[data-msg-id="${msg.message_id}"]`);
+                            if (existing) return;
+                            fused.dataset.msgId = String(msg.message_id);
+                        }
+                        // dedupe before appending
+                        if (msg.message_id) {
+                            const existing = chatFeed.querySelector(`[data-msg-id="${msg.message_id}"]`);
+                            if (existing) return;
+                            fused.dataset.msgId = String(msg.message_id);
+                        }
                         chatFeed.appendChild(fused);
                         chatFeed.scrollTop = chatFeed.scrollHeight;
 
@@ -206,6 +224,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 }
             }
+
+            // After rendering messages, try to enrich any unresolved mentions shown as @123 or @role:123
+            try { enrichUnresolvedMentions(); } catch (e) { /* ignore */ }
 
         } catch(e) { console.error(e); }
         finally { isFetching = false; }
@@ -224,6 +245,16 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
+    }
+
+    function stripHtml(html) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html || '';
+        return tmp.textContent || tmp.innerText || '';
+    }
+
+    function normalizeText(s) {
+        return String(s || '').replace(/\s+/g, ' ').trim();
     }
 
     // Render a subset of Discord markdown and replace mentions
@@ -290,6 +321,82 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         return text;
+    }
+
+    // Find unresolved mention placeholders in the DOM and batch-resolve them
+    async function enrichUnresolvedMentions() {
+        const unresolvedUsers = new Set();
+        const unresolvedRoles = new Set();
+        const els = Array.from(chatFeed.querySelectorAll('.mention'));
+
+        els.forEach(el => {
+            const t = el.textContent || '';
+            const mUser = t.match(/^@(\d+)$/);
+            const mRole = t.match(/^@role:(\d+)$/);
+            if (mUser) unresolvedUsers.add(mUser[1]);
+            else if (mRole) unresolvedRoles.add(mRole[1]);
+        });
+
+        const usersToLookup = Array.from(unresolvedUsers).filter(id => !mentionCache.users[id]);
+        const rolesToLookup = Array.from(unresolvedRoles).filter(id => !mentionCache.roles[id]);
+        if (usersToLookup.length === 0 && rolesToLookup.length === 0) return;
+
+        // Mark elements as loading
+        els.forEach(el => {
+            const t = el.textContent || '';
+            if (/^@\d+$/.test(t) || /^@role:\d+$/.test(t)) {
+                el.classList.add('mention-loading');
+                el.setAttribute('title', 'Resolving...');
+            }
+        });
+
+        try {
+            const r = await fetch('/api/mention_lookup', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ users: usersToLookup, roles: rolesToLookup })
+            });
+            if (!r.ok) return;
+            const j = await r.json();
+            if (j.users) Object.assign(mentionCache.users, j.users);
+            if (j.roles) Object.assign(mentionCache.roles, j.roles);
+
+            // Update DOM elements
+            els.forEach(el => {
+                const t = el.textContent || '';
+                const mUser = t.match(/^@(\d+)$/);
+                const mRole = t.match(/^@role:(\d+)$/);
+                if (mUser) {
+                    const id = mUser[1];
+                    const rp = mentionCache.users[id];
+                    if (rp) {
+                        const display = (typeof rp === 'string') ? rp : (rp.display || `@${id}`);
+                        const tag = (typeof rp === 'string') ? null : (rp.tag || null);
+                        if (tag) el.setAttribute('title', tag);
+                        else el.removeAttribute('title');
+                        el.textContent = display;
+                        el.classList.remove('mention-loading');
+                        el.classList.add('mention-user');
+                    } else {
+                        el.classList.remove('mention-loading');
+                        el.removeAttribute('title');
+                    }
+                } else if (mRole) {
+                    const id = mRole[1];
+                    const rp = mentionCache.roles[id];
+                    if (rp) {
+                        el.textContent = rp;
+                        el.classList.remove('mention-loading');
+                        el.classList.add('mention-role');
+                    } else {
+                        el.classList.remove('mention-loading');
+                        el.removeAttribute('title');
+                    }
+                }
+            });
+        } catch (e) {
+            console.warn('enrichUnresolvedMentions error', e);
+            els.forEach(el => el.classList.remove('mention-loading'));
+        }
     }
 
     window.sendMessage = async () => {

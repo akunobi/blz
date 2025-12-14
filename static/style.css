@@ -237,3 +237,14 @@ body {
 .mention-channel { background: rgba(255,255,255,0.02); color: var(--muted); }
 .spoiler { background: #111; color: #111; border-radius: 4px; padding: 0 4px; }
 .spoiler:hover { color: #fff; }
+
+/* Mention loader */
+.mention-loading { position: relative; color: var(--muted); }
+.mention-loading::after {
+    content: '';
+    position: absolute; right: -18px; top: 50%; transform: translateY(-50%);
+    width: 10px; height: 10px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.12); border-top-color: var(--lock-blue-1);
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin { from { transform: translateY(-50%) rotate(0deg);} to { transform: translateY(-50%) rotate(360deg);} }
