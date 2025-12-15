@@ -36,7 +36,9 @@ bot_ready_event = threading.Event()
 
 # --- BASE DE DATOS ---
 def get_db_connection():
-    conn = sqlite3.connect('database.db', check_same_thread=False)
+    # Use a reproducible absolute path for the DB so all processes hit the same file
+    DB_PATH = os.path.join(os.path.dirname(__file__), 'database.db')
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 

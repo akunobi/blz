@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchChannels();
     setInterval(() => {
         if (!isFetching && currentChannelId) fetchMessages(false);
-    }, 1000);
+    }, 500);
 
     if(msgInput) {
         msgInput.addEventListener('keypress', (e) => {
