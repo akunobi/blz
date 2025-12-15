@@ -440,6 +440,7 @@ def send_message():
                 ))
                 conn.commit()
                 conn.close()
+                print(f">>> [SEND DB SAVED]: msg_id={result.get('message_id')} channel={result.get('channel_name')} author={result.get('author_name')}")
             except Exception as e:
                 print(f"!!! [SEND DB SAVE ERROR]: {e}")
             return jsonify({"status": "OK", **({k: v for k, v in result.items() if k != 'success'})})
