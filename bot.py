@@ -406,7 +406,7 @@ def send_message():
             channel = await client.fetch_channel(c_id)
             sent = await channel.send(content)
             # return sent message info so the web client can update optimistic UI immediately
-            return {"success": True, "message_id": sent.id, "author_id": getattr(sent.author, 'id', None), "author_name": str(sent.author.name), "timestamp": sent.created_at.isoformat()}
+            return {"success": True, "message_id": sent.id, "author_id": getattr(sent.author, 'id', None), "author_name": str(sent.author.name), "author_avatar": (str(sent.author.avatar.url) if getattr(sent.author, 'avatar', None) else None), "channel_name": getattr(channel, 'name', None), "timestamp": sent.created_at.isoformat()}
         except discord.NotFound:
             print(f"!!! [ERROR] Canal {channel_id} NO EXISTE.")
             return {"success": False, "error": "Canal no encontrado en Discord."}
@@ -421,8 +421,30 @@ def send_message():
         future = asyncio.run_coroutine_threadsafe(send_async(), bot_loop)
         result = future.result(timeout=10)
         
-        if result["success"]: return jsonify({"status": "OK"})
-        else: return jsonify({"error": result["error"]}), 400
+        if result["success"]:
+            # Persist the sent message into local DB immediately so the web UI sees it on reload
+            try:
+                conn = get_db_connection()
+                conn.execute('''
+                    INSERT OR IGNORE INTO messages (channel_id, channel_name, author_name, author_avatar, content, author_id, message_id, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    int(channel_id),
+                    result.get('channel_name') or '',
+                    result.get('author_name') or '',
+                    result.get('author_avatar') or "https://cdn.discordapp.com/embed/avatars/0.png",
+                    content,
+                    result.get('author_id'),
+                    result.get('message_id'),
+                    result.get('timestamp')
+                ))
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                print(f"!!! [SEND DB SAVE ERROR]: {e}")
+            return jsonify({"status": "OK", **({k: v for k, v in result.items() if k != 'success'})})
+        else:
+            return jsonify({"error": result["error"]}), 400
             
     except Exception as e:
         return jsonify({"error": f"Internal: {e}"}), 500
