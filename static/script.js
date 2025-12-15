@@ -176,6 +176,9 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <div class="msg-body">${rendered}</div>
                                 <div class="msg-meta">${msg.timestamp || ''}</div>
                             `;
+                        // Ensure visibility (prevent unexpected hidden styles)
+                        fused.style.display = '';
+                        fused.style.visibility = 'visible';
                         // dedupe: skip if message with same id already present
                         if (msg.message_id) {
                             const existing = chatFeed.querySelector(`[data-msg-id="${msg.message_id}"]`);
@@ -205,6 +208,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="msg-body">${rendered}</div>
                             <div class="msg-meta">${msg.timestamp || ''}</div>
                         `;
+                        fused.style.display = '';
+                        fused.style.visibility = 'visible';
                         // dedupe before appending
                         if (msg.message_id) {
                             const existing = chatFeed.querySelector(`[data-msg-id="${msg.message_id}"]`);
@@ -413,11 +418,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const originalPlaceholder = msgInput.placeholder;
         // Create optimistic UI element so message appears immediately
         let optimisticNode = null;
+        let optimisticClientId = String(Date.now()) + Math.floor(Math.random()*1000);
         try {
             const author = botName || 'BOT';
             optimisticNode = document.createElement('div');
             optimisticNode.className = 'msg-fused msg-me';
             optimisticNode.setAttribute('data-optimistic', '1');
+            optimisticNode.dataset.clientId = optimisticClientId;
             optimisticNode.dataset.optimisticTs = String(Date.now());
             optimisticNode.innerHTML = `
                 <div class="msg-auth">${author}</div>
@@ -440,8 +447,40 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Server Reject");
-            // after successful send, refresh messages shortly (real message will arrive via bot->DB)
-            setTimeout(fetchMessages, 200);
+            // If server returned message_id, replace optimistic node immediately to avoid duplication
+            if (data && data.message_id) {
+                try {
+                    const realMsg = {
+                        message_id: data.message_id,
+                        author_id: data.author_id,
+                        author_name: data.author_name,
+                        content: content,
+                        timestamp: data.timestamp
+                    };
+
+                    // find optimistic node by clientId and replace
+                    const opt = chatFeed.querySelector(`[data-optimistic="1"][data-client-id="${optimisticClientId}"]`);
+                    const fused = document.createElement('div');
+                    fused.className = 'msg-fused';
+                    if (botName && realMsg.author_id && String(realMsg.author_id) === String((window._botId || ''))) fused.classList.add('msg-me');
+                    else if (botName && realMsg.author_name === botName) fused.classList.add('msg-me');
+
+                    fused.dataset.msgId = String(realMsg.message_id);
+                    fused.innerHTML = `
+                        <div class="msg-auth">${escapeHtml(realMsg.author_name || 'Unknown')}</div>
+                        <div class="msg-body">${renderDiscordContent(realMsg.content || '')}</div>
+                        <div class="msg-meta">${realMsg.timestamp || ''}</div>
+                    `;
+                    fused.style.display = '';
+                    fused.style.visibility = 'visible';
+
+                    if (opt) opt.replaceWith(fused);
+                    else chatFeed.appendChild(fused);
+                    chatFeed.scrollTop = chatFeed.scrollHeight;
+                } catch (e) { /* ignore UI replace errors */ }
+            }
+            // also schedule a fetch to ensure DB-synced messages are present
+            setTimeout(() => fetchMessages(false), 200);
         } catch(e) {
             alert("SEAL ERROR: " + e.message);
             // remove optimistic node if exists and restore content

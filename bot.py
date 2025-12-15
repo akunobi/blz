@@ -404,8 +404,9 @@ def send_message():
         try:
             c_id = int(channel_id)
             channel = await client.fetch_channel(c_id)
-            await channel.send(content)
-            return {"success": True}
+            sent = await channel.send(content)
+            # return sent message info so the web client can update optimistic UI immediately
+            return {"success": True, "message_id": sent.id, "author_id": getattr(sent.author, 'id', None), "author_name": str(sent.author.name), "timestamp": sent.created_at.isoformat()}
         except discord.NotFound:
             print(f"!!! [ERROR] Canal {channel_id} NO EXISTE.")
             return {"success": False, "error": "Canal no encontrado en Discord."}
