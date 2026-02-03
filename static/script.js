@@ -7,10 +7,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('stats-canvas');
     const ctx = canvas.getContext('2d');
     
-    // HUD
-    const hudPanel = document.getElementById('ticket-hud');
-    const hudName = document.getElementById('hud-name');
-    const hudTime = document.getElementById('hud-time');
+    // HEADER REFERENCES
+    const chatChannelName = document.getElementById('chat-channel-name');
+    const chatUptime = document.getElementById('chat-uptime');
     let timerInterval;
 
     let currentChannelId = null;
@@ -57,22 +56,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 const cId = ch.id; 
                 channelMap[cId] = cName;
 
-                // Creamos el ESLABÓN DE LA CADENA
+                // CREATE CHANNEL ITEM
                 const link = document.createElement('div');
-                link.className = 'chain-link';
+                link.className = 'channel-item';
                 link.innerText = cName.toUpperCase(); 
                 
                 link.onclick = () => {
                     currentChannelId = cId;
-                    document.querySelectorAll('.chain-link').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll('.channel-item').forEach(b => b.classList.remove('active'));
                     link.classList.add('active');
                     
-                    // HUD UPDATE
-                    hudPanel.classList.add('visible');
-                    hudName.innerText = cName.toUpperCase();
+                    // UPDATE HEADER
+                    chatChannelName.innerText = cName.toUpperCase();
                     startTimer();
 
-                    chatFeed.innerHTML = '<div style="text-align:center; padding-top:50px; color:var(--lock-blue); font-family:\'Orbitron\'">BREAKING SEAL...</div>';
+                    chatFeed.innerHTML = '<div style="text-align:center; padding-top:50px; color:var(--primary-cyan); font-family:\'Orbitron\';">SIGNAL INCOMING...</div>';
                     fetchMessages(true);
                 };
                 
@@ -84,12 +82,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function startTimer() {
         if (timerInterval) clearInterval(timerInterval);
         let seconds = 0;
-        hudTime.innerText = "00:00";
+        chatUptime.innerText = "00:00";
         timerInterval = setInterval(() => {
             seconds++;
             const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
             const secs = (seconds % 60).toString().padStart(2, '0');
-            hudTime.innerText = `${mins}:${secs}`;
+            chatUptime.innerText = `${mins}:${secs}`;
         }, 1000);
     }
 
@@ -160,32 +158,32 @@ document.addEventListener('DOMContentLoaded', () => {
             if (initial) {
                 chatFeed.innerHTML = '';
                 if (!msgs || msgs.length === 0) {
-                    chatFeed.innerHTML = '<div class="seal-mark"><div class="mark-symbol">封</div><p>EMPTY VESSEL</p></div>';
+                    chatFeed.innerHTML = '<div class="stream-init"><div class="init-symbol">/</div><p class="init-text">NO SIGNAL</p></div>';
                 } else {
                     msgs.forEach(msg => {
-                        const fused = document.createElement('div');
-                        fused.className = 'msg-fused';
+                        const message = document.createElement('div');
+                        message.className = 'message';
 
-                        if (botName && msg.author_id && String(msg.author_id) === String((window._botId || ''))) fused.classList.add('msg-me');
-                        else if (botName && msg.author_name === botName) fused.classList.add('msg-me');
+                        if (botName && msg.author_id && String(msg.author_id) === String((window._botId || ''))) message.classList.add('msg-me');
+                        else if (botName && msg.author_name === botName) message.classList.add('msg-me');
 
                         const rendered = renderDiscordContent(msg.content || '');
 
-                        fused.innerHTML = `
-                                <div class="msg-auth">${escapeHtml(msg.author_name || 'Unknown')}</div>
-                                <div class="msg-body">${rendered}</div>
-                                <div class="msg-meta">${msg.timestamp || ''}</div>
+                        message.innerHTML = `
+                                <div class="msg-author">${escapeHtml(msg.author_name || 'Unknown')}</div>
+                                <div class="msg-content">${rendered}</div>
+                                <div class="msg-time">${msg.timestamp || ''}</div>
                             `;
                         // Ensure visibility (prevent unexpected hidden styles)
-                        fused.style.display = '';
-                        fused.style.visibility = 'visible';
+                        message.style.display = '';
+                        message.style.visibility = 'visible';
                         // dedupe: skip if message with same id already present
                         if (msg.message_id) {
                             const existing = chatFeed.querySelector(`[data-msg-id="${msg.message_id}"]`);
                             if (existing) return; // skip this message
-                            fused.dataset.msgId = String(msg.message_id);
+                            message.dataset.msgId = String(msg.message_id);
                         }
-                        chatFeed.appendChild(fused);
+                        chatFeed.appendChild(message);
 
                         if (msg.message_id) lastMessageId[currentChannelId] = Math.max(lastMessageId[currentChannelId] || 0, Number(msg.message_id));
                     });
@@ -196,33 +194,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 // incremental append
                 if (msgs && msgs.length > 0) {
                     msgs.forEach(msg => {
-                        const fused = document.createElement('div');
-                        fused.className = 'msg-fused';
+                        const message = document.createElement('div');
+                        message.className = 'message';
 
-                        if (botName && msg.author_id && String(msg.author_id) === String((window._botId || ''))) fused.classList.add('msg-me');
-                        else if (botName && msg.author_name === botName) fused.classList.add('msg-me');
+                        if (botName && msg.author_id && String(msg.author_id) === String((window._botId || ''))) message.classList.add('msg-me');
+                        else if (botName && msg.author_name === botName) message.classList.add('msg-me');
 
                         const rendered = renderDiscordContent(msg.content || '');
-                        fused.innerHTML = `
-                            <div class="msg-auth">${escapeHtml(msg.author_name || 'Unknown')}</div>
-                            <div class="msg-body">${rendered}</div>
-                            <div class="msg-meta">${msg.timestamp || ''}</div>
+                        message.innerHTML = `
+                            <div class="msg-author">${escapeHtml(msg.author_name || 'Unknown')}</div>
+                            <div class="msg-content">${rendered}</div>
+                            <div class="msg-time">${msg.timestamp || ''}</div>
                         `;
-                        fused.style.display = '';
-                        fused.style.visibility = 'visible';
+                        message.style.display = '';
+                        message.style.visibility = 'visible';
                         // dedupe before appending
                         if (msg.message_id) {
                             const existing = chatFeed.querySelector(`[data-msg-id="${msg.message_id}"]`);
                             if (existing) return;
-                            fused.dataset.msgId = String(msg.message_id);
+                            message.dataset.msgId = String(msg.message_id);
                         }
-                        // dedupe before appending
-                        if (msg.message_id) {
-                            const existing = chatFeed.querySelector(`[data-msg-id="${msg.message_id}"]`);
-                            if (existing) return;
-                            fused.dataset.msgId = String(msg.message_id);
-                        }
-                        chatFeed.appendChild(fused);
+                        chatFeed.appendChild(message);
                         chatFeed.scrollTop = chatFeed.scrollHeight;
 
                         if (msg.message_id) lastMessageId[currentChannelId] = Math.max(lastMessageId[currentChannelId] || 0, Number(msg.message_id));
@@ -422,14 +414,14 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const author = botName || 'BOT';
             optimisticNode = document.createElement('div');
-            optimisticNode.className = 'msg-fused msg-me';
+            optimisticNode.className = 'message msg-me';
             optimisticNode.setAttribute('data-optimistic', '1');
             optimisticNode.dataset.clientId = optimisticClientId;
             optimisticNode.dataset.optimisticTs = String(Date.now());
             optimisticNode.innerHTML = `
-                <div class="msg-auth">${author}</div>
-                <div class="msg-body">${formatLinks(content)}</div>
-                <div class="msg-meta">SENDING...</div>
+                <div class="msg-author">${author}</div>
+                <div class="msg-content">${formatLinks(content)}</div>
+                <div class="msg-time">SENDING...</div>
             `;
             chatFeed.appendChild(optimisticNode);
             chatFeed.scrollTop = chatFeed.scrollHeight;
@@ -460,22 +452,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // find optimistic node by clientId and replace
                     const opt = chatFeed.querySelector(`[data-optimistic="1"][data-client-id="${optimisticClientId}"]`);
-                    const fused = document.createElement('div');
-                    fused.className = 'msg-fused';
-                    if (botName && realMsg.author_id && String(realMsg.author_id) === String((window._botId || ''))) fused.classList.add('msg-me');
-                    else if (botName && realMsg.author_name === botName) fused.classList.add('msg-me');
+                    const message = document.createElement('div');
+                    message.className = 'message';
+                    if (botName && realMsg.author_id && String(realMsg.author_id) === String((window._botId || ''))) message.classList.add('msg-me');
+                    else if (botName && realMsg.author_name === botName) message.classList.add('msg-me');
 
-                    fused.dataset.msgId = String(realMsg.message_id);
-                    fused.innerHTML = `
-                        <div class="msg-auth">${escapeHtml(realMsg.author_name || 'Unknown')}</div>
-                        <div class="msg-body">${renderDiscordContent(realMsg.content || '')}</div>
-                        <div class="msg-meta">${realMsg.timestamp || ''}</div>
+                    message.dataset.msgId = String(realMsg.message_id);
+                    message.innerHTML = `
+                        <div class="msg-author">${escapeHtml(realMsg.author_name || 'Unknown')}</div>
+                        <div class="msg-content">${renderDiscordContent(realMsg.content || '')}</div>
+                        <div class="msg-time">${realMsg.timestamp || ''}</div>
                     `;
-                    fused.style.display = '';
-                    fused.style.visibility = 'visible';
+                    message.style.display = '';
+                    message.style.visibility = 'visible';
 
-                    if (opt) opt.replaceWith(fused);
-                    else chatFeed.appendChild(fused);
+                    if (opt) opt.replaceWith(message);
+                    else chatFeed.appendChild(message);
                     chatFeed.scrollTop = chatFeed.scrollHeight;
                 } catch (e) { /* ignore UI replace errors */ }
             }
@@ -512,7 +504,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         drawGraph(type, data, avg, rank);
         
-        if(modal) modal.style.display = 'flex';
+        if(modal) modal.classList.add('active');
         document.getElementById('stats-drawer').classList.remove('active');
     };
 
@@ -604,7 +596,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const closeBtn = document.getElementById('close-modal');
     if(closeBtn) closeBtn.onclick = () => {
-        modal.style.display = 'none';
+        modal.classList.remove('active');
         document.getElementById('stats-drawer').classList.add('active');
     };
 
@@ -643,10 +635,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' || e.key === 'Esc') {
             const drawer = document.getElementById('stats-drawer');
-            const modal = document.getElementById('stats-modal');
+            const modalElem = document.getElementById('stats-modal');
 
-            if (modal && modal.style.display === 'flex') {
-                modal.style.display = 'none';
+            if (modalElem && modalElem.classList.contains('active')) {
+                modalElem.classList.remove('active');
                 if (drawer) drawer.classList.remove('active');
                 return;
             }

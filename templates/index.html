@@ -3,102 +3,124 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BLZ-T</title>
-    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+    <title>NEXUS // RELAY</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 
-    <div class="seal-bg"></div>
-    <div class="chakra-particles"></div>
+    <div class="glitch-bg"></div>
+    <div class="noise-layer"></div>
 
-    <main class="jinchuriki-layout">
+    <main class="nexus-container">
         
-        <nav class="chains-container">
-            <div class="chains-header">/// TARGET LOCKS</div>
-            <div id="channel-list" class="chains-scroll">
-                </div>
-        </nav>
-
-        <section class="cage-chat-area">
-            <div id="ticket-hud" class="chakra-hud">
-                <div class="hud-glitch"></div>
-                <div class="hud-row">
-                    <span class="lbl">TARGET:</span>
-                    <span id="hud-name" class="val">---</span>
-                </div>
-                <div class="hud-row">
-                    <span class="lbl">SYNC:</span>
-                    <span id="hud-time" class="val orange">00:00</span>
-                </div>
+        <!-- HEADER -->
+        <header class="nexus-header">
+            <div class="header-left">
+                <h1 class="nexus-title">NEXUS</h1>
+                <span class="header-divider">//</span>
+                <span class="nexus-subtitle">RELAY</span>
             </div>
+            <div class="header-right">
+                <button class="stats-trigger" onclick="toggleDrawer()" aria-label="Open stats" title="Metrics">
+                    <span class="trigger-icon">⟡</span>
+                    <span class="trigger-text">METRICS</span>
+                </button>
+            </div>
+        </header>
 
-            <div id="chat-feed" class="beast-feed">
-                <div class="seal-mark">
-                    <div class="mark-symbol">封</div>
-                    <p>BREAK THE SEAL</p>
+        <!-- MAIN GRID -->
+        <div class="nexus-grid">
+            
+            <!-- SIDEBAR: CHANNELS -->
+            <aside class="channel-sidebar">
+                <div class="sidebar-header">
+                    <span class="sidebar-label">CHANNELS</span>
+                    <div class="slash-divider">/</div>
                 </div>
-            </div>
-        </section>
+                <div id="channel-list" class="channel-list">
+                </div>
+            </aside>
 
-        <div class="scroll-input-wrapper">
-            <div class="scroll-end left"></div>
-            <div class="scroll-body">
-                <input type="text" id="msg-input" placeholder="MESSAGE..." autocomplete="off">
-            </div>
-            <button id="send-btn">SEND</button>
-            <div class="scroll-end right"></div>
+            <!-- CENTER: CHAT -->
+            <section class="chat-section">
+                <div class="chat-header">
+                    <div class="chat-meta">
+                        <span class="meta-label">CHANNEL</span>
+                        <span id="chat-channel-name" class="meta-value">---</span>
+                    </div>
+                    <div class="chat-meta">
+                        <span class="meta-label">UPTIME</span>
+                        <span id="chat-uptime" class="meta-value glitch-text">00:00</span>
+                    </div>
+                </div>
+                
+                <div id="chat-feed" class="chat-stream">
+                    <div class="stream-init">
+                        <div class="init-symbol">/</div>
+                        <p class="init-text">AWAITING SIGNAL</p>
+                    </div>
+                </div>
+
+                <div class="chat-input-zone">
+                    <div class="input-wrapper">
+                        <input type="text" id="msg-input" placeholder="ENTER MESSAGE..." autocomplete="off" class="input-field">
+                    </div>
+                    <button id="send-btn" class="send-button">
+                        <span class="send-icon">▶</span>
+                    </button>
+                </div>
+            </section>
+
         </div>
 
     </main>
 
-    <div class="eye-container">
-        <button class="kurama-eye-btn" onclick="toggleDrawer()" aria-label="Open stats" title="Open stats">
-            <!-- Use the Blue Lock PNG placed in static/blue-lock.png -->
-            <img src="{{ url_for('static', filename='blue-lock.png') }}" alt="Blue Lock" style="width:36px;height:36px;display:block;filter:drop-shadow(0 6px 18px rgba(0,242,255,0.06));">
-        </button>
-        <span class="eye-label">STATS</span>
-    </div>
-
-    <div class="kurama-drawer" id="stats-drawer">
-        <div class="drawer-content">
-            <div class="drawer-header">
-                <h2>METRICS</h2>
-                <button class="close-btn" onclick="toggleDrawer()">✕</button>
+    <!-- DRAWER: METRICS PANEL -->
+    <div class="metrics-drawer" id="stats-drawer">
+        <div class="drawer-backdrop"></div>
+        <div class="drawer-panel">
+            <div class="panel-header">
+                <h2 class="panel-title">METRICS</h2>
+                <button class="panel-close" onclick="toggleDrawer()">✕</button>
             </div>
             
-            <div class="drawer-grid">
-                <div class="power-col blue-side">
-                    <h3>OFFENSIVE</h3>
-                    <div class="stat-row"><label>SHT</label><input type="number" id="sht" placeholder="00"></div>
-                    <div class="stat-row"><label>DBL</label><input type="number" id="dbl" placeholder="00"></div>
-                    <div class="stat-row"><label>STL</label><input type="number" id="stl" placeholder="00"></div>
-                    <div class="stat-row"><label>PSN</label><input type="number" id="psn" placeholder="00"></div>
-                    <div class="stat-row"><label>DFD</label><input type="number" id="dfd" placeholder="00"></div>
+            <div class="metrics-grid">
+                <div class="metric-column primary">
+                    <h3 class="metric-title">OFFENSIVE</h3>
+                    <div class="metric-input"><label>SHT</label><input type="number" id="sht" placeholder="00"></div>
+                    <div class="metric-input"><label>DBL</label><input type="number" id="dbl" placeholder="00"></div>
+                    <div class="metric-input"><label>STL</label><input type="number" id="stl" placeholder="00"></div>
+                    <div class="metric-input"><label>PSN</label><input type="number" id="psn" placeholder="00"></div>
+                    <div class="metric-input"><label>DFD</label><input type="number" id="dfd" placeholder="00"></div>
                 </div>
                 
-                <div class="power-col orange-side">
-                    <h3>GK</h3>
-                    <div class="stat-row"><label>DVG</label><input type="number" id="dvg" placeholder="--"></div>
-                    <div class="stat-row"><label>BIQ</label><input type="number" id="biq" placeholder="--"></div>
-                    <div class="stat-row"><label>RFX</label><input type="number" id="rfx" placeholder="--"></div>
-                    <div class="stat-row"><label>DTG</label><input type="number" id="dtg" placeholder="--"></div>
+                <div class="metric-column secondary">
+                    <h3 class="metric-title">GOALKEEP</h3>
+                    <div class="metric-input"><label>DVG</label><input type="number" id="dvg" placeholder="--"></div>
+                    <div class="metric-input"><label>BIQ</label><input type="number" id="biq" placeholder="--"></div>
+                    <div class="metric-input"><label>RFX</label><input type="number" id="rfx" placeholder="--"></div>
+                    <div class="metric-input"><label>DTG</label><input type="number" id="dtg" placeholder="--"></div>
                 </div>
             </div>
 
-            <button id="ui-stats-btn" onclick="generateStats()">
-                UI STATS
+            <button id="ui-stats-btn" onclick="generateStats()" class="action-btn primary">
+                GENERATE STATS
             </button>
         </div>
     </div>
 
-    <div id="stats-modal" class="modal-seal">
-        <div class="modal-scroll">
+    <!-- MODAL: STATS DISPLAY -->
+    <div id="stats-modal" class="stats-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>STATS VISUALIZATION</h2>
+                <button id="close-modal" class="modal-close">✕</button>
+            </div>
             <canvas id="stats-canvas" width="500" height="500"></canvas>
-            <div class="modal-actions">
-                <button id="close-modal">BACK</button>
-                <button id="copy-stats-btn">COPY STATS</button>
-                <button id="copy-rank-btn">COPY RANK</button>
+            <div class="modal-footer">
+                <button id="copy-stats-btn" class="modal-btn">COPY STATS</button>
+                <button id="copy-rank-btn" class="modal-btn">COPY RANK</button>
             </div>
         </div>
     </div>
