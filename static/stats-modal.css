@@ -1,0 +1,112 @@
+/* ===== STATS MODAL MODULE ===== */
+
+.stats-modal {
+    position: fixed;
+    inset: 0;
+    display: none;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 300;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+.stats-modal.active {
+    display: flex;
+}
+
+.modal-content {
+    background: linear-gradient(135deg,
+        rgba(26, 26, 26, 0.95),
+        rgba(16, 16, 16, 0.98)
+    );
+    border: 2px solid var(--border-bright);
+    border-radius: 18px;
+    padding: 32px;
+    max-width: 700px;
+    width: 100%;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-cyan);
+}
+
+.modal-header h2 {
+    font-family: var(--font-display);
+    font-size: 1.8rem;
+    color: var(--primary-cyan);
+    letter-spacing: 2px;
+}
+
+.modal-close {
+    background: transparent;
+    border: 1px solid var(--border-bright);
+    color: var(--secondary-cyan);
+    font-size: 1.5rem;
+    cursor: pointer;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    transition: all 150ms ease;
+}
+
+.modal-close:hover {
+    border-color: var(--primary-cyan);
+    color: var(--primary-cyan);
+}
+
+#stats-canvas {
+    width: 100%;
+    max-width: 400px;
+    height: auto;
+    display: block;
+    margin: 20px auto;
+    background: rgba(10, 14, 39, 0.5);
+    border: 1px solid var(--border-cyan);
+    border-radius: 12px;
+}
+
+.modal-footer {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+}
+
+.modal-btn {
+    flex: 1;
+    padding: 12px;
+    background: linear-gradient(90deg,
+        rgba(255, 255, 255, 0.15),
+        rgba(224, 224, 224, 0.08)
+    );
+    border: 1px solid var(--border-bright);
+    border-radius: 10px;
+    color: var(--primary-cyan);
+    font-family: var(--font-display);
+    cursor: pointer;
+    transition: all 150ms ease;
+}
+
+.modal-btn:hover {
+    background: linear-gradient(90deg,
+        rgba(255, 255, 255, 0.25),
+        rgba(224, 224, 224, 0.15)
+    );
+    border-color: var(--primary-cyan);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 900px) {
+    .modal-content {
+        padding: 24px;
+    }
+
+    .modal-header h2 {
+        font-size: 1.5rem;
+    }
+}

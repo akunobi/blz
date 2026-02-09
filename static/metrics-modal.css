@@ -1,0 +1,212 @@
+/* ===== METRICS MODAL MODULE ===== */
+
+.metrics-drawer {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 300ms ease;
+}
+
+.metrics-drawer.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.drawer-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+}
+
+.drawer-panel {
+    position: relative;
+    z-index: 10;
+    margin: auto;
+    width: 900px;
+    max-height: 70vh;
+    background: linear-gradient(135deg,
+        rgba(26, 26, 26, 0.95),
+        rgba(16, 16, 16, 0.98)
+    );
+    border: 2px solid var(--border-bright);
+    border-radius: 18px;
+    display: flex;
+    flex-direction: column;
+    padding: 32px;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+.drawer-panel::-webkit-scrollbar {
+    width: 6px;
+}
+
+.drawer-panel::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 32px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border-cyan);
+}
+
+.panel-title {
+    font-family: var(--font-display);
+    font-size: 2rem;
+    color: var(--primary-cyan);
+    letter-spacing: 2px;
+    font-weight: 900;
+}
+
+.panel-close {
+    background: transparent;
+    border: 1px solid var(--border-bright);
+    color: var(--secondary-cyan);
+    font-size: 1.5rem;
+    cursor: pointer;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    transition: all 150ms ease;
+}
+
+.panel-close:hover {
+    border-color: var(--primary-cyan);
+    color: var(--primary-cyan);
+}
+
+/* METRICS GRID */
+.metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 24px;
+    flex: 1;
+}
+
+.metric-column {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 20px;
+    background: rgba(10, 14, 39, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    position: relative;
+}
+
+.metric-column.primary {
+    border-left: 3px solid rgba(255, 255, 255, 0.3);
+}
+
+.metric-column.secondary {
+    border-left: 3px solid rgba(224, 224, 224, 0.3);
+}
+
+.metric-title {
+    font-family: var(--font-tech);
+    font-size: 0.9rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--secondary-cyan);
+    margin-bottom: 4px;
+    font-weight: 700;
+}
+
+.metric-input {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.metric-input label {
+    font-family: var(--font-tech);
+    font-size: 0.85rem;
+    color: #888888;
+    letter-spacing: 1px;
+    min-width: 40px;
+}
+
+.metric-input input {
+    background: linear-gradient(90deg,
+        rgba(0, 0, 0, 0.2),
+        rgba(255, 255, 255, 0.02)
+    );
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: var(--primary-cyan);
+    padding: 8px 12px;
+    width: 80px;
+    text-align: center;
+    font-family: var(--font-data);
+    transition: all 150ms ease;
+}
+
+.metric-input input:focus {
+    border-color: var(--primary-cyan);
+    background: linear-gradient(90deg,
+        rgba(255, 255, 255, 0.08),
+        rgba(255, 255, 255, 0.03)
+    );
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+}
+
+.metric-input input::placeholder {
+    color: #6a6a6a;
+}
+
+.action-btn {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(90deg,
+        rgba(255, 255, 255, 0.2),
+        rgba(224, 224, 224, 0.1)
+    );
+    border: 1px solid var(--border-bright);
+    border-radius: 10px;
+    color: var(--primary-cyan);
+    font-family: var(--font-display);
+    font-size: 1rem;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: all 150ms ease;
+}
+
+.action-btn:hover {
+    background: linear-gradient(90deg,
+        rgba(255, 255, 255, 0.3),
+        rgba(224, 224, 224, 0.15)
+    );
+    border-color: var(--primary-cyan);
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.15);
+}
+
+@media (max-width: 1200px) {
+    .drawer-panel {
+        width: 90%;
+        max-height: 80vh;
+    }
+}
+
+@media (max-width: 900px) {
+    .metrics-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .drawer-panel {
+        width: 95%;
+        padding: 24px;
+    }
+}

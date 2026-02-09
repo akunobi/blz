@@ -1,0 +1,124 @@
+/* ===== SIDEBAR MODULE ===== */
+
+.channel-sidebar {
+    background: linear-gradient(180deg,
+        rgba(26, 26, 26, 0.5) 0%,
+        rgba(16, 16, 16, 0.6) 100%
+    );
+    border: 2px solid var(--border-cyan);
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+    padding: 0;
+}
+
+.channel-sidebar::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 2px;
+    height: 40%;
+    background: linear-gradient(180deg, var(--primary-cyan), transparent);
+    opacity: 0.2;
+    clip-path: polygon(0 0, 100% 10%, 100% 90%, 0 100%);
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 20px 18px;
+    border-bottom: 1px solid var(--border-cyan);
+    font-family: var(--font-tech);
+    font-size: 0.85rem;
+    letter-spacing: 2px;
+    color: var(--secondary-cyan);
+}
+
+.sidebar-label {
+    text-transform: uppercase;
+    font-weight: 700;
+}
+
+.slash-divider {
+    color: var(--primary-cyan);
+    opacity: 0.5;
+}
+
+.channel-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex: 1;
+    min-height: 0;
+}
+
+.channel-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.channel-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.channel-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+}
+
+.channel-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.4);
+}
+
+.channel-item {
+    padding: 12px 14px;
+    background: rgba(26, 31, 58, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    cursor: pointer;
+    font-family: var(--font-data);
+    color: #c0c0c0;
+    font-size: 0.95rem;
+    transition: all 150ms ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.channel-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, var(--secondary-cyan), transparent);
+    opacity: 0;
+    transition: opacity 150ms ease;
+}
+
+.channel-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--border-bright);
+    color: #e5e5e5;
+}
+
+.channel-item.active {
+    background: linear-gradient(90deg, 
+        rgba(255, 255, 255, 0.12),
+        rgba(224, 224, 224, 0.05)
+    );
+    border-color: var(--primary-cyan);
+    color: var(--primary-cyan);
+    font-weight: 600;
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.1);
+}
+
+.channel-item.active::before {
+    opacity: 1;
+}

@@ -3,17 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NEXUS // RELAY</title>
+    <title>NEXUS // RELAY - UI Test</title>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-    <!-- Base styles -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='base.css') }}">
-    <!-- Module styles -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='header.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='sidebar.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='chat.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='metrics-modal.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='stats-modal.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='mentions.css') }}">
+    <link rel="stylesheet" href="static/style.css">
 </head>
 <body>
 
@@ -25,7 +17,9 @@
         <!-- HEADER -->
         <header class="nexus-header">
             <div class="header-left">
-                <h1 class="nexus-title">BLZ-T</h1>
+                <h1 class="nexus-title">NEXUS</h1>
+                <span class="header-divider">//</span>
+                <span class="nexus-subtitle">RELAY</span>
             </div>
             <div class="header-right">
                 <button class="stats-trigger" onclick="toggleDrawer()" aria-label="Open stats" title="Metrics">
@@ -45,6 +39,9 @@
                     <div class="slash-divider">/</div>
                 </div>
                 <div id="channel-list" class="channel-list">
+                    <div class="channel-item active">General</div>
+                    <div class="channel-item">Music</div>
+                    <div class="channel-item">Games</div>
                 </div>
             </aside>
 
@@ -53,25 +50,29 @@
                 <div class="chat-header">
                     <div class="chat-meta">
                         <span class="meta-label">CHANNEL</span>
-                        <span id="chat-channel-name" class="meta-value">---</span>
+                        <span id="chat-channel-name" class="meta-value">General</span>
                     </div>
                     <div class="chat-meta">
                         <span class="meta-label">UPTIME</span>
-                        <span id="chat-uptime" class="meta-value glitch-text">00:00</span>
-                    </div>
-                </div>
-                
-                <div id="chat-feed" class="chat-stream">
-                    <div class="stream-init">
-                        <div class="init-symbol">/</div>
-                        <p class="init-text">AWAITING SIGNAL</p>
+                        <span id="chat-uptime" class="meta-value glitch-text">12:34</span>
                     </div>
                 </div>
 
-                <div class="chat-input-zone">
-                    <div class="input-wrapper">
-                        <input type="text" id="msg-input" placeholder="ENTER MESSAGE..." autocomplete="off" class="input-field">
+                <div id="chat-feed" class="chat-stream">
+                    <div class="message msg-me">
+                        <div class="msg-author">You</div>
+                        <div class="msg-content">Hello world</div>
+                        <div class="msg-time">12:34</div>
                     </div>
+                    <div class="message">
+                        <div class="msg-author">Bot</div>
+                        <div class="msg-content">Hello user! This is a test message to verify the UI.</div>
+                        <div class="msg-time">12:35</div>
+                    </div>
+                </div>
+
+                <div class="input-area">
+                    <input type="text" id="msg-input" placeholder="ENTER MESSAGE..." autocomplete="off" class="input-field">
                     <button id="send-btn" class="send-button">
                         <span class="send-icon">▶</span>
                     </button>
@@ -82,13 +83,14 @@
 
     </main>
 
-    <!-- DRAWER: METRICS PANEL -->
-    <div class="metrics-drawer" id="stats-drawer">
-        <div class="drawer-backdrop"></div>
-        <div class="drawer-panel">
-            <div class="panel-header">
-                <h2 class="panel-title">METRICS</h2>
-                <button class="panel-close" onclick="toggleDrawer()">✕</button>
+    <!-- METRICS MODAL (CENTER) -->
+    <div class="metrics-modal" id="stats-drawer">
+        <div class="modal-backdrop"></div>
+        <div class="modal-box">
+            <div class="modal-glitch-border"></div>
+            <div class="modal-header">
+                <h2 class="modal-title">⚡ METRICS ⚡</h2>
+                <button class="modal-close" onclick="toggleDrawer()">×</button>
             </div>
             
             <div class="metrics-grid">
@@ -110,8 +112,8 @@
                 </div>
             </div>
 
-            <button id="ui-stats-btn" onclick="generateStats()" class="action-btn primary">
-                GENERATE STATS
+            <button id="ui-stats-btn" onclick="alert('Stats would be generated here')" class="action-btn">
+                ▲ GENERATE STATS ▼
             </button>
         </div>
     </div>
@@ -123,15 +125,16 @@
                 <h2>STATS VISUALIZATION</h2>
                 <button id="close-modal" class="modal-close">✕</button>
             </div>
-            <canvas id="stats-canvas" width="500" height="500"></canvas>
+            <div style="width: 500px; height: 500px; background: rgba(0,247,255,0.1); margin: 20px auto; display: flex; align-items: center; justify-content: center; font-family: 'Orbitron';">
+                [Canvas Preview]
+            </div>
             <div class="modal-footer">
-                <button id="copy-stats-btn" class="modal-btn">COPY STATS</button>
-                <button id="copy-rank-btn" class="modal-btn">COPY RANK</button>
+                <button class="modal-btn">COPY STATS</button>
+                <button class="modal-btn">COPY RANK</button>
             </div>
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
     <script>
         function toggleDrawer() {
             document.getElementById('stats-drawer').classList.toggle('active');

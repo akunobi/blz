@@ -1,0 +1,98 @@
+/* ===== BASE & LAYOUT MODULE ===== */
+
+:root {
+    /* Black & White Palette */
+    --primary-cyan: #ffffff;
+    --secondary-cyan: #e0e0e0;
+    --accent-magenta: #333333;
+    --accent-lime: #cccccc;
+    --dark-bg: #0a0a0a;
+    --panel-bg: #1a1a1a;
+    --glitch-dark: #000000;
+    --border-cyan: rgba(255, 255, 255, 0.15);
+    --border-bright: rgba(255, 255, 255, 0.3);
+    
+    --font-display: 'Bebas Neue', 'Space Mono', monospace;
+    --font-tech: 'Orbitron', monospace;
+    --font-data: 'Rajdhani', 'Space Mono', monospace;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+body {
+    background: linear-gradient(135deg, var(--dark-bg) 0%, #0d0d0d 50%, var(--glitch-dark) 100%);
+    color: #e0e0e0;
+    font-family: var(--font-data);
+    position: relative;
+}
+
+.glitch-bg {
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    background: 
+        radial-gradient(circle at 10% 20%, rgba(255, 255, 255, 0.02), transparent 15%),
+        radial-gradient(circle at 90% 80%, rgba(200, 200, 200, 0.01), transparent 15%);
+    pointer-events: none;
+}
+
+.noise-layer {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background-image: 
+        repeating-linear-gradient(
+            0deg,
+            rgba(255, 255, 255, 0.02),
+            rgba(255, 255, 255, 0.02) 1px,
+            transparent 1px,
+            transparent 2px
+        );
+    pointer-events: none;
+    opacity: 0.3;
+}
+
+/* MAIN GRID */
+.nexus-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    max-height: 100vh;
+}
+
+.nexus-grid {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 16px;
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    padding: 16px;
+}
+
+/* RESPONSIVE */
+@media (max-width: 1200px) {
+    .nexus-grid {
+        grid-template-columns: 220px 1fr;
+    }
+}
+
+@media (max-width: 900px) {
+    .nexus-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .channel-sidebar {
+        display: none;
+    }
+}
