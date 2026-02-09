@@ -347,7 +347,8 @@ def get_messages():
                     lim = int(limit_q) if limit_q else 1000
                 except ValueError:
                     lim = 1000
-                rows = conn.execute('SELECT * FROM messages WHERE channel_id = ? ORDER BY timestamp ASC LIMIT ?', (cid, lim)).fetchall()
+                # Get the most recent messages, then order them chronologically for display
+                rows = conn.execute('SELECT * FROM (SELECT * FROM messages WHERE channel_id = ? ORDER BY timestamp DESC LIMIT ?) ORDER BY timestamp ASC', (cid, lim)).fetchall()
         else:
             # no channel filter: return recent messages across channels
             try:
