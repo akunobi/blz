@@ -1,4 +1,4 @@
-/* ===== METRICS MODAL MODULE ===== */
+/* ===== METRICS MODAL â€” TACTICAL BOARD ===== */
 
 .metrics-drawer {
     position: fixed;
@@ -9,7 +9,7 @@
     align-items: center;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 300ms ease;
+    transition: opacity 280ms ease;
 }
 
 .metrics-drawer.active {
@@ -20,193 +20,225 @@
 .drawer-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(4px);
+    background: rgba(4, 2, 8, 0.82);
+    backdrop-filter: blur(6px);
 }
 
 .drawer-panel {
     position: relative;
     z-index: 10;
-    margin: auto;
-    width: 900px;
-    max-height: 70vh;
-    background: linear-gradient(135deg,
-        rgba(26, 26, 26, 0.95),
-        rgba(16, 16, 16, 0.98)
+    width: 860px;
+    max-width: 93vw;
+    max-height: 78vh;
+    background: linear-gradient(150deg,
+        var(--surface2) 0%,
+        var(--deep) 100%
     );
-    border: 2px solid var(--border-bright);
-    border-radius: 18px;
+    border: 1px solid var(--b-gold-hi);
+    border-top: 2px solid var(--gold);
+    border-radius: var(--r-sm) var(--r-lg) var(--r-lg);
     display: flex;
     flex-direction: column;
-    padding: 32px;
+    padding: 26px;
     overflow-y: auto;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.65), 0 0 40px rgba(196, 154, 26, 0.05);
+    transform: scale(0.97);
+    transition: transform 280ms ease;
 }
 
-.drawer-panel::-webkit-scrollbar {
-    width: 6px;
+.metrics-drawer.active .drawer-panel {
+    transform: scale(1);
 }
 
-.drawer-panel::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 3px;
+/* Top-right armor corner cut */
+.drawer-panel::before {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 0; height: 0;
+    border-style: solid;
+    border-width: 0 26px 26px 0;
+    border-color: transparent var(--void) transparent transparent;
+    z-index: 1;
+    pointer-events: none;
 }
 
 .panel-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 32px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid var(--border-cyan);
+    margin-bottom: 22px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--b-gold);
 }
 
 .panel-title {
     font-family: var(--font-display);
-    font-size: 2rem;
-    color: var(--primary-cyan);
-    letter-spacing: 2px;
-    font-weight: 900;
+    font-size: 1.7rem;
+    color: var(--t-hi);
+    letter-spacing: 0.14em;
+    text-shadow: 1px 1px 0 var(--red-mid);
 }
 
 .panel-close {
     background: transparent;
-    border: 1px solid var(--border-bright);
-    color: var(--secondary-cyan);
-    font-size: 1.5rem;
+    border: 1px solid var(--b-gold);
+    color: var(--t-lo);
+    font-size: 1rem;
     cursor: pointer;
-    width: 40px;
-    height: 40px;
-    border-radius: 8px;
-    transition: all 150ms ease;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--r-md);
+    transition: all 200ms ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .panel-close:hover {
-    border-color: var(--primary-cyan);
-    color: var(--primary-cyan);
+    border-color: var(--red);
+    color: var(--red);
+    background: var(--red-dim);
 }
 
-/* METRICS GRID */
+/* â”€â”€ Metrics grid â”€â”€ */
 .metrics-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 24px;
-    margin-bottom: 24px;
-    flex: 1;
+    gap: 18px;
+    margin-bottom: 18px;
 }
 
 .metric-column {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    padding: 20px;
-    background: rgba(10, 14, 39, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-    position: relative;
+    gap: 11px;
+    padding: 18px;
+    background: rgba(4, 2, 8, 0.40);
+    border: 1px solid var(--b-gold);
+    border-radius: var(--r-md);
 }
 
 .metric-column.primary {
-    border-left: 3px solid rgba(255, 255, 255, 0.3);
+    border-left: 3px solid var(--blue-mid);
 }
 
 .metric-column.secondary {
-    border-left: 3px solid rgba(224, 224, 224, 0.3);
+    border-left: 3px solid var(--ember);
 }
 
 .metric-title {
-    font-family: var(--font-tech);
-    font-size: 0.9rem;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--secondary-cyan);
-    margin-bottom: 4px;
+    font-family: var(--font-label);
     font-weight: 700;
+    font-size: 0.70rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--b-gold);
+    margin-bottom: 2px;
 }
+
+.metric-column.primary .metric-title   { color: var(--blue); }
+.metric-column.secondary .metric-title { color: var(--ember); }
 
 .metric-input {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
 }
 
 .metric-input label {
-    font-family: var(--font-tech);
-    font-size: 0.85rem;
-    color: #888888;
-    letter-spacing: 1px;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--t-lo);
+    letter-spacing: 0.08em;
     min-width: 40px;
+    text-transform: uppercase;
+}
+
+/* BUG FIX: Remove number input spin buttons */
+.metric-input input[type=number]::-webkit-inner-spin-button,
+.metric-input input[type=number]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
 
 .metric-input input {
-    background: linear-gradient(90deg,
-        rgba(0, 0, 0, 0.2),
-        rgba(255, 255, 255, 0.02)
-    );
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    color: var(--primary-cyan);
+    background: rgba(4, 2, 8, 0.60);
+    border: 1px solid var(--b-gold);
+    border-radius: var(--r-sm);
+    color: var(--t-hi);
     padding: 8px 12px;
     width: 80px;
     text-align: center;
-    font-family: var(--font-data);
-    transition: all 150ms ease;
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    transition: all 200ms ease;
+    -moz-appearance: textfield;
+    appearance: textfield;
 }
 
 .metric-input input:focus {
-    border-color: var(--primary-cyan);
-    background: linear-gradient(90deg,
-        rgba(255, 255, 255, 0.08),
-        rgba(255, 255, 255, 0.03)
-    );
-    box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+    outline: none;
+    border-color: var(--b-gold-hi);
+    box-shadow: 0 0 10px rgba(196, 154, 26, 0.14);
 }
 
-.metric-input input::placeholder {
-    color: #6a6a6a;
+.metric-column.primary .metric-input input:focus {
+    border-color: var(--b-blue-hi);
+    box-shadow: 0 0 10px rgba(0, 212, 255, 0.14);
 }
 
+.metric-column.secondary .metric-input input:focus {
+    border-color: rgba(232, 85, 0, 0.5);
+    box-shadow: 0 0 10px rgba(232, 85, 0, 0.14);
+}
+
+.metric-input input::placeholder { color: var(--t-ghost); }
+
+/* â”€â”€ Generate button â”€â”€ */
 .action-btn {
     width: 100%;
-    padding: 14px;
+    padding: 13px;
     background: linear-gradient(90deg,
-        rgba(255, 255, 255, 0.2),
-        rgba(224, 224, 224, 0.1)
+        rgba(204, 21, 21, 0.18),
+        rgba(204, 21, 21, 0.06)
     );
-    border: 1px solid var(--border-bright);
-    border-radius: 10px;
-    color: var(--primary-cyan);
+    border: 1px solid var(--b-red-hi);
+    border-radius: var(--r-md);
+    color: var(--t-hi);
     font-family: var(--font-display);
-    font-size: 1rem;
-    letter-spacing: 2px;
+    font-size: 0.95rem;
+    letter-spacing: 0.18em;
     cursor: pointer;
-    transition: all 150ms ease;
+    transition: all 220ms ease;
+    position: relative;
+    overflow: hidden;
+    text-transform: uppercase;
+}
+
+.action-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, var(--red), var(--ember));
+    opacity: 0;
+    transition: opacity 220ms ease;
 }
 
 .action-btn:hover {
-    background: linear-gradient(90deg,
-        rgba(255, 255, 255, 0.3),
-        rgba(224, 224, 224, 0.15)
-    );
-    border-color: var(--primary-cyan);
-    box-shadow: 0 0 15px rgba(255, 255, 255, 0.15);
+    border-color: var(--red);
+    box-shadow: 0 0 22px rgba(204, 21, 21, 0.25);
+    letter-spacing: 0.22em;
 }
+.action-btn:hover::before { opacity: 0.14; }
+.action-btn:active { transform: scale(0.98); }
 
 @media (max-width: 1200px) {
-    .drawer-panel {
-        width: 90%;
-        max-height: 80vh;
-    }
+    .drawer-panel { width: 90%; max-height: 80vh; }
 }
-
 @media (max-width: 900px) {
-    .metrics-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .drawer-panel {
-        width: 95%;
-        padding: 24px;
-    }
+    .metrics-grid { grid-template-columns: 1fr; }
+    .drawer-panel  { width: 96%; padding: 20px; }
 }
