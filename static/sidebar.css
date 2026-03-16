@@ -1,124 +1,119 @@
-/* ===== SIDEBAR MODULE ===== */
+/* ===== SIDEBAR â€” TACTICS SCROLL ===== */
 
 .channel-sidebar {
-    background: linear-gradient(180deg,
-        rgba(26, 26, 26, 0.5) 0%,
-        rgba(16, 16, 16, 0.6) 100%
+    background: linear-gradient(165deg,
+        var(--surface2) 0%,
+        var(--surface) 100%
     );
-    border: 2px solid var(--border-cyan);
-    border-radius: 14px;
+    border: 1px solid var(--b-gold);
+    border-top: 2px solid var(--b-gold-hi);
+    border-radius: var(--r-sm) var(--r-lg) var(--r-lg) var(--r-sm);
     display: flex;
     flex-direction: column;
     overflow: hidden;
     position: relative;
-    padding: 0;
 }
 
-.channel-sidebar::before {
+/* Top-right armor corner cut */
+.channel-sidebar::after {
     content: '';
     position: absolute;
-    top: 0;
-    right: 0;
-    width: 2px;
-    height: 40%;
-    background: linear-gradient(180deg, var(--primary-cyan), transparent);
-    opacity: 0.2;
-    clip-path: polygon(0 0, 100% 10%, 100% 90%, 0 100%);
+    top: 0; right: 0;
+    width: 0; height: 0;
+    border-style: solid;
+    border-width: 0 18px 18px 0;
+    border-color: transparent var(--void) transparent transparent;
+    z-index: 2;
+    pointer-events: none;
 }
 
 .sidebar-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 20px 18px;
-    border-bottom: 1px solid var(--border-cyan);
-    font-family: var(--font-tech);
-    font-size: 0.85rem;
-    letter-spacing: 2px;
-    color: var(--secondary-cyan);
+    gap: 10px;
+    padding: 16px 16px 13px;
+    border-bottom: 1px solid var(--b-gold);
+    position: relative;
 }
 
 .sidebar-label {
-    text-transform: uppercase;
+    font-family: var(--font-label);
     font-weight: 700;
+    font-size: 0.7rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--t-lo);
 }
 
 .slash-divider {
-    color: var(--primary-cyan);
-    opacity: 0.5;
+    color: var(--red);
+    opacity: 0.7;
+    font-family: var(--font-display);
+    font-size: 1rem;
+    line-height: 1;
 }
 
 .channel-list {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    padding: 16px;
+    gap: 5px;
+    padding: 12px 10px;
     overflow-y: auto;
-    overflow-x: hidden;
     flex: 1;
     min-height: 0;
 }
 
-.channel-list::-webkit-scrollbar {
-    width: 6px;
-}
-
-.channel-list::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.channel-list::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 3px;
-}
-
-.channel-list::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.4);
-}
-
 .channel-item {
-    padding: 12px 14px;
-    background: rgba(26, 31, 58, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
+    padding: 11px 12px 11px 16px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-left: 2px solid var(--b-gold);
+    border-radius: 0 var(--r-md) var(--r-md) 0;
     cursor: pointer;
-    font-family: var(--font-data);
-    color: #c0c0c0;
-    font-size: 0.95rem;
-    transition: all 150ms ease;
+    font-family: var(--font-label);
+    font-size: 0.83rem;
+    font-weight: 500;
+    color: var(--t-lo);
+    letter-spacing: 0.05em;
+    transition: all 200ms ease;
     position: relative;
-    overflow: hidden;
 }
 
+/* Sword chevron decoration */
 .channel-item::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    background: linear-gradient(180deg, var(--secondary-cyan), transparent);
-    opacity: 0;
-    transition: opacity 150ms ease;
+    content: 'â€º';
+    font-family: var(--font-display);
+    font-size: 1rem;
+    line-height: 1;
+    margin-right: 7px;
+    color: var(--t-ghost);
+    transition: color 200ms ease;
+    display: inline-block;
 }
 
 .channel-item:hover {
-    background: rgba(255, 255, 255, 0.05);
-    border-color: var(--border-bright);
-    color: #e5e5e5;
+    color: var(--t-mid);
+    border-left-color: var(--gold-mid);
+    background: var(--gold-dim);
 }
+.channel-item:hover::before { color: var(--gold-mid); }
 
 .channel-item.active {
-    background: linear-gradient(90deg, 
-        rgba(255, 255, 255, 0.12),
-        rgba(224, 224, 224, 0.05)
+    color: var(--t-hi);
+    border: 1px solid var(--b-red);
+    border-left: 3px solid var(--red);
+    background: linear-gradient(90deg,
+        rgba(204, 21, 21, 0.15),
+        rgba(204, 21, 21, 0.04) 65%,
+        transparent
     );
-    border-color: var(--primary-cyan);
-    color: var(--primary-cyan);
-    font-weight: 600;
-    box-shadow: 0 0 12px rgba(255, 255, 255, 0.1);
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    animation: activeGlow 3s ease-in-out infinite;
 }
+.channel-item.active::before { color: var(--red); }
 
-.channel-item.active::before {
-    opacity: 1;
+@keyframes activeGlow {
+    0%, 100% { box-shadow: 0 0 8px rgba(204, 21, 21, 0.10); }
+    50%       { box-shadow: 0 0 18px rgba(204, 21, 21, 0.22); }
 }
