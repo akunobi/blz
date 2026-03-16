@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 /* ══════════════════════════════════════════
    BASE — MUGENKI  無限機
    Pure black, blood red, parchment white.
@@ -45,53 +44,6 @@
     --f-display: 'Zen Kaku Gothic New', sans-serif;
     --f-body:    'Crimson Pro', serif;
     --f-mono:    'DM Mono', monospace;
-=======
-/* ===== BASE & LAYOUT â€” SENGOKU Ã— BLUE LOCK ===== */
-
-:root {
-    /* === Deep Void â€” Ink Black === */
-    --void:      #040208;
-    --deep:      #07050e;
-    --surface:   #0e0a1a;
-    --surface2:  #150f26;
-    --lifted:    #1d1535;
-
-    /* === Power Accents === */
-    --blue:      #00d4ff;
-    --blue-mid:  #006e8a;
-    --blue-dim:  rgba(0, 212, 255, 0.10);
-    --red:       #cc1515;
-    --red-mid:   #7a0e0e;
-    --red-dim:   rgba(204, 21, 21, 0.10);
-    --gold:      #c49a1a;
-    --gold-mid:  #7a5e0c;
-    --gold-dim:  rgba(196, 154, 26, 0.10);
-    --ember:     #e85500;
-
-    /* === Text === */
-    --t-hi:      #f0e6d0;
-    --t-mid:     #b8a898;
-    --t-lo:      #6e5e52;
-    --t-ghost:   #3a3028;
-
-    /* === Borders === */
-    --b-gold:    rgba(196, 154, 26, 0.20);
-    --b-gold-hi: rgba(196, 154, 26, 0.55);
-    --b-blue:    rgba(0, 212, 255, 0.15);
-    --b-blue-hi: rgba(0, 212, 255, 0.50);
-    --b-red:     rgba(204, 21, 21, 0.25);
-    --b-red-hi:  rgba(204, 21, 21, 0.55);
-
-    /* === Typography === */
-    --font-display: 'Dela Gothic One', sans-serif;
-    --font-body:    'Shippori Mincho B1', serif;
-    --font-label:   'Noto Sans JP', sans-serif;
-    --font-mono:    'JetBrains Mono', monospace;
-
-    --r-sm: 2px;
-    --r-md: 6px;
-    --r-lg: 10px;
->>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
 }
 
 *, *::before, *::after {
@@ -112,7 +64,6 @@ html, body {
     -webkit-font-smoothing: antialiased;
 }
 
-<<<<<<< HEAD
 /* ── Scan line overlay ── */
 .scan-layer {
     position: fixed;
@@ -160,50 +111,12 @@ html, body {
 .shell {
     position: relative;
     z-index: 1;
-=======
-body {
-    background-color: var(--void);
-    color: var(--t-hi);
-    font-family: var(--font-body);
-}
-
-.glitch-bg {
-    position: fixed;
-    inset: 0;
-    z-index: -2;
-    background:
-        radial-gradient(ellipse 90% 55% at 0% 0%, rgba(204, 21, 21, 0.07) 0%, transparent 60%),
-        radial-gradient(ellipse 70% 60% at 100% 100%, rgba(0, 212, 255, 0.05) 0%, transparent 55%),
-        radial-gradient(ellipse 100% 90% at 50% 50%, var(--surface) 0%, var(--void) 100%);
-    pointer-events: none;
-    animation: bgPulse 10s ease-in-out infinite;
-}
-
-@keyframes bgPulse {
-    0%, 100% { opacity: 0.8; }
-    50%       { opacity: 1;   }
-}
-
-.noise-layer {
-    position: fixed;
-    inset: 0;
-    z-index: -1;
-    background-image:
-        linear-gradient(rgba(196, 154, 26, 0.035) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(196, 154, 26, 0.035) 1px, transparent 1px);
-    background-size: 48px 48px;
-    pointer-events: none;
-}
-
-.nexus-container {
->>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
     display: flex;
     flex-direction: column;
     height: 100vh;
     max-height: 100vh;
 }
 
-<<<<<<< HEAD
 /* ── Body grid ── */
 .body-grid {
     flex: 1;
@@ -222,26 +135,4 @@ body {
 @media (max-width: 900px) {
     .body-grid { grid-template-columns: 1fr; }
     .channel-panel { display: none; }
-=======
-.nexus-grid {
-    display: grid;
-    grid-template-columns: 268px 1fr;
-    gap: 14px;
-    flex: 1;
-    min-height: 0;
-    padding: 0 14px 14px;
-}
-
-::-webkit-scrollbar            { width: 4px; }
-::-webkit-scrollbar-track      { background: transparent; }
-::-webkit-scrollbar-thumb      { background: var(--b-gold-hi); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: var(--gold); }
-
-@media (max-width: 1200px) {
-    .nexus-grid { grid-template-columns: 220px 1fr; }
-}
-@media (max-width: 900px) {
-    .nexus-grid { grid-template-columns: 1fr; }
-    .channel-sidebar { display: none; }
->>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
 }

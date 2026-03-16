@@ -1,27 +1,13 @@
-<<<<<<< HEAD
 /* ══════════════════════════════════════════
    SIDEBAR — UNIT REGISTRY
    ══════════════════════════════════════════ */
 
 .channel-panel {
-=======
-/* ===== SIDEBAR â€” TACTICS SCROLL ===== */
-
-.channel-sidebar {
-    background: linear-gradient(165deg,
-        var(--surface2) 0%,
-        var(--surface) 100%
-    );
-    border: 1px solid var(--b-gold);
-    border-top: 2px solid var(--b-gold-hi);
-    border-radius: var(--r-sm) var(--r-lg) var(--r-lg) var(--r-sm);
->>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
     display: flex;
     flex-direction: column;
     background: var(--ink);
     border-right: 1px solid var(--line-hi);
     overflow: hidden;
-<<<<<<< HEAD
 }
 
 /* ── Heading ── */
@@ -49,48 +35,6 @@
     color: var(--blood);
     min-width: 20px;
     text-align: right;
-=======
-    position: relative;
-}
-
-/* Top-right armor corner cut */
-.channel-sidebar::after {
-    content: '';
-    position: absolute;
-    top: 0; right: 0;
-    width: 0; height: 0;
-    border-style: solid;
-    border-width: 0 18px 18px 0;
-    border-color: transparent var(--void) transparent transparent;
-    z-index: 2;
-    pointer-events: none;
-}
-
-.sidebar-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 16px 16px 13px;
-    border-bottom: 1px solid var(--b-gold);
-    position: relative;
-}
-
-.sidebar-label {
-    font-family: var(--font-label);
-    font-weight: 700;
-    font-size: 0.7rem;
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
-    color: var(--t-lo);
-}
-
-.slash-divider {
-    color: var(--red);
-    opacity: 0.7;
-    font-family: var(--font-display);
-    font-size: 1rem;
-    line-height: 1;
->>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
 }
 
 /* ── Channel list ── */
@@ -100,7 +44,6 @@
     padding: 8px 0;
     display: flex;
     flex-direction: column;
-<<<<<<< HEAD
     gap: 1px;
     min-height: 0;
 }
@@ -148,74 +91,16 @@
 .channel-item:hover {
     background: var(--pit);
     border-left-color: var(--blood-lo);
-=======
-    gap: 5px;
-    padding: 12px 10px;
-    overflow-y: auto;
-    flex: 1;
-    min-height: 0;
 }
-
-.channel-item {
-    padding: 11px 12px 11px 16px;
-    background: transparent;
-    border: 1px solid transparent;
-    border-left: 2px solid var(--b-gold);
-    border-radius: 0 var(--r-md) var(--r-md) 0;
-    cursor: pointer;
-    font-family: var(--font-label);
-    font-size: 0.83rem;
-    font-weight: 500;
-    color: var(--t-lo);
-    letter-spacing: 0.05em;
-    transition: all 200ms ease;
-    position: relative;
-}
-
-/* Sword chevron decoration */
-.channel-item::before {
-    content: 'â€º';
-    font-family: var(--font-display);
-    font-size: 1rem;
-    line-height: 1;
-    margin-right: 7px;
-    color: var(--t-ghost);
-    transition: color 200ms ease;
-    display: inline-block;
-}
-
-.channel-item:hover {
-    color: var(--t-mid);
-    border-left-color: var(--gold-mid);
-    background: var(--gold-dim);
->>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
-}
-.channel-item:hover::before { color: var(--gold-mid); }
 
 .channel-item:hover::before { color: var(--t1); }
 .channel-item:hover .ch-name { color: var(--t1); }
 
 .channel-item.active {
-<<<<<<< HEAD
     background: var(--blood-dim);
     border-left-color: var(--blood);
-=======
-    color: var(--t-hi);
-    border: 1px solid var(--b-red);
-    border-left: 3px solid var(--red);
-    background: linear-gradient(90deg,
-        rgba(204, 21, 21, 0.15),
-        rgba(204, 21, 21, 0.04) 65%,
-        transparent
-    );
-    font-weight: 700;
-    letter-spacing: 0.07em;
-    animation: activeGlow 3s ease-in-out infinite;
->>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
 }
-.channel-item.active::before { color: var(--red); }
 
-<<<<<<< HEAD
 .channel-item.active::before { color: var(--blood); }
 
 .channel-item.active .ch-name {
@@ -253,9 +138,4 @@
     font-size: 0.90rem;
     letter-spacing: 0.10em;
     color: var(--t3);
-=======
-@keyframes activeGlow {
-    0%, 100% { box-shadow: 0 0 8px rgba(204, 21, 21, 0.10); }
-    50%       { box-shadow: 0 0 18px rgba(204, 21, 21, 0.22); }
->>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
 }

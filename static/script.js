@@ -73,11 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     chatChannelName.innerText = cName.toUpperCase();
                     startTimer();
 
-<<<<<<< HEAD
                     chatFeed.innerHTML = '<div class="feed-empty"><div class="feed-empty-kanji">⚡</div><div class="feed-empty-text">SIGNAL INCOMING...</div></div>';
-=======
-                    chatFeed.innerHTML = '<div class="stream-init"><div class="init-symbol" style="opacity:0.5">âš¡</div><p class="init-text">SIGNAL INCOMING...</p></div>';
->>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
                     fetchMessages(true);
                 };
 
@@ -449,11 +445,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) { optimisticNode = null; }
 
         msgInput.value = '';
-<<<<<<< HEAD
         msgInput.placeholder = "送信中...";
-=======
-        msgInput.placeholder = "é€ä¿¡ä¸­...";
->>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
         msgInput.disabled = true;
 
         try {
@@ -510,7 +502,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- ESTADÃSTICAS ---
+    // --- ESTADÍSTICAS ---
     window.generateStats = () => {
         let type = 'offensive';
         if (document.getElementById('dvg').value.trim() !== "") type = 'gk';
@@ -535,24 +527,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function getOffensiveRank(s) {
         if (s < 4.6) return "N/A";
-        if (s <= 4.8) return "ROOKIE ðŸ¥‰ - â­";
-        if (s <= 5.1) return "ROOKIE ðŸ¥‰ - â­â­";
-        if (s <= 5.4) return "ROOKIE ðŸ¥‰ - â­â­â­";
-        if (s <= 5.7) return "AMATEUR âš½ - â­";
-        if (s <= 6.0) return "AMATEUR âš½ - â­â­";
-        if (s <= 6.3) return "AMATEUR âš½ - â­â­â­";
-        if (s <= 6.6) return "ELITE âš¡ - â­";
-        if (s <= 6.9) return "ELITE âš¡ - â­â­";
-        if (s <= 7.2) return "ELITE âš¡ - â­â­â­";
-        if (s <= 7.5) return "PRODIGY ðŸ… - â­";
-        if (s <= 7.8) return "PRODIGY ðŸ… - â­â­";
-        if (s <= 8.1) return "PRODIGY ðŸ… - â­â­â­";
-        if (s <= 8.4) return "NEW GEN XI - â­";
-        if (s <= 8.7) return "NEW GEN XI - â­â­";
-        if (s <= 9.0) return "NEW GEN XI - â­â­â­";
-        if (s <= 9.3) return "WORLD CLASS ðŸ‘‘ - â­";
-        if (s <= 9.6) return "WORLD CLASS ðŸ‘‘ - â­â­";
-        return "WORLD CLASS ðŸ‘‘ - â­â­â­";
+        if (s <= 4.8) return "ROOKIE 🥉 - ⭐";
+        if (s <= 5.1) return "ROOKIE 🥉 - ⭐⭐";
+        if (s <= 5.4) return "ROOKIE 🥉 - ⭐⭐⭐";
+        if (s <= 5.7) return "AMATEUR ⚽ - ⭐";
+        if (s <= 6.0) return "AMATEUR ⚽ - ⭐⭐";
+        if (s <= 6.3) return "AMATEUR ⚽ - ⭐⭐⭐";
+        if (s <= 6.6) return "ELITE ⚡ - ⭐";
+        if (s <= 6.9) return "ELITE ⚡ - ⭐⭐";
+        if (s <= 7.2) return "ELITE ⚡ - ⭐⭐⭐";
+        if (s <= 7.5) return "PRODIGY 🏅 - ⭐";
+        if (s <= 7.8) return "PRODIGY 🏅 - ⭐⭐";
+        if (s <= 8.1) return "PRODIGY 🏅 - ⭐⭐⭐";
+        if (s <= 8.4) return "NEW GEN XI - ⭐";
+        if (s <= 8.7) return "NEW GEN XI - ⭐⭐";
+        if (s <= 9.0) return "NEW GEN XI - ⭐⭐⭐";
+        if (s <= 9.3) return "WORLD CLASS 👑 - ⭐";
+        if (s <= 9.6) return "WORLD CLASS 👑 - ⭐⭐";
+        return "WORLD CLASS 👑 - ⭐⭐⭐";
     }
 
     function getGKRank(s) {
@@ -565,7 +557,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function drawGraph(type, data, avg, rank) {
-<<<<<<< HEAD
         const W = 500, H = 500;
         ctx.clearRect(0, 0, W, H);
 
@@ -621,64 +612,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.lineTo(CX + Math.cos(a) * R, CY + Math.sin(a) * R);
                 ctx.strokeStyle = 'rgba(207,10,44,0.18)';
                 ctx.lineWidth = 0.8;
-=======
-        ctx.clearRect(0,0,500,500);
-
-        // Background: near-black with subtle grid
-        ctx.fillStyle = "#050307";
-        ctx.fillRect(0,0,500,500);
-
-        // Washi grid overlay
-        ctx.save();
-        ctx.strokeStyle = "rgba(196,154,26,0.06)";
-        ctx.lineWidth = 1;
-        for(let x=0; x<=500; x+=40) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,500); ctx.stroke(); }
-        for(let y=0; y<=500; y+=40) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(500,y); ctx.stroke(); }
-        ctx.restore();
-
-        const cx = 250, cy = 245, r = 140;
-        const color = type === 'offensive' ? '#00d4ff' : '#e85500';
-        const colorDim = type === 'offensive' ? 'rgba(0,212,255,0.12)' : 'rgba(232,85,0,0.12)';
-
-        const keys = Object.keys(data), total = keys.length, angleStep = (Math.PI * 2) / total;
-
-        // Draw grid rings
-        for(let l=1; l<=4; l++) {
-            let rad = (r/4)*l;
-            ctx.beginPath();
-            ctx.shadowBlur = 0;
-            if (type === 'gk') {
-                ctx.arc(cx, cy, rad, 0, Math.PI*2);
-            } else {
-                for(let i=0; i<=total; i++) {
-                    let a = i*angleStep-Math.PI/2, x=cx+Math.cos(a)*rad, y=cy+Math.sin(a)*rad;
-                    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
-                }
-            }
-            ctx.strokeStyle = l===4 ? "rgba(196,154,26,0.30)" : "rgba(196,154,26,0.12)";
-            ctx.lineWidth = l===4 ? 1.5 : 1;
-            ctx.stroke();
-        }
-
-        // Draw axis spokes
-        if (type !== 'gk') {
-            keys.forEach((k, i) => {
-                let a = i*angleStep-Math.PI/2;
-                ctx.beginPath();
-                ctx.moveTo(cx, cy);
-                ctx.lineTo(cx+Math.cos(a)*r, cy+Math.sin(a)*r);
-                ctx.strokeStyle = "rgba(196,154,26,0.18)";
-                ctx.lineWidth = 1;
->>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
                 ctx.stroke();
             });
         }
 
-<<<<<<< HEAD
         // ── Stat polygon ──
-=======
-        // Draw filled shape
->>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
         ctx.beginPath();
         keys.forEach((k, i) => {
             const rad = (data[k] / 10) * R;
@@ -689,7 +627,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         ctx.closePath();
 
-<<<<<<< HEAD
         ctx.shadowBlur = 20;
         ctx.shadowColor = glowColor;
         ctx.fillStyle = fillColor;
@@ -710,34 +647,10 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.shadowBlur = 10;
             ctx.shadowColor = glowColor;
             ctx.fillStyle = '#FFFFFF';
-=======
-        // Glow fill
-        ctx.shadowBlur = 28;
-        ctx.shadowColor = color;
-        ctx.fillStyle = type==='offensive'?"rgba(0,212,255,0.35)":"rgba(232,85,0,0.35)";
-        ctx.fill();
-
-        // Stroke shape
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2.5;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-
-        // Dot on each vertex
-        keys.forEach((k, i) => {
-            let val = data[k], rad = (val/10)*r, a = i*angleStep-Math.PI/2;
-            let x=cx+Math.cos(a)*rad, y=cy+Math.sin(a)*rad;
-            ctx.beginPath();
-            ctx.arc(x, y, 4, 0, Math.PI*2);
-            ctx.fillStyle = "#fff";
-            ctx.shadowBlur = 8;
-            ctx.shadowColor = color;
->>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
             ctx.fill();
             ctx.shadowBlur = 0;
         });
 
-<<<<<<< HEAD
         // ── Labels ──
         keys.forEach((k, i) => {
             const a = i * step - Math.PI / 2;
@@ -776,37 +689,6 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.fillStyle = mainColor;
         ctx.textAlign = 'center';
         ctx.fillText(rank, CX, 482);
-=======
-        // Labels
-        keys.forEach((k, i) => {
-            let a = i*angleStep-Math.PI/2, labelR = r+38;
-            let x=cx+Math.cos(a)*labelR, y=cy+Math.sin(a)*labelR;
-            ctx.save();
-            ctx.fillStyle = "#c49a1a";
-            ctx.font = "bold 18px 'Dela Gothic One', sans-serif";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(k.toUpperCase(), x, y);
-            ctx.restore();
-        });
-
-        // AVG text
-        ctx.save();
-        ctx.fillStyle = "#b8a898";
-        ctx.font = "500 14px 'Noto Sans JP', sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText("AVG  " + avg.toFixed(1) + " / 10", cx, 438);
-        ctx.restore();
-
-        // Rank text with shadow
-        ctx.save();
-        ctx.shadowBlur = 22;
-        ctx.shadowColor = color;
-        ctx.font = "bold 26px 'Dela Gothic One', sans-serif";
-        ctx.fillStyle = color;
-        ctx.textAlign = "center";
-        ctx.fillText(rank, cx, 478);
->>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
         ctx.restore();
 
         try { window.latestStatsRank = String(rank || ''); } catch (e) {}
