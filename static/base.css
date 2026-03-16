@@ -1,23 +1,51 @@
-/* ===== BASE & LAYOUT MODULE ===== */
+/* ===== BASE & LAYOUT â€” SENGOKU Ã— BLUE LOCK ===== */
 
 :root {
-    /* Black & White Palette */
-    --primary-cyan: #ffffff;
-    --secondary-cyan: #e0e0e0;
-    --accent-magenta: #333333;
-    --accent-lime: #cccccc;
-    --dark-bg: #0a0a0a;
-    --panel-bg: #1a1a1a;
-    --glitch-dark: #000000;
-    --border-cyan: rgba(255, 255, 255, 0.15);
-    --border-bright: rgba(255, 255, 255, 0.3);
-    
-    --font-display: 'Bebas Neue', 'Space Mono', monospace;
-    --font-tech: 'Orbitron', monospace;
-    --font-data: 'Rajdhani', 'Space Mono', monospace;
+    /* === Deep Void â€” Ink Black === */
+    --void:      #040208;
+    --deep:      #07050e;
+    --surface:   #0e0a1a;
+    --surface2:  #150f26;
+    --lifted:    #1d1535;
+
+    /* === Power Accents === */
+    --blue:      #00d4ff;
+    --blue-mid:  #006e8a;
+    --blue-dim:  rgba(0, 212, 255, 0.10);
+    --red:       #cc1515;
+    --red-mid:   #7a0e0e;
+    --red-dim:   rgba(204, 21, 21, 0.10);
+    --gold:      #c49a1a;
+    --gold-mid:  #7a5e0c;
+    --gold-dim:  rgba(196, 154, 26, 0.10);
+    --ember:     #e85500;
+
+    /* === Text === */
+    --t-hi:      #f0e6d0;
+    --t-mid:     #b8a898;
+    --t-lo:      #6e5e52;
+    --t-ghost:   #3a3028;
+
+    /* === Borders === */
+    --b-gold:    rgba(196, 154, 26, 0.20);
+    --b-gold-hi: rgba(196, 154, 26, 0.55);
+    --b-blue:    rgba(0, 212, 255, 0.15);
+    --b-blue-hi: rgba(0, 212, 255, 0.50);
+    --b-red:     rgba(204, 21, 21, 0.25);
+    --b-red-hi:  rgba(204, 21, 21, 0.55);
+
+    /* === Typography === */
+    --font-display: 'Dela Gothic One', sans-serif;
+    --font-body:    'Shippori Mincho B1', serif;
+    --font-label:   'Noto Sans JP', sans-serif;
+    --font-mono:    'JetBrains Mono', monospace;
+
+    --r-sm: 2px;
+    --r-md: 6px;
+    --r-lg: 10px;
 }
 
-* {
+*, *::before, *::after {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
@@ -30,39 +58,39 @@ html, body {
 }
 
 body {
-    background: linear-gradient(135deg, var(--dark-bg) 0%, #0d0d0d 50%, var(--glitch-dark) 100%);
-    color: #e0e0e0;
-    font-family: var(--font-data);
-    position: relative;
+    background-color: var(--void);
+    color: var(--t-hi);
+    font-family: var(--font-body);
 }
 
 .glitch-bg {
     position: fixed;
     inset: 0;
     z-index: -2;
-    background: 
-        radial-gradient(circle at 10% 20%, rgba(255, 255, 255, 0.02), transparent 15%),
-        radial-gradient(circle at 90% 80%, rgba(200, 200, 200, 0.01), transparent 15%);
+    background:
+        radial-gradient(ellipse 90% 55% at 0% 0%, rgba(204, 21, 21, 0.07) 0%, transparent 60%),
+        radial-gradient(ellipse 70% 60% at 100% 100%, rgba(0, 212, 255, 0.05) 0%, transparent 55%),
+        radial-gradient(ellipse 100% 90% at 50% 50%, var(--surface) 0%, var(--void) 100%);
     pointer-events: none;
+    animation: bgPulse 10s ease-in-out infinite;
+}
+
+@keyframes bgPulse {
+    0%, 100% { opacity: 0.8; }
+    50%       { opacity: 1;   }
 }
 
 .noise-layer {
     position: fixed;
     inset: 0;
     z-index: -1;
-    background-image: 
-        repeating-linear-gradient(
-            0deg,
-            rgba(255, 255, 255, 0.02),
-            rgba(255, 255, 255, 0.02) 1px,
-            transparent 1px,
-            transparent 2px
-        );
+    background-image:
+        linear-gradient(rgba(196, 154, 26, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(196, 154, 26, 0.035) 1px, transparent 1px);
+    background-size: 48px 48px;
     pointer-events: none;
-    opacity: 0.3;
 }
 
-/* MAIN GRID */
 .nexus-container {
     display: flex;
     flex-direction: column;
@@ -72,27 +100,22 @@ body {
 
 .nexus-grid {
     display: grid;
-    grid-template-columns: 280px 1fr;
-    gap: 16px;
+    grid-template-columns: 268px 1fr;
+    gap: 14px;
     flex: 1;
     min-height: 0;
-    position: relative;
-    padding: 16px;
+    padding: 0 14px 14px;
 }
 
-/* RESPONSIVE */
+::-webkit-scrollbar            { width: 4px; }
+::-webkit-scrollbar-track      { background: transparent; }
+::-webkit-scrollbar-thumb      { background: var(--b-gold-hi); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--gold); }
+
 @media (max-width: 1200px) {
-    .nexus-grid {
-        grid-template-columns: 220px 1fr;
-    }
+    .nexus-grid { grid-template-columns: 220px 1fr; }
 }
-
 @media (max-width: 900px) {
-    .nexus-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .channel-sidebar {
-        display: none;
-    }
+    .nexus-grid { grid-template-columns: 1fr; }
+    .channel-sidebar { display: none; }
 }
