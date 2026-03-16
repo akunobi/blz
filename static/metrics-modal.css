@@ -1,6 +1,10 @@
+<<<<<<< HEAD
 /* ══════════════════════════════════════════
    METRICS OVERLAY — PLAYER DOSSIER
    ══════════════════════════════════════════ */
+=======
+/* ===== METRICS MODAL â€” TACTICAL BOARD ===== */
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
 
 .metrics-overlay {
     position: fixed;
@@ -10,6 +14,10 @@
     align-items: stretch;
     justify-content: flex-end;
     pointer-events: none;
+<<<<<<< HEAD
+=======
+    transition: opacity 280ms ease;
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
 }
 
 .metrics-overlay.active { pointer-events: auto; }
@@ -17,10 +25,15 @@
 .overlay-backdrop {
     position: absolute;
     inset: 0;
+<<<<<<< HEAD
     background: rgba(0, 0, 0, 0.75);
     backdrop-filter: blur(3px);
     opacity: 0;
     transition: opacity 260ms ease;
+=======
+    background: rgba(4, 2, 8, 0.82);
+    backdrop-filter: blur(6px);
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
 }
 
 .metrics-overlay.active .overlay-backdrop { opacity: 1; }
@@ -28,6 +41,7 @@
 /* ── Slide-in panel from the right ── */
 .metrics-panel {
     position: relative;
+<<<<<<< HEAD
     z-index: 1;
     width: 420px;
     max-width: 95vw;
@@ -55,8 +69,49 @@
 /* ── Panel header ── */
 .mpanel-header {
     flex-shrink: 0;
+=======
+    z-index: 10;
+    width: 860px;
+    max-width: 93vw;
+    max-height: 78vh;
+    background: linear-gradient(150deg,
+        var(--surface2) 0%,
+        var(--deep) 100%
+    );
+    border: 1px solid var(--b-gold-hi);
+    border-top: 2px solid var(--gold);
+    border-radius: var(--r-sm) var(--r-lg) var(--r-lg);
+    display: flex;
+    flex-direction: column;
+    padding: 26px;
+    overflow-y: auto;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.65), 0 0 40px rgba(196, 154, 26, 0.05);
+    transform: scale(0.97);
+    transition: transform 280ms ease;
+}
+
+.metrics-drawer.active .drawer-panel {
+    transform: scale(1);
+}
+
+/* Top-right armor corner cut */
+.drawer-panel::before {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 0; height: 0;
+    border-style: solid;
+    border-width: 0 26px 26px 0;
+    border-color: transparent var(--void) transparent transparent;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.panel-header {
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
     display: flex;
     align-items: center;
+<<<<<<< HEAD
     justify-content: space-between;
     padding: 26px 28px 20px;
     border-bottom: 1px solid var(--line);
@@ -75,6 +130,19 @@
     color: var(--blood);
     line-height: 1;
     text-shadow: 0 0 30px var(--blood-glow);
+=======
+    margin-bottom: 22px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--b-gold);
+}
+
+.panel-title {
+    font-family: var(--font-display);
+    font-size: 1.7rem;
+    color: var(--t-hi);
+    letter-spacing: 0.14em;
+    text-shadow: 1px 1px 0 var(--red-mid);
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
 }
 
 .mpanel-title-en {
@@ -90,6 +158,7 @@
     width: 30px;
     height: 30px;
     background: transparent;
+<<<<<<< HEAD
     border: 1px solid var(--line);
     color: var(--t2);
     font-size: 0.80rem;
@@ -185,9 +254,91 @@
     letter-spacing: 0.12em;
     color: var(--t1);
     text-transform: uppercase;
-    min-width: 40px;
+=======
+    border: 1px solid var(--b-gold);
+    color: var(--t-lo);
+    font-size: 1rem;
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--r-md);
+    transition: all 200ms ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
+.panel-close:hover {
+    border-color: var(--red);
+    color: var(--red);
+    background: var(--red-dim);
+}
+
+/* â”€â”€ Metrics grid â”€â”€ */
+.metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-bottom: 18px;
+}
+
+.metric-column {
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    padding: 18px;
+    background: rgba(4, 2, 8, 0.40);
+    border: 1px solid var(--b-gold);
+    border-radius: var(--r-md);
+}
+
+.metric-column.primary {
+    border-left: 3px solid var(--blue-mid);
+}
+
+.metric-column.secondary {
+    border-left: 3px solid var(--ember);
+}
+
+.metric-title {
+    font-family: var(--font-label);
+    font-weight: 700;
+    font-size: 0.70rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--b-gold);
+    margin-bottom: 2px;
+}
+
+.metric-column.primary .metric-title   { color: var(--blue); }
+.metric-column.secondary .metric-title { color: var(--ember); }
+
+.metric-input {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.metric-input label {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--t-lo);
+    letter-spacing: 0.08em;
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
+    min-width: 40px;
+    text-transform: uppercase;
+}
+
+/* BUG FIX: Remove number input spin buttons */
+.metric-input input[type=number]::-webkit-inner-spin-button,
+.metric-input input[type=number]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+<<<<<<< HEAD
 .mfield-input {
     background: var(--void);
     border: 1px solid var(--line);
@@ -200,10 +351,24 @@
     text-align: center;
     transition: border-color 160ms ease;
     -webkit-appearance: none;
+=======
+.metric-input input {
+    background: rgba(4, 2, 8, 0.60);
+    border: 1px solid var(--b-gold);
+    border-radius: var(--r-sm);
+    color: var(--t-hi);
+    padding: 8px 12px;
+    width: 80px;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    transition: all 200ms ease;
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
     -moz-appearance: textfield;
     appearance: textfield;
 }
 
+<<<<<<< HEAD
 .mfield-input::-webkit-inner-spin-button,
 .mfield-input::-webkit-outer-spin-button { display: none; }
 
@@ -238,8 +403,65 @@
     background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
     transform: translateX(-100%);
     transition: transform 400ms ease;
+=======
+.metric-input input:focus {
+    outline: none;
+    border-color: var(--b-gold-hi);
+    box-shadow: 0 0 10px rgba(196, 154, 26, 0.14);
 }
 
+.metric-column.primary .metric-input input:focus {
+    border-color: var(--b-blue-hi);
+    box-shadow: 0 0 10px rgba(0, 212, 255, 0.14);
+}
+
+.metric-column.secondary .metric-input input:focus {
+    border-color: rgba(232, 85, 0, 0.5);
+    box-shadow: 0 0 10px rgba(232, 85, 0, 0.14);
+}
+
+.metric-input input::placeholder { color: var(--t-ghost); }
+
+/* â”€â”€ Generate button â”€â”€ */
+.action-btn {
+    width: 100%;
+    padding: 13px;
+    background: linear-gradient(90deg,
+        rgba(204, 21, 21, 0.18),
+        rgba(204, 21, 21, 0.06)
+    );
+    border: 1px solid var(--b-red-hi);
+    border-radius: var(--r-md);
+    color: var(--t-hi);
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    letter-spacing: 0.18em;
+    cursor: pointer;
+    transition: all 220ms ease;
+    position: relative;
+    overflow: hidden;
+    text-transform: uppercase;
+}
+
+.action-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, var(--red), var(--ember));
+    opacity: 0;
+    transition: opacity 220ms ease;
+}
+
+.action-btn:hover {
+    border-color: var(--red);
+    box-shadow: 0 0 22px rgba(204, 21, 21, 0.25);
+    letter-spacing: 0.22em;
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
+}
+.action-btn:hover::before { opacity: 0.14; }
+.action-btn:active { transform: scale(0.98); }
+
+<<<<<<< HEAD
 .mpanel-submit:hover::after { transform: translateX(100%); }
 .mpanel-submit:hover { background: var(--blood-hi); }
 .mpanel-submit:active { transform: scale(0.99); }
@@ -259,8 +481,16 @@
     letter-spacing: 0.22em;
     color: rgba(255,255,255,0.70);
     text-transform: uppercase;
+=======
+@media (max-width: 1200px) {
+    .drawer-panel { width: 90%; max-height: 80vh; }
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
 }
-
 @media (max-width: 900px) {
+<<<<<<< HEAD
     .metrics-panel { width: 100%; }
+=======
+    .metrics-grid { grid-template-columns: 1fr; }
+    .drawer-panel  { width: 96%; padding: 20px; }
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
 }

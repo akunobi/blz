@@ -1,11 +1,16 @@
+<<<<<<< HEAD
 /* ══════════════════════════════════════════
    HEADER — COMMAND BANNER
    ══════════════════════════════════════════ */
+=======
+/* ===== HEADER â€” CLAN BANNER ===== */
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
 
 .site-header {
     flex-shrink: 0;
     display: flex;
     align-items: center;
+<<<<<<< HEAD
     justify-content: space-between;
     padding: 0 28px;
     height: 58px;
@@ -30,6 +35,49 @@
         var(--void)   100%
     );
     animation: headerLine 4s ease-in-out infinite;
+=======
+    padding: 14px 32px;
+    background: linear-gradient(90deg,
+        var(--surface2) 0%,
+        rgba(21, 15, 38, 0.5) 50%,
+        var(--surface2) 100%
+    );
+    border-bottom: 1px solid var(--b-gold-hi);
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+/* Left crimson clan bar */
+.nexus-header::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 4px;
+    background: linear-gradient(180deg,
+        transparent 0%,
+        var(--red)  20%,
+        var(--gold) 50%,
+        var(--red)  80%,
+        transparent 100%
+    );
+}
+
+/* Tri-color bottom line */
+.nexus-header::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        var(--red)  15%,
+        var(--gold) 45%,
+        var(--blue) 80%,
+        transparent 100%
+    );
+    opacity: 0.65;
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
 }
 
 @keyframes headerLine {
@@ -90,9 +138,10 @@
 .header-actions {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
 }
 
+<<<<<<< HEAD
 .btn-metrics {
     display: flex;
     align-items: center;
@@ -108,10 +157,69 @@
     color: var(--t1);
     text-transform: uppercase;
     transition: all 180ms ease;
+=======
+.header-crest {
+    font-family: var(--font-display);
+    font-size: 1.7rem;
+    color: var(--red);
+    opacity: 0.65;
+    user-select: none;
+    line-height: 1;
+    transition: opacity 300ms ease;
+}
+.header-crest:hover { opacity: 1; }
+
+.nexus-title {
+    font-family: var(--font-display);
+    font-size: 2.1rem;
+    color: var(--t-hi);
+    letter-spacing: 0.14em;
+    text-shadow:
+        2px 2px 0 var(--red-mid),
+        0 0 40px rgba(0, 212, 255, 0.12);
+    animation: titleShimmer 6s ease-in-out infinite;
+}
+
+@keyframes titleShimmer {
+    0%, 100% {
+        text-shadow: 2px 2px 0 var(--red-mid), 0 0 30px rgba(0, 212, 255, 0.12);
+    }
+    50% {
+        text-shadow: 2px 2px 0 var(--red), 0 0 55px rgba(0, 212, 255, 0.28), 0 0 90px rgba(0, 212, 255, 0.08);
+    }
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.stats-trigger {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 20px;
+    background: linear-gradient(135deg,
+        rgba(196, 154, 26, 0.08),
+        rgba(196, 154, 26, 0.03)
+    );
+    border: 1px solid var(--b-gold-hi);
+    border-radius: var(--r-md);
+    cursor: pointer;
+    font-family: var(--font-label);
+    font-weight: 700;
+    font-size: 0.76rem;
+    letter-spacing: 0.16em;
+    color: var(--gold);
+    text-transform: uppercase;
+    transition: all 220ms ease;
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
     position: relative;
     overflow: hidden;
 }
 
+<<<<<<< HEAD
 .btn-metrics::before {
     content: '';
     position: absolute;
@@ -130,11 +238,36 @@
 .btn-metrics-icon {
     font-size: 1rem;
     color: var(--blood);
+=======
+.stats-trigger::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.14), transparent);
+    opacity: 0;
+    transition: opacity 220ms ease;
+}
+
+.stats-trigger:hover::after { opacity: 1; }
+.stats-trigger:hover {
+    border-color: var(--b-blue-hi);
+    color: var(--blue);
+    box-shadow: 0 0 18px rgba(0, 212, 255, 0.18), inset 0 0 10px rgba(0, 212, 255, 0.04);
+}
+
+.trigger-icon {
+    font-size: 1rem;
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
     position: relative;
     z-index: 1;
 }
 
+<<<<<<< HEAD
 .btn-metrics-label {
+=======
+.trigger-text {
+    font-weight: 700;
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
     position: relative;
     z-index: 1;
 }

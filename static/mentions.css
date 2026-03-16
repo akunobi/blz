@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 /* ══════════════════════════════════════════
    MENTIONS & SPECIAL TEXT
    ══════════════════════════════════════════ */
@@ -41,20 +42,80 @@
 @keyframes mload {
     0%, 100% { opacity: 0.45; }
     50%       { opacity: 0.80; }
+=======
+/* ===== MENTIONS & SPECIAL TEXT ===== */
+
+.mention {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 3px;
+    font-family: var(--font-label);
+    font-weight: 700;
+    font-size: 0.88em;
+    letter-spacing: 0.04em;
+    cursor: default;
+    transition: background 150ms ease;
 }
 
+.mention-user {
+    background: rgba(0, 212, 255, 0.12);
+    color: var(--blue);
+    border: 1px solid var(--b-blue);
+}
+.mention-user:hover { background: rgba(0, 212, 255, 0.20); }
+
+.mention-role {
+    background: rgba(196, 154, 26, 0.12);
+    color: var(--gold);
+    border: 1px solid var(--b-gold);
+}
+.mention-role:hover { background: rgba(196, 154, 26, 0.20); }
+
+.mention-channel {
+    background: rgba(204, 21, 21, 0.10);
+    color: var(--t-mid);
+    border: 1px solid var(--b-red);
+}
+.mention-channel:hover { background: rgba(204, 21, 21, 0.18); }
+
+.mention-loading {
+    opacity: 0.5;
+    animation: mentionPulse 1.2s ease-in-out infinite;
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
+}
+
+@keyframes mentionPulse {
+    0%, 100% { opacity: 0.5; }
+    50%       { opacity: 0.9; }
+}
+
+/* Spoiler */
 .spoiler {
+<<<<<<< HEAD
     background: var(--t3);
     color: transparent;
     padding: 1px 6px;
     cursor: pointer;
     font-family: var(--f-mono);
     font-size: 0.86em;
+=======
+    background: var(--t-ghost);
+    color: transparent;
+    border-radius: 3px;
+    padding: 1px 7px;
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
     transition: all 200ms ease;
     user-select: none;
 }
 
 .spoiler:hover {
+<<<<<<< HEAD
     background: var(--pit);
     color: var(--t0);
+=======
+    color: var(--t-hi);
+    background: rgba(255, 255, 255, 0.10);
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
 }

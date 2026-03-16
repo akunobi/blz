@@ -1,15 +1,25 @@
+<<<<<<< HEAD
 /* ══════════════════════════════════════════
    STATS OVERLAY — BATTLE SEAL
    ══════════════════════════════════════════ */
+=======
+/* ===== STATS MODAL ā€” BATTLE SEAL ===== */
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
 
 .stats-overlay {
     position: fixed;
     inset: 0;
+<<<<<<< HEAD
+=======
+    display: none;
+    background: rgba(4, 2, 8, 0.88);
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
     z-index: 300;
     display: none;
     align-items: center;
     justify-content: center;
     padding: 20px;
+<<<<<<< HEAD
     background: rgba(0, 0, 0, 0.88);
     backdrop-filter: blur(6px);
 }
@@ -38,8 +48,47 @@
 }
 
 .stats-header {
+=======
+    backdrop-filter: blur(5px);
+}
+
+.stats-modal.active { display: flex; }
+
+.modal-content {
+    background: linear-gradient(150deg,
+        var(--surface2) 0%,
+        var(--deep) 100%
+    );
+    border: 1px solid var(--b-gold-hi);
+    border-top: 2px solid var(--gold);
+    border-radius: var(--r-sm) var(--r-lg) var(--r-lg);
+    padding: 26px;
+    max-width: 540px;
+    width: 100%;
+    position: relative;
+    box-shadow:
+        0 24px 70px rgba(0, 0, 0, 0.65),
+        0 0 40px rgba(196, 154, 26, 0.06);
+}
+
+/* Top-right corner cut */
+.modal-content::before {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 0; height: 0;
+    border-style: solid;
+    border-width: 0 22px 22px 0;
+    border-color: transparent var(--void) transparent transparent;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.modal-header {
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
     display: flex;
     align-items: center;
+<<<<<<< HEAD
     justify-content: space-between;
     padding: 18px 24px;
     border-bottom: 1px solid var(--line);
@@ -52,12 +101,26 @@
     letter-spacing: 0.20em;
     color: var(--t0);
     text-transform: uppercase;
+=======
+    margin-bottom: 18px;
+    padding-bottom: 13px;
+    border-bottom: 1px solid var(--b-gold);
+}
+
+.modal-header h2 {
+    font-family: var(--font-display);
+    font-size: 1.45rem;
+    color: var(--t-hi);
+    letter-spacing: 0.13em;
+    text-shadow: 1px 1px 0 var(--red-mid);
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
 }
 
 .stats-close {
     width: 28px;
     height: 28px;
     background: transparent;
+<<<<<<< HEAD
     border: 1px solid var(--line);
     color: var(--t2);
     font-size: 0.75rem;
@@ -111,6 +174,73 @@
 .stats-btn--rank:hover {
     background: var(--blood-dim);
     color: var(--blood-hi);
+=======
+    border: 1px solid var(--b-gold);
+    color: var(--t-lo);
+    font-size: 1rem;
+    cursor: pointer;
+    width: 30px;
+    height: 30px;
+    border-radius: var(--r-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 200ms ease;
 }
 
+.modal-close:hover {
+    border-color: var(--red);
+    color: var(--red);
+    background: var(--red-dim);
+}
+
+#stats-canvas {
+    width: 100%;
+    max-width: 380px;
+    height: auto;
+    display: block;
+    margin: 16px auto;
+    border: 1px solid var(--b-gold);
+    border-radius: var(--r-sm);
+    background: #000;
+}
+
+.modal-footer {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.modal-btn {
+    flex: 1;
+    padding: 11px;
+    background: rgba(4, 2, 8, 0.55);
+    border: 1px solid var(--b-gold);
+    border-radius: var(--r-md);
+    color: var(--t-mid);
+    font-family: var(--font-label);
+    font-weight: 700;
+    font-size: 0.74rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 200ms ease;
+}
+
+.modal-btn:hover {
+    border-color: var(--b-gold-hi);
+    color: var(--gold);
+    background: var(--gold-dim);
+    box-shadow: 0 0 12px rgba(196, 154, 26, 0.10);
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
+}
+.modal-btn:active { transform: scale(0.97); }
+
+<<<<<<< HEAD
 .stats-btn:active { transform: scale(0.98); }
+=======
+@media (max-width: 900px) {
+    .modal-content { padding: 20px; }
+    .modal-header h2 { font-size: 1.25rem; }
+}
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424

@@ -1,1 +1,12 @@
+<<<<<<< HEAD
 /* style.css — empty, all styles in modular CSS files */
+=======
+/*
+ * style.css â€” legacy file kept for compatibility.
+ * All styles now live in the modular CSS files:
+ *   base.css, header.css, sidebar.css, chat.css,
+ *   metrics-modal.css, stats-modal.css, mentions.css
+ *
+ * This file intentionally left empty.
+ */
+>>>>>>> 7081ee4b2ca8bbb32ba7446705dd1cff79a43424
