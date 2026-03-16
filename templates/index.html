@@ -3,160 +3,142 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BLZ-T // 無限機</title>
-    <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='base.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='header.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='sidebar.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='chat.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='metrics-modal.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='stats-modal.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='mentions.css') }}">
+    <title>BLZ-T</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 
-    <!-- Ambient scan line layer -->
-    <div class="scan-layer" aria-hidden="true"></div>
-    <!-- Giant kanji watermark -->
-    <div class="bg-kanji" aria-hidden="true">戦</div>
+    <!-- Speed lines background -->
+    <div class="speed-bg" aria-hidden="true"></div>
 
-    <div class="shell">
+    <div class="app">
 
         <!-- ═══ HEADER ═══ -->
-        <header class="site-header">
-            <div class="header-brand">
-                <span class="brand-mark">無</span>
-                <span class="brand-name">BLZ-T</span>
-                <span class="brand-sep">|</span>
-                <span class="brand-sub">COMMAND RELAY</span>
+        <header class="hdr">
+            <div class="hdr-left">
+                <div class="hdr-emblem">
+                    <span class="hdr-kanji">無</span>
+                </div>
+                <div class="hdr-title-wrap">
+                    <span class="hdr-title">BLZ-T</span>
+                    <span class="hdr-slash">/</span>
+                    <span class="hdr-sub">COMMAND RELAY</span>
+                </div>
             </div>
-            <div class="header-actions">
-                <button class="btn-metrics" onclick="toggleDrawer()" aria-label="Open metrics">
+            <div class="hdr-right">
+                <div class="hdr-status">
+                    <span class="status-dot"></span>
+                    <span class="status-text">ONLINE</span>
+                </div>
+                <button class="btn-metrics" onclick="toggleDrawer()">
                     <span class="btn-metrics-icon">◈</span>
-                    <span class="btn-metrics-label">METRICS</span>
+                    METRICS
                 </button>
             </div>
         </header>
 
-        <!-- ═══ BODY ═══ -->
-        <div class="body-grid">
+        <!-- ═══ MAIN ═══ -->
+        <div class="main">
 
-            <!-- LEFT: CHANNEL PANEL -->
-            <aside class="channel-panel">
-                <div class="panel-heading">
-                    <span class="panel-heading-text">CHANNELS</span>
-                    <span class="panel-heading-count" id="channel-count">—</span>
+            <!-- SIDEBAR -->
+            <aside class="sidebar">
+                <div class="sidebar-hdr">
+                    <span class="sidebar-hdr-label">CHANNELS</span>
+                    <span class="sidebar-hdr-count" id="channel-count">0</span>
                 </div>
                 <div id="channel-list" class="channel-list"></div>
-                <div class="panel-footer">
-                    <span class="panel-footer-label">作戦室</span>
-                </div>
+                <div class="sidebar-ftr">作戦室</div>
             </aside>
 
-            <!-- RIGHT: CHAT -->
-            <section class="chat-arena">
-
-                <!-- Chat top bar -->
-                <div class="arena-bar">
-                    <div class="arena-channel">
-                        <span class="arena-channel-hash">#</span>
-                        <span id="chat-channel-name" class="arena-channel-name">——</span>
+            <!-- CHAT -->
+            <section class="chat">
+                <div class="chat-bar">
+                    <div class="chat-bar-channel">
+                        <span class="chat-bar-hash">#</span>
+                        <span id="chat-channel-name" class="chat-bar-name">——</span>
                     </div>
-                    <div class="arena-clock">
-                        <span class="arena-clock-label">連続時間</span>
-                        <span id="chat-uptime" class="arena-clock-value">00:00</span>
+                    <div class="chat-bar-right">
+                        <span class="chat-bar-label">SESSION</span>
+                        <span id="chat-uptime" class="chat-bar-timer">00:00</span>
                     </div>
                 </div>
 
-                <!-- Message feed -->
-                <div id="chat-feed" class="message-feed">
+                <div id="chat-feed" class="feed">
                     <div class="feed-empty">
-                        <div class="feed-empty-kanji">無</div>
-                        <div class="feed-empty-text">AWAITING SIGNAL</div>
+                        <div class="feed-empty-num">無</div>
+                        <div class="feed-empty-txt">AWAITING SIGNAL</div>
                     </div>
                 </div>
 
-                <!-- Input -->
-                <div class="input-zone">
-                    <div class="input-prefix">▶</div>
-                    <input
-                        type="text"
-                        id="msg-input"
-                        class="input-field"
-                        placeholder="TRANSMIT MESSAGE..."
-                        autocomplete="off"
-                    />
-                    <button id="send-btn" class="send-btn" aria-label="Send">
-                        <span class="send-btn-text">送信</span>
+                <div class="input-bar">
+                    <span class="input-bar-prefix">▶</span>
+                    <input id="msg-input" class="input-field" type="text"
+                           placeholder="TRANSMIT MESSAGE..." autocomplete="off"/>
+                    <button id="send-btn" class="send-btn">
+                        <span class="send-jp">送信</span>
                     </button>
                 </div>
-
             </section>
 
         </div>
     </div>
 
-    <!-- ═══ METRICS DRAWER ═══ -->
+    <!-- ═══ METRICS PANEL ═══ -->
     <div class="metrics-overlay" id="stats-drawer">
-        <div class="overlay-backdrop" onclick="toggleDrawer()"></div>
+        <div class="metrics-backdrop" onclick="toggleDrawer()"></div>
         <div class="metrics-panel">
-
-            <div class="mpanel-header">
-                <div class="mpanel-title">
-                    <span class="mpanel-title-jp">戦力</span>
-                    <span class="mpanel-title-en">METRICS</span>
+            <div class="mp-hdr">
+                <div class="mp-title">
+                    <span class="mp-title-jp">戦力</span>
+                    <span class="mp-title-en">BATTLE METRICS</span>
                 </div>
-                <button class="mpanel-close" onclick="toggleDrawer()">✕</button>
+                <button class="mp-close" onclick="toggleDrawer()">✕</button>
             </div>
+            <div class="mp-body">
 
-            <div class="mpanel-body">
-                <div class="mgroup mgroup--offensive">
-                    <div class="mgroup-label">
-                        <span class="mgroup-label-tag">ATK</span>
-                        <span class="mgroup-label-name">OFFENSIVE</span>
+                <div class="mg mg--atk">
+                    <div class="mg-label">
+                        <span class="mg-tag mg-tag--atk">ATK</span>
+                        <span class="mg-name">OFFENSIVE</span>
                     </div>
-                    <div class="mgroup-fields">
-                        <div class="mfield"><label class="mfield-label">SHT</label><input type="number" id="sht" class="mfield-input" placeholder="0"></div>
-                        <div class="mfield"><label class="mfield-label">DBL</label><input type="number" id="dbl" class="mfield-input" placeholder="0"></div>
-                        <div class="mfield"><label class="mfield-label">STL</label><input type="number" id="stl" class="mfield-input" placeholder="0"></div>
-                        <div class="mfield"><label class="mfield-label">PSN</label><input type="number" id="psn" class="mfield-input" placeholder="0"></div>
-                        <div class="mfield"><label class="mfield-label">DFD</label><input type="number" id="dfd" class="mfield-input" placeholder="0"></div>
-                    </div>
+                    <div class="mg-row"><label>SHT</label><input type="number" id="sht" placeholder="0"></div>
+                    <div class="mg-row"><label>DBL</label><input type="number" id="dbl" placeholder="0"></div>
+                    <div class="mg-row"><label>STL</label><input type="number" id="stl" placeholder="0"></div>
+                    <div class="mg-row"><label>PSN</label><input type="number" id="psn" placeholder="0"></div>
+                    <div class="mg-row"><label>DFD</label><input type="number" id="dfd" placeholder="0"></div>
                 </div>
 
-                <div class="mgroup mgroup--gk">
-                    <div class="mgroup-label">
-                        <span class="mgroup-label-tag">GK</span>
-                        <span class="mgroup-label-name">GOALKEEP</span>
+                <div class="mg mg--gk">
+                    <div class="mg-label">
+                        <span class="mg-tag mg-tag--gk">GK</span>
+                        <span class="mg-name">GOALKEEP</span>
                     </div>
-                    <div class="mgroup-fields">
-                        <div class="mfield"><label class="mfield-label">DVG</label><input type="number" id="dvg" class="mfield-input" placeholder="—"></div>
-                        <div class="mfield"><label class="mfield-label">BIQ</label><input type="number" id="biq" class="mfield-input" placeholder="—"></div>
-                        <div class="mfield"><label class="mfield-label">RFX</label><input type="number" id="rfx" class="mfield-input" placeholder="—"></div>
-                        <div class="mfield"><label class="mfield-label">DTG</label><input type="number" id="dtg" class="mfield-input" placeholder="—"></div>
-                    </div>
+                    <div class="mg-row"><label>DVG</label><input type="number" id="dvg" placeholder="—"></div>
+                    <div class="mg-row"><label>BIQ</label><input type="number" id="biq" placeholder="—"></div>
+                    <div class="mg-row"><label>RFX</label><input type="number" id="rfx" placeholder="—"></div>
+                    <div class="mg-row"><label>DTG</label><input type="number" id="dtg" placeholder="—"></div>
                 </div>
+
             </div>
-
-            <button id="ui-stats-btn" onclick="generateStats()" class="mpanel-submit">
-                <span class="mpanel-submit-jp">解析</span>
-                <span class="mpanel-submit-en">GENERATE STATS</span>
+            <button id="ui-stats-btn" class="mp-submit" onclick="generateStats()">
+                <span class="mp-submit-jp">解析</span>
+                <span class="mp-submit-en">GENERATE STATS</span>
             </button>
-
         </div>
     </div>
 
     <!-- ═══ STATS MODAL ═══ -->
     <div id="stats-modal" class="stats-overlay">
         <div class="stats-panel">
-            <div class="stats-header">
-                <span class="stats-header-title">STATS SEAL</span>
+            <div class="stats-hdr">
+                <span class="stats-title">STATS SEAL // 印</span>
                 <button id="close-modal" class="stats-close">✕</button>
             </div>
             <canvas id="stats-canvas" width="500" height="500"></canvas>
             <div class="stats-actions">
-                <button id="copy-stats-btn" class="stats-btn">COPY STATS</button>
-                <button id="copy-rank-btn" class="stats-btn stats-btn--rank">COPY RANK</button>
+                <button id="copy-stats-btn" class="stats-btn">COPY IMAGE</button>
+                <button id="copy-rank-btn" class="stats-btn stats-btn--hi">COPY RANK</button>
             </div>
         </div>
     </div>

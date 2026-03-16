@@ -73,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     chatChannelName.innerText = cName.toUpperCase();
                     startTimer();
 
-                    chatFeed.innerHTML = '<div class="feed-empty"><div class="feed-empty-kanji">⚡</div><div class="feed-empty-text">SIGNAL INCOMING...</div></div>';
+                    chatFeed.innerHTML = '<div class="feed-empty"><div class="feed-empty-num">⚡</div><div class="feed-empty-txt">SIGNAL INCOMING...</div></div>';
                     fetchMessages(true);
                 };
 
@@ -165,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (initial) {
                 chatFeed.innerHTML = '';
                 if (!msgs || msgs.length === 0) {
-                    chatFeed.innerHTML = '<div class="feed-empty"><div class="feed-empty-kanji">刀</div><div class="feed-empty-text">NO SIGNAL</div></div>';
+                    chatFeed.innerHTML = '<div class="feed-empty"><div class="feed-empty-num">刀</div><div class="feed-empty-txt">NO SIGNAL</div></div>';
                 } else {
                     msgs.forEach(msg => {
                         const message = document.createElement('div');
@@ -559,30 +559,33 @@ document.addEventListener('DOMContentLoaded', () => {
     function drawGraph(type, data, avg, rank) {
         const W = 500, H = 500;
         ctx.clearRect(0, 0, W, H);
+        ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
 
-        // ── Pure black bg ──
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, W, H);
+        // Speed lines bg
+        const isGK = type === 'gk';
+        const mainCol  = isGK ? '#C89B2A' : '#00B4FF';
+        const fillCol  = isGK ? 'rgba(200,155,42,0.28)' : 'rgba(0,180,255,0.25)';
+        const glowCol  = isGK ? 'rgba(200,155,42,0.55)' : 'rgba(0,180,255,0.55)';
 
-        // ── Scanline texture ──
+        // Radial speed lines
         ctx.save();
-        for (let y = 0; y < H; y += 3) {
-            ctx.fillStyle = 'rgba(0,0,0,0.25)';
-            ctx.fillRect(0, y, W, 1);
+        for (let a = 0; a < 360; a += 7) {
+            const rad = a * Math.PI / 180;
+            ctx.beginPath();
+            ctx.moveTo(250, 250);
+            ctx.lineTo(250 + Math.cos(rad) * 300, 250 + Math.sin(rad) * 300);
+            ctx.strokeStyle = 'rgba(229,0,26,0.04)';
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
         }
         ctx.restore();
 
-        const CX = 250, CY = 248, R = 138;
-        const isGK = type === 'gk';
-        const mainColor  = isGK ? '#E86000' : '#00D4FF';
-        const fillColor  = isGK ? 'rgba(232,96,0,0.30)' : 'rgba(0,212,255,0.28)';
-        const glowColor  = isGK ? 'rgba(232,96,0,0.55)' : 'rgba(0,212,255,0.55)';
-
+        const CX = 250, CY = 248, R = 132;
         const keys = Object.keys(data);
         const total = keys.length;
         const step = (Math.PI * 2) / total;
 
-        // ── Grid rings ──
+        // Grid rings
         for (let l = 1; l <= 4; l++) {
             const rad = (R / 4) * l;
             ctx.beginPath();
@@ -591,107 +594,90 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 for (let i = 0; i <= total; i++) {
                     const a = i * step - Math.PI / 2;
-                    const x = CX + Math.cos(a) * rad;
-                    const y = CY + Math.sin(a) * rad;
-                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                    i === 0
+                        ? ctx.moveTo(CX + Math.cos(a) * rad, CY + Math.sin(a) * rad)
+                        : ctx.lineTo(CX + Math.cos(a) * rad, CY + Math.sin(a) * rad);
                 }
             }
-            ctx.strokeStyle = l === 4
-                ? 'rgba(207,10,44,0.40)'
-                : 'rgba(207,10,44,0.14)';
+            ctx.strokeStyle = l === 4 ? 'rgba(229,0,26,0.45)' : 'rgba(229,0,26,0.12)';
             ctx.lineWidth = l === 4 ? 1.5 : 0.8;
             ctx.stroke();
         }
 
-        // ── Spokes ──
+        // Spokes
         if (!isGK) {
             keys.forEach((_, i) => {
                 const a = i * step - Math.PI / 2;
                 ctx.beginPath();
                 ctx.moveTo(CX, CY);
                 ctx.lineTo(CX + Math.cos(a) * R, CY + Math.sin(a) * R);
-                ctx.strokeStyle = 'rgba(207,10,44,0.18)';
+                ctx.strokeStyle = 'rgba(229,0,26,0.15)';
                 ctx.lineWidth = 0.8;
                 ctx.stroke();
             });
         }
 
-        // ── Stat polygon ──
+        // Stat shape
         ctx.beginPath();
         keys.forEach((k, i) => {
             const rad = (data[k] / 10) * R;
             const a = i * step - Math.PI / 2;
-            const x = CX + Math.cos(a) * rad;
-            const y = CY + Math.sin(a) * rad;
-            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            i === 0
+                ? ctx.moveTo(CX + Math.cos(a) * rad, CY + Math.sin(a) * rad)
+                : ctx.lineTo(CX + Math.cos(a) * rad, CY + Math.sin(a) * rad);
         });
         ctx.closePath();
-
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = glowColor;
-        ctx.fillStyle = fillColor;
-        ctx.fill();
-        ctx.strokeStyle = mainColor;
-        ctx.lineWidth = 2;
-        ctx.stroke();
+        ctx.shadowBlur = 22; ctx.shadowColor = glowCol;
+        ctx.fillStyle = fillCol; ctx.fill();
+        ctx.strokeStyle = mainCol; ctx.lineWidth = 2.5; ctx.stroke();
         ctx.shadowBlur = 0;
 
-        // ── Vertex dots ──
+        // Vertex dots
         keys.forEach((k, i) => {
             const rad = (data[k] / 10) * R;
             const a = i * step - Math.PI / 2;
-            const x = CX + Math.cos(a) * rad;
-            const y = CY + Math.sin(a) * rad;
-            ctx.beginPath();
-            ctx.arc(x, y, 3.5, 0, Math.PI * 2);
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = glowColor;
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fill();
+            const x = CX + Math.cos(a) * rad, y = CY + Math.sin(a) * rad;
+            ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2);
+            ctx.shadowBlur = 12; ctx.shadowColor = glowCol;
+            ctx.fillStyle = '#FFF'; ctx.fill();
             ctx.shadowBlur = 0;
         });
 
-        // ── Labels ──
+        // Labels
         keys.forEach((k, i) => {
             const a = i * step - Math.PI / 2;
-            const lx = CX + Math.cos(a) * (R + 34);
-            const ly = CY + Math.sin(a) * (R + 34);
+            const lx = CX + Math.cos(a) * (R + 36);
+            const ly = CY + Math.sin(a) * (R + 36);
             ctx.save();
-            ctx.font = "900 17px 'Zen Kaku Gothic New', sans-serif";
-            ctx.fillStyle = '#B89B3C';
+            ctx.font = "900 16px 'Bebas Neue', sans-serif";
+            ctx.fillStyle = '#C89B2A';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
+            ctx.shadowBlur = 8; ctx.shadowColor = 'rgba(200,155,42,0.5)';
             ctx.fillText(k.toUpperCase(), lx, ly);
             ctx.restore();
         });
 
-        // ── Divider line ──
-        ctx.beginPath();
-        ctx.moveTo(40, 430);
-        ctx.lineTo(460, 430);
-        ctx.strokeStyle = 'rgba(207,10,44,0.30)';
-        ctx.lineWidth = 1;
-        ctx.stroke();
+        // Divider
+        ctx.beginPath(); ctx.moveTo(40, 432); ctx.lineTo(460, 432);
+        ctx.strokeStyle = 'rgba(229,0,26,0.35)'; ctx.lineWidth = 1; ctx.stroke();
 
-        // ── AVG ──
+        // AVG
         ctx.save();
-        ctx.font = "500 13px 'DM Mono', monospace";
-        ctx.fillStyle = '#6A5E52';
-        ctx.textAlign = 'center';
-        ctx.fillText('AVG  ' + avg.toFixed(2) + ' / 10', CX, 448);
+        ctx.font = "600 12px 'IBM Plex Mono', monospace";
+        ctx.fillStyle = '#444460'; ctx.textAlign = 'center';
+        ctx.fillText('AVG  ' + avg.toFixed(2) + '  /  10', CX, 450);
         ctx.restore();
 
-        // ── Rank ──
+        // Rank
         ctx.save();
-        ctx.shadowBlur = 18;
-        ctx.shadowColor = glowColor;
-        ctx.font = "900 24px 'Zen Kaku Gothic New', sans-serif";
-        ctx.fillStyle = mainColor;
-        ctx.textAlign = 'center';
-        ctx.fillText(rank, CX, 482);
+        ctx.shadowBlur = 20; ctx.shadowColor = glowCol;
+        ctx.font = "900 26px 'Bebas Neue', sans-serif";
+        ctx.fillStyle = mainCol; ctx.textAlign = 'center';
+        ctx.fillText(rank, CX, 483);
         ctx.restore();
 
-        try { window.latestStatsRank = String(rank || ''); } catch (e) {}
+        try { window.latestStatsRank = String(rank || ''); } catch(e) {}
     }
 
     const closeBtn = document.getElementById('close-modal');
