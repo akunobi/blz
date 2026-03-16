@@ -1,37 +1,61 @@
-/* ===== MENTIONS & SPECIAL TEXT MODULE ===== */
+/* ===== MENTIONS & SPECIAL TEXT ===== */
 
 .mention {
-    padding: 2px 6px;
-    background: rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
-    color: var(--secondary-cyan);
-    font-weight: 600;
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 3px;
+    font-family: var(--font-label);
+    font-weight: 700;
+    font-size: 0.88em;
+    letter-spacing: 0.04em;
+    cursor: default;
+    transition: background 150ms ease;
 }
 
 .mention-user {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 212, 255, 0.12);
+    color: var(--blue);
+    border: 1px solid var(--b-blue);
 }
+.mention-user:hover { background: rgba(0, 212, 255, 0.20); }
 
 .mention-role {
-    background: rgba(224, 224, 224, 0.08);
-    color: var(--primary-cyan);
+    background: rgba(196, 154, 26, 0.12);
+    color: var(--gold);
+    border: 1px solid var(--b-gold);
 }
+.mention-role:hover { background: rgba(196, 154, 26, 0.20); }
 
 .mention-channel {
-    background: rgba(255, 255, 255, 0.05);
-    color: #c0c0c0;
+    background: rgba(204, 21, 21, 0.10);
+    color: var(--t-mid);
+    border: 1px solid var(--b-red);
+}
+.mention-channel:hover { background: rgba(204, 21, 21, 0.18); }
+
+.mention-loading {
+    opacity: 0.5;
+    animation: mentionPulse 1.2s ease-in-out infinite;
 }
 
+@keyframes mentionPulse {
+    0%, 100% { opacity: 0.5; }
+    50%       { opacity: 0.9; }
+}
+
+/* Spoiler */
 .spoiler {
-    background: #1a1a1a;
+    background: var(--t-ghost);
     color: transparent;
-    border-radius: 6px;
-    padding: 2px 6px;
+    border-radius: 3px;
+    padding: 1px 7px;
     cursor: pointer;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    transition: all 200ms ease;
+    user-select: none;
 }
 
 .spoiler:hover {
-    color: #e0e0e0;
-    background: rgba(255, 255, 255, 0.15);
+    color: var(--t-hi);
+    background: rgba(255, 255, 255, 0.10);
 }
