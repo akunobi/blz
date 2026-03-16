@@ -1,97 +1,142 @@
-/* ===== HEADER MODULE ===== */
+/* ===== HEADER â€” CLAN BANNER ===== */
 
 .nexus-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 24px 32px;
-    background: linear-gradient(90deg, 
-        rgba(26, 26, 26, 0.6) 0%,
-        rgba(26, 26, 26, 0.3) 50%,
-        rgba(26, 26, 26, 0.6) 100%
+    padding: 14px 32px;
+    background: linear-gradient(90deg,
+        var(--surface2) 0%,
+        rgba(21, 15, 38, 0.5) 50%,
+        var(--surface2) 100%
     );
-    border-bottom: 1px solid var(--border-cyan);
+    border-bottom: 1px solid var(--b-gold-hi);
     position: relative;
-    margin-bottom: 4px;
+    overflow: hidden;
+    flex-shrink: 0;
 }
 
+/* Left crimson clan bar */
 .nexus-header::before {
     content: '';
     position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 20px;
-    background: linear-gradient(90deg, var(--secondary-cyan), transparent);
-    opacity: 0.1;
-    clip-path: polygon(0 0, 100% 20%, 100% 80%, 0 100%);
+    left: 0; top: 0; bottom: 0;
+    width: 4px;
+    background: linear-gradient(180deg,
+        transparent 0%,
+        var(--red)  20%,
+        var(--gold) 50%,
+        var(--red)  80%,
+        transparent 100%
+    );
+}
+
+/* Tri-color bottom line */
+.nexus-header::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        var(--red)  15%,
+        var(--gold) 45%,
+        var(--blue) 80%,
+        transparent 100%
+    );
+    opacity: 0.65;
 }
 
 .header-left {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
 }
+
+.header-crest {
+    font-family: var(--font-display);
+    font-size: 1.7rem;
+    color: var(--red);
+    opacity: 0.65;
+    user-select: none;
+    line-height: 1;
+    transition: opacity 300ms ease;
+}
+.header-crest:hover { opacity: 1; }
 
 .nexus-title {
     font-family: var(--font-display);
-    font-size: 2.2rem;
-    font-weight: 900;
-    color: var(--primary-cyan);
-    text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
-    letter-spacing: 3px;
+    font-size: 2.1rem;
+    color: var(--t-hi);
+    letter-spacing: 0.14em;
+    text-shadow:
+        2px 2px 0 var(--red-mid),
+        0 0 40px rgba(0, 212, 255, 0.12);
+    animation: titleShimmer 6s ease-in-out infinite;
 }
 
-.header-divider {
-    color: var(--secondary-cyan);
-    font-family: var(--font-tech);
-    font-size: 1.5rem;
-    opacity: 0.6;
-}
-
-.nexus-subtitle {
-    font-family: var(--font-tech);
-    font-size: 1.2rem;
-    letter-spacing: 4px;
-    color: #d5d5d5;
-    font-weight: 700;
+@keyframes titleShimmer {
+    0%, 100% {
+        text-shadow: 2px 2px 0 var(--red-mid), 0 0 30px rgba(0, 212, 255, 0.12);
+    }
+    50% {
+        text-shadow: 2px 2px 0 var(--red), 0 0 55px rgba(0, 212, 255, 0.28), 0 0 90px rgba(0, 212, 255, 0.08);
+    }
 }
 
 .header-right {
     display: flex;
-    gap: 16px;
     align-items: center;
+    gap: 12px;
 }
 
 .stats-trigger {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 10px 20px;
-    background: linear-gradient(90deg, 
-        rgba(255, 255, 255, 0.08),
-        rgba(224, 224, 224, 0.04)
+    gap: 9px;
+    padding: 9px 20px;
+    background: linear-gradient(135deg,
+        rgba(196, 154, 26, 0.08),
+        rgba(196, 154, 26, 0.03)
     );
-    border: 1px solid var(--border-bright);
-    border-radius: 12px;
+    border: 1px solid var(--b-gold-hi);
+    border-radius: var(--r-md);
     cursor: pointer;
-    font-family: var(--font-tech);
-    color: var(--secondary-cyan);
-    font-size: 0.9rem;
-    letter-spacing: 2px;
-    transition: all 150ms ease;
+    font-family: var(--font-label);
+    font-weight: 700;
+    font-size: 0.76rem;
+    letter-spacing: 0.16em;
+    color: var(--gold);
+    text-transform: uppercase;
+    transition: all 220ms ease;
     position: relative;
+    overflow: hidden;
 }
 
+.stats-trigger::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.14), transparent);
+    opacity: 0;
+    transition: opacity 220ms ease;
+}
+
+.stats-trigger:hover::after { opacity: 1; }
 .stats-trigger:hover {
-    background: linear-gradient(90deg,
-        rgba(255, 255, 255, 0.15),
-        rgba(224, 224, 224, 0.08)
-    );
-    border-color: var(--primary-cyan);
-    box-shadow: 0 0 15px rgba(255, 255, 255, 0.15);
+    border-color: var(--b-blue-hi);
+    color: var(--blue);
+    box-shadow: 0 0 18px rgba(0, 212, 255, 0.18), inset 0 0 10px rgba(0, 212, 255, 0.04);
 }
 
 .trigger-icon {
-    font-size: 1.2rem;
+    font-size: 1rem;
+    position: relative;
+    z-index: 1;
+}
+
+.trigger-text {
+    font-weight: 700;
+    position: relative;
+    z-index: 1;
 }
