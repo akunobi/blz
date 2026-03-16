@@ -51,31 +51,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (channels.length > 0) channelList.innerHTML = '';
             
-            channels.forEach(ch => {
+            channels.forEach((ch, idx) => {
                 const cName = ch.name || "Unknown";
                 const cId = ch.id; 
                 channelMap[cId] = cName;
 
-                // CREATE CHANNEL ITEM
                 const link = document.createElement('div');
                 link.className = 'channel-item';
-                link.innerText = cName.toUpperCase(); 
-                
+                link.setAttribute('data-index', String(idx + 1).padStart(2, '0'));
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'ch-name';
+                nameSpan.textContent = cName.toUpperCase();
+                link.appendChild(nameSpan);
+
                 link.onclick = () => {
                     currentChannelId = cId;
                     document.querySelectorAll('.channel-item').forEach(b => b.classList.remove('active'));
                     link.classList.add('active');
-                    
-                    // UPDATE HEADER
+
                     chatChannelName.innerText = cName.toUpperCase();
                     startTimer();
 
-                    chatFeed.innerHTML = '<div style="text-align:center; padding-top:50px; color:var(--primary-cyan); font-family:\'Orbitron\';">SIGNAL INCOMING...</div>';
+                    chatFeed.innerHTML = '<div class="feed-empty"><div class="feed-empty-kanji">⚡</div><div class="feed-empty-text">SIGNAL INCOMING...</div></div>';
                     fetchMessages(true);
                 };
-                
+
                 channelList.appendChild(link);
             });
+
+            // Update count badge
+            const countEl = document.getElementById('channel-count');
+            if (countEl) countEl.textContent = channels.length;
         } catch(e) { console.error(e); }
     }
 
@@ -158,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (initial) {
                 chatFeed.innerHTML = '';
                 if (!msgs || msgs.length === 0) {
-                    chatFeed.innerHTML = '<div class="stream-init"><div class="init-symbol">/</div><p class="init-text">NO SIGNAL</p></div>';
+                    chatFeed.innerHTML = '<div class="feed-empty"><div class="feed-empty-kanji">刀</div><div class="feed-empty-text">NO SIGNAL</div></div>';
                 } else {
                     msgs.forEach(msg => {
                         const message = document.createElement('div');
@@ -170,9 +177,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         const rendered = renderDiscordContent(msg.content || '');
 
                         message.innerHTML = `
+                                <div class="msg-time">${formatTimestamp(msg.timestamp || '')}</div>
                                 <div class="msg-author">${escapeHtml(msg.author_name || 'Unknown')}</div>
                                 <div class="msg-content">${rendered}</div>
-                                <div class="msg-time">${msg.timestamp || ''}</div>
                             `;
                         // Ensure visibility (prevent unexpected hidden styles)
                         message.style.display = '';
@@ -202,9 +209,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         const rendered = renderDiscordContent(msg.content || '');
                         message.innerHTML = `
+                            <div class="msg-time">${formatTimestamp(msg.timestamp || '')}</div>
                             <div class="msg-author">${escapeHtml(msg.author_name || 'Unknown')}</div>
                             <div class="msg-content">${rendered}</div>
-                            <div class="msg-time">${msg.timestamp || ''}</div>
                         `;
                         message.style.display = '';
                         message.style.visibility = 'visible';
@@ -242,6 +249,16 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
+    }
+
+    // Format ISO timestamp to HH:MM
+    function formatTimestamp(ts) {
+        if (!ts) return '——:——';
+        try {
+            const d = new Date(ts);
+            if (isNaN(d.getTime())) return ts.slice(0, 5) || '——:——';
+            return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
+        } catch (e) { return '——:——'; }
     }
 
     function stripHtml(html) {
@@ -419,16 +436,16 @@ document.addEventListener('DOMContentLoaded', () => {
             optimisticNode.dataset.clientId = optimisticClientId;
             optimisticNode.dataset.optimisticTs = String(Date.now());
             optimisticNode.innerHTML = `
+                <div class="msg-time">——:——</div>
                 <div class="msg-author">${author}</div>
                 <div class="msg-content">${formatLinks(content)}</div>
-                <div class="msg-time">SENDING...</div>
             `;
             chatFeed.appendChild(optimisticNode);
             chatFeed.scrollTop = chatFeed.scrollHeight;
         } catch (e) { optimisticNode = null; }
 
         msgInput.value = '';
-        msgInput.placeholder = "ROARING...";
+        msgInput.placeholder = "送信中...";
         msgInput.disabled = true;
 
         try {
@@ -459,9 +476,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     message.dataset.msgId = String(realMsg.message_id);
                     message.innerHTML = `
+                        <div class="msg-time">${formatTimestamp(realMsg.timestamp || '')}</div>
                         <div class="msg-author">${escapeHtml(realMsg.author_name || 'Unknown')}</div>
                         <div class="msg-content">${renderDiscordContent(realMsg.content || '')}</div>
-                        <div class="msg-time">${realMsg.timestamp || ''}</div>
                     `;
                     message.style.display = '';
                     message.style.visibility = 'visible';
@@ -474,7 +491,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // also schedule a fetch to ensure DB-synced messages are present
             setTimeout(() => fetchMessages(false), 200);
         } catch(e) {
-            alert("SEAL ERROR: " + e.message);
+            console.error("Send error:", e); msgInput.style.borderColor = "var(--red)"; setTimeout(() => msgInput.style.borderColor = "", 2000);
             // remove optimistic node if exists and restore content
             if (optimisticNode && optimisticNode.parentNode) optimisticNode.remove();
             msgInput.value = content;
@@ -540,57 +557,140 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function drawGraph(type, data, avg, rank) {
-        ctx.clearRect(0,0,500,500);
-        
-        // FONDO NEGRO Y FUEGO
-        ctx.fillStyle = "#000"; ctx.fillRect(0,0,500,500);
-        
-        const cx = 250, cy = 250, r = 140;
-        
-        // COLOR: Si es ofensivo = Cian (Blue Lock), si es GK = Naranja (Kurama)
-        const color = type === 'offensive' ? '#00f2ff' : '#ff5e00';
+        const W = 500, H = 500;
+        ctx.clearRect(0, 0, W, H);
 
-        ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.shadowBlur = 20; ctx.shadowColor = color;
-        const keys = Object.keys(data), total = keys.length, angleStep = (Math.PI * 2) / total;
+        // ── Pure black bg ──
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, W, H);
 
-        ctx.beginPath();
-        for(let l=1; l<=4; l++) {
-            let rad = (r/4)*l;
-            if (type === 'gk') { ctx.moveTo(cx+rad, cy); ctx.arc(cx, cy, rad, 0, Math.PI*2); } 
-            else {
-                for(let i=0; i<=total; i++) {
-                    let a = i*angleStep-Math.PI/2, x=cx+Math.cos(a)*rad, y=cy+Math.sin(a)*rad;
-                    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+        // ── Scanline texture ──
+        ctx.save();
+        for (let y = 0; y < H; y += 3) {
+            ctx.fillStyle = 'rgba(0,0,0,0.25)';
+            ctx.fillRect(0, y, W, 1);
+        }
+        ctx.restore();
+
+        const CX = 250, CY = 248, R = 138;
+        const isGK = type === 'gk';
+        const mainColor  = isGK ? '#E86000' : '#00D4FF';
+        const fillColor  = isGK ? 'rgba(232,96,0,0.30)' : 'rgba(0,212,255,0.28)';
+        const glowColor  = isGK ? 'rgba(232,96,0,0.55)' : 'rgba(0,212,255,0.55)';
+
+        const keys = Object.keys(data);
+        const total = keys.length;
+        const step = (Math.PI * 2) / total;
+
+        // ── Grid rings ──
+        for (let l = 1; l <= 4; l++) {
+            const rad = (R / 4) * l;
+            ctx.beginPath();
+            if (isGK) {
+                ctx.arc(CX, CY, rad, 0, Math.PI * 2);
+            } else {
+                for (let i = 0; i <= total; i++) {
+                    const a = i * step - Math.PI / 2;
+                    const x = CX + Math.cos(a) * rad;
+                    const y = CY + Math.sin(a) * rad;
+                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
                 }
             }
+            ctx.strokeStyle = l === 4
+                ? 'rgba(207,10,44,0.40)'
+                : 'rgba(207,10,44,0.14)';
+            ctx.lineWidth = l === 4 ? 1.5 : 0.8;
+            ctx.stroke();
         }
-        ctx.strokeStyle = "#333"; ctx.stroke();
 
+        // ── Spokes ──
+        if (!isGK) {
+            keys.forEach((_, i) => {
+                const a = i * step - Math.PI / 2;
+                ctx.beginPath();
+                ctx.moveTo(CX, CY);
+                ctx.lineTo(CX + Math.cos(a) * R, CY + Math.sin(a) * R);
+                ctx.strokeStyle = 'rgba(207,10,44,0.18)';
+                ctx.lineWidth = 0.8;
+                ctx.stroke();
+            });
+        }
+
+        // ── Stat polygon ──
         ctx.beginPath();
         keys.forEach((k, i) => {
-            let val = data[k], rad = (val/10)*r, a = i*angleStep-Math.PI/2;
-            let x=cx+Math.cos(a)*rad, y=cy+Math.sin(a)*rad;
-            i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+            const rad = (data[k] / 10) * R;
+            const a = i * step - Math.PI / 2;
+            const x = CX + Math.cos(a) * rad;
+            const y = CY + Math.sin(a) * rad;
+            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
         });
         ctx.closePath();
-        // Relleno transparente
-        ctx.fillStyle = type==='offensive'?"rgba(0,242,255,0.4)":"rgba(255, 94, 0, 0.4)"; 
-        ctx.fill(); 
-        ctx.strokeStyle = "#fff"; ctx.stroke();
 
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = glowColor;
+        ctx.fillStyle = fillColor;
+        ctx.fill();
+        ctx.strokeStyle = mainColor;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // ── Vertex dots ──
         keys.forEach((k, i) => {
-            let a = i*angleStep-Math.PI/2, labelR = r+40, x=cx+Math.cos(a)*labelR, y=cy+Math.sin(a)*labelR;
-            ctx.save(); ctx.fillStyle = "#fff"; ctx.font = "bold 20px 'Bebas Neue'"; 
-            ctx.textAlign = "center"; ctx.textBaseline = "middle";
-            ctx.fillText(k.toUpperCase(), x, y); ctx.restore();
+            const rad = (data[k] / 10) * R;
+            const a = i * step - Math.PI / 2;
+            const x = CX + Math.cos(a) * rad;
+            const y = CY + Math.sin(a) * rad;
+            ctx.beginPath();
+            ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = glowColor;
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fill();
+            ctx.shadowBlur = 0;
         });
 
-        ctx.fillStyle = "#fff"; ctx.font = "16px 'Orbitron'"; ctx.textAlign = "center";
-        ctx.fillText(`AVG: ${avg.toFixed(1)} / 10`, cx, 440);
-        ctx.font = "bold 30px 'Bebas Neue'"; ctx.fillStyle = color;
-        ctx.fillText(rank, cx, 480);
+        // ── Labels ──
+        keys.forEach((k, i) => {
+            const a = i * step - Math.PI / 2;
+            const lx = CX + Math.cos(a) * (R + 34);
+            const ly = CY + Math.sin(a) * (R + 34);
+            ctx.save();
+            ctx.font = "900 17px 'Zen Kaku Gothic New', sans-serif";
+            ctx.fillStyle = '#B89B3C';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(k.toUpperCase(), lx, ly);
+            ctx.restore();
+        });
 
-        // expose latest rank string to other UI handlers for copy
+        // ── Divider line ──
+        ctx.beginPath();
+        ctx.moveTo(40, 430);
+        ctx.lineTo(460, 430);
+        ctx.strokeStyle = 'rgba(207,10,44,0.30)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // ── AVG ──
+        ctx.save();
+        ctx.font = "500 13px 'DM Mono', monospace";
+        ctx.fillStyle = '#6A5E52';
+        ctx.textAlign = 'center';
+        ctx.fillText('AVG  ' + avg.toFixed(2) + ' / 10', CX, 448);
+        ctx.restore();
+
+        // ── Rank ──
+        ctx.save();
+        ctx.shadowBlur = 18;
+        ctx.shadowColor = glowColor;
+        ctx.font = "900 24px 'Zen Kaku Gothic New', sans-serif";
+        ctx.fillStyle = mainColor;
+        ctx.textAlign = 'center';
+        ctx.fillText(rank, CX, 482);
+        ctx.restore();
+
         try { window.latestStatsRank = String(rank || ''); } catch (e) {}
     }
 

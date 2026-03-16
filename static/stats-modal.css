@@ -1,112 +1,116 @@
-/* ===== STATS MODAL MODULE ===== */
+/* ══════════════════════════════════════════
+   STATS OVERLAY — BATTLE SEAL
+   ══════════════════════════════════════════ */
 
-.stats-modal {
+.stats-overlay {
     position: fixed;
     inset: 0;
-    display: none;
-    background: rgba(0, 0, 0, 0.8);
     z-index: 300;
+    display: none;
+    align-items: center;
     justify-content: center;
-    align-items: center;
     padding: 20px;
+    background: rgba(0, 0, 0, 0.88);
+    backdrop-filter: blur(6px);
 }
 
-.stats-modal.active {
-    display: flex;
-}
+.stats-overlay.active { display: flex; }
 
-.modal-content {
-    background: linear-gradient(135deg,
-        rgba(26, 26, 26, 0.95),
-        rgba(16, 16, 16, 0.98)
-    );
-    border: 2px solid var(--border-bright);
-    border-radius: 18px;
-    padding: 32px;
-    max-width: 700px;
+.stats-panel {
+    background: var(--ink);
+    border: 1px solid var(--line-hi);
+    border-top: 2px solid var(--blood);
     width: 100%;
-}
-
-.modal-header {
+    max-width: 520px;
     display: flex;
-    justify-content: space-between;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Left edge accent */
+.stats-panel::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 2px;
+    background: linear-gradient(180deg, var(--blood), var(--arc) 60%, transparent);
+}
+
+.stats-header {
+    display: flex;
     align-items: center;
-    margin-bottom: 24px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid var(--border-cyan);
+    justify-content: space-between;
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--line);
 }
 
-.modal-header h2 {
-    font-family: var(--font-display);
-    font-size: 1.8rem;
-    color: var(--primary-cyan);
-    letter-spacing: 2px;
+.stats-header-title {
+    font-family: var(--f-display);
+    font-weight: 900;
+    font-size: 1.0rem;
+    letter-spacing: 0.20em;
+    color: var(--t0);
+    text-transform: uppercase;
 }
 
-.modal-close {
+.stats-close {
+    width: 28px;
+    height: 28px;
     background: transparent;
-    border: 1px solid var(--border-bright);
-    color: var(--secondary-cyan);
-    font-size: 1.5rem;
+    border: 1px solid var(--line);
+    color: var(--t2);
+    font-size: 0.75rem;
     cursor: pointer;
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
-    transition: all 150ms ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 160ms ease;
 }
 
-.modal-close:hover {
-    border-color: var(--primary-cyan);
-    color: var(--primary-cyan);
+.stats-close:hover {
+    background: var(--blood-dim);
+    border-color: var(--blood);
+    color: var(--blood-hi);
 }
 
 #stats-canvas {
-    width: 100%;
-    max-width: 400px;
-    height: auto;
     display: block;
-    margin: 20px auto;
-    background: rgba(10, 14, 39, 0.5);
-    border: 1px solid var(--border-cyan);
-    border-radius: 12px;
+    width: 100%;
+    max-width: 460px;
+    height: auto;
+    margin: 0 auto;
+    padding: 16px;
+    background: #000;
 }
 
-.modal-footer {
-    display: flex;
-    gap: 12px;
-    margin-top: 24px;
+.stats-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border-top: 1px solid var(--line);
 }
 
-.modal-btn {
-    flex: 1;
-    padding: 12px;
-    background: linear-gradient(90deg,
-        rgba(255, 255, 255, 0.15),
-        rgba(224, 224, 224, 0.08)
-    );
-    border: 1px solid var(--border-bright);
-    border-radius: 10px;
-    color: var(--primary-cyan);
-    font-family: var(--font-display);
+.stats-btn {
+    padding: 14px;
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--line);
+    color: var(--t1);
+    font-family: var(--f-mono);
+    font-weight: 500;
+    font-size: 0.68rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
     cursor: pointer;
-    transition: all 150ms ease;
+    transition: all 160ms ease;
 }
 
-.modal-btn:hover {
-    background: linear-gradient(90deg,
-        rgba(255, 255, 255, 0.25),
-        rgba(224, 224, 224, 0.15)
-    );
-    border-color: var(--primary-cyan);
-    box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+.stats-btn:last-child { border-right: none; }
+.stats-btn:hover { background: var(--pit); color: var(--t0); }
+
+.stats-btn--rank:hover {
+    background: var(--blood-dim);
+    color: var(--blood-hi);
 }
 
-@media (max-width: 900px) {
-    .modal-content {
-        padding: 24px;
-    }
-
-    .modal-header h2 {
-        font-size: 1.5rem;
-    }
-}
+.stats-btn:active { transform: scale(0.98); }

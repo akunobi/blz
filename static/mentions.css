@@ -1,37 +1,60 @@
-/* ===== MENTIONS & SPECIAL TEXT MODULE ===== */
+/* ══════════════════════════════════════════
+   MENTIONS & SPECIAL TEXT
+   ══════════════════════════════════════════ */
 
 .mention {
-    padding: 2px 6px;
-    background: rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
-    color: var(--secondary-cyan);
-    font-weight: 600;
+    display: inline;
+    font-family: var(--f-mono);
+    font-size: 0.86em;
+    font-weight: 500;
+    padding: 1px 5px;
+    transition: background 140ms ease;
+    cursor: default;
 }
 
 .mention-user {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--arc-dim);
+    color: var(--arc);
+    border-bottom: 1px solid rgba(0, 212, 255, 0.30);
 }
+.mention-user:hover { background: rgba(0, 212, 255, 0.18); }
 
 .mention-role {
-    background: rgba(224, 224, 224, 0.08);
-    color: var(--primary-cyan);
+    background: var(--clan-dim);
+    color: var(--clan);
+    border-bottom: 1px solid rgba(184, 155, 60, 0.30);
 }
+.mention-role:hover { background: rgba(184, 155, 60, 0.20); }
 
 .mention-channel {
-    background: rgba(255, 255, 255, 0.05);
-    color: #c0c0c0;
+    background: var(--blood-dim);
+    color: var(--blood-hi);
+    border-bottom: 1px solid rgba(207, 10, 44, 0.25);
+}
+.mention-channel:hover { background: rgba(207, 10, 44, 0.18); }
+
+.mention-loading {
+    opacity: 0.45;
+    animation: mload 1s ease-in-out infinite;
+}
+
+@keyframes mload {
+    0%, 100% { opacity: 0.45; }
+    50%       { opacity: 0.80; }
 }
 
 .spoiler {
-    background: #1a1a1a;
+    background: var(--t3);
     color: transparent;
-    border-radius: 6px;
-    padding: 2px 6px;
+    padding: 1px 6px;
     cursor: pointer;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    font-family: var(--f-mono);
+    font-size: 0.86em;
+    transition: all 200ms ease;
+    user-select: none;
 }
 
 .spoiler:hover {
-    color: #e0e0e0;
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--pit);
+    color: var(--t0);
 }
