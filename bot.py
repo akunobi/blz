@@ -368,6 +368,53 @@ def get_messages():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/api/members')
+def get_members():
+    """Return guild members and roles for @mention autocomplete."""
+    if not bot_loop or not bot_ready_event.is_set():
+        return jsonify({'members': [], 'roles': []}), 503
+
+    async def _fetch():
+        try:
+            category = client.get_channel(TARGET_CATEGORY_ID)
+            if not category:
+                category = await client.fetch_channel(TARGET_CATEGORY_ID)
+            guild = getattr(category, 'guild', None)
+            if not guild:
+                return {'members': [], 'roles': []}
+
+            members = []
+            for m in guild.members:
+                members.append({
+                    'id': str(m.id),
+                    'display': m.display_name,
+                    'username': m.name,
+                    'avatar': str(m.avatar.url) if m.avatar else None
+                })
+
+            roles = []
+            for r in sorted(guild.roles, key=lambda x: -x.position):
+                if r.name == '@everyone':
+                    continue
+                roles.append({
+                    'id': str(r.id),
+                    'name': r.name,
+                    'color': '#{:06x}'.format(r.color.value) if r.color.value else '#888888'
+                })
+
+            return {'members': members, 'roles': roles}
+        except Exception as e:
+            print(f'!!! [MEMBERS ERROR]: {e}')
+            return {'members': [], 'roles': []}
+
+    try:
+        future = asyncio.run_coroutine_threadsafe(_fetch(), bot_loop)
+        result = future.result(timeout=8)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/admin/sync')
 def trigger_sync():
     """Trigger a history sync. Query params: ?limit=200 or ?limit=all

@@ -251,14 +251,35 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/'/g, '&#039;');
     }
 
-    // Format ISO timestamp to HH:MM
+    // Format ISO timestamp to "DD/MM HH:MM" in the browser's local timezone
     function formatTimestamp(ts) {
-        if (!ts) return '——:——';
+        if (!ts) return '——';
         try {
-            const d = new Date(ts);
-            if (isNaN(d.getTime())) return ts.slice(0, 5) || '——:——';
-            return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
-        } catch (e) { return '——:——'; }
+            // Discord/SQLite timestamps can arrive as "2024-01-15T20:30:00+00:00",
+            // "2024-01-15 20:30:00", or already as ISO strings.
+            // Normalise space-separated to T-separated so Date() parses correctly.
+            const normalised = ts.replace(' ', 'T');
+            const d = new Date(normalised);
+            if (isNaN(d.getTime())) return ts.slice(0, 16) || '——';
+
+            const now = new Date();
+            const isToday =
+                d.getDate()     === now.getDate()  &&
+                d.getMonth()    === now.getMonth() &&
+                d.getFullYear() === now.getFullYear();
+
+            const locale = navigator.language || 'es-ES';
+            const timeStr = d.toLocaleTimeString(locale, {
+                hour: '2-digit', minute: '2-digit', hour12: false
+            });
+
+            if (isToday) return timeStr;
+
+            const dateStr = d.toLocaleDateString(locale, {
+                day: '2-digit', month: '2-digit'
+            });
+            return `${dateStr} ${timeStr}`;
+        } catch (e) { return '——'; }
     }
 
     function stripHtml(html) {
@@ -419,6 +440,250 @@ document.addEventListener('DOMContentLoaded', () => {
             els.forEach(el => el.classList.remove('mention-loading'));
         }
     }
+
+    // ═══════════════════════════════════════════════
+    // @MENTION AUTOCOMPLETE
+    // ═══════════════════════════════════════════════
+    let acMembers = [];
+    let acRoles   = [];
+    let acLoaded  = false;
+
+    // Lazily fetch members+roles once
+    async function ensureAcData() {
+        if (acLoaded) return;
+        try {
+            const r = await fetch('/api/members');
+            if (!r.ok) return;
+            const j = await r.json();
+            acMembers = j.members || [];
+            acRoles   = j.roles   || [];
+            acLoaded  = true;
+        } catch(e) { /* silent */ }
+    }
+
+    // Popup element (created once, reused)
+    let acBox = null;
+    let acItems = [];
+    let acIdx = -1;
+    let acTriggerPos = -1;   // caret position of the @ sign
+
+    function getAcBox() {
+        if (acBox) return acBox;
+        acBox = document.createElement('div');
+        acBox.id = 'ac-box';
+        acBox.style.cssText = `
+            position: fixed;
+            z-index: 500;
+            background: var(--navy, #070B14);
+            border: 1px solid rgba(229,0,26,0.45);
+            border-top: 2px solid var(--red, #E5001A);
+            min-width: 260px;
+            max-width: 340px;
+            max-height: 240px;
+            overflow-y: auto;
+            display: none;
+            flex-direction: column;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+        `;
+        document.body.appendChild(acBox);
+        return acBox;
+    }
+
+    function hideAc() {
+        const box = getAcBox();
+        box.style.display = 'none';
+        acItems = [];
+        acIdx   = -1;
+        acTriggerPos = -1;
+    }
+
+    function renderAc(matches) {
+        const box = getAcBox();
+        box.innerHTML = '';
+        acItems = matches;
+        acIdx   = -1;
+        if (!matches.length) { box.style.display = 'none'; return; }
+
+        matches.forEach((item, i) => {
+            const el = document.createElement('div');
+            el.style.cssText = `
+                display: flex; align-items: center; gap: 10px;
+                padding: 8px 14px; cursor: pointer;
+                font-family: 'Barlow Condensed', 'IBM Plex Mono', monospace;
+                font-size: 0.88rem; letter-spacing: 0.06em;
+                border-bottom: 1px solid rgba(255,255,255,0.04);
+                transition: background 100ms ease;
+            `;
+            el.dataset.index = i;
+
+            if (item.type === 'user') {
+                const dot = document.createElement('span');
+                dot.style.cssText = `
+                    width: 28px; height: 28px; border-radius: 50%;
+                    background: var(--lift, #111520); flex-shrink: 0;
+                    display: flex; align-items: center; justify-content: center;
+                    font-family: 'Bebas Neue', sans-serif; font-size: 0.85rem;
+                    color: var(--blue, #00B4FF); border: 1px solid rgba(0,180,255,0.25);
+                    overflow: hidden;
+                `;
+                if (item.avatar) {
+                    const img = document.createElement('img');
+                    img.src = item.avatar;
+                    img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+                    dot.appendChild(img);
+                } else {
+                    dot.textContent = (item.display || item.username || '?')[0].toUpperCase();
+                }
+                const nameWrap = document.createElement('div');
+                nameWrap.style.cssText = 'display:flex;flex-direction:column;gap:1px;min-width:0;';
+                const displayName = document.createElement('span');
+                displayName.textContent = item.display;
+                displayName.style.cssText = 'color: #F0EEF8; font-weight: 700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
+                const username = document.createElement('span');
+                username.textContent = '@' + item.username;
+                username.style.cssText = 'color: #444460; font-size:0.75rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
+                nameWrap.appendChild(displayName);
+                nameWrap.appendChild(username);
+                el.appendChild(dot);
+                el.appendChild(nameWrap);
+            } else {
+                // Role
+                const bullet = document.createElement('span');
+                bullet.style.cssText = `
+                    width: 10px; height: 10px; border-radius: 50%;
+                    background: ${item.color}; flex-shrink: 0;
+                    box-shadow: 0 0 6px ${item.color}88;
+                `;
+                const label = document.createElement('span');
+                label.style.cssText = `color: ${item.color}; font-weight: 700;`;
+                label.textContent = '@' + item.name;
+                const tag = document.createElement('span');
+                tag.style.cssText = 'color: #444460; font-size: 0.72rem; margin-left: auto; flex-shrink:0; padding-left:8px;';
+                tag.textContent = 'ROLE';
+                el.appendChild(bullet);
+                el.appendChild(label);
+                el.appendChild(tag);
+            }
+
+            el.addEventListener('mouseenter', () => setAcIdx(i));
+            el.addEventListener('mousedown', (e) => {
+                e.preventDefault(); // don't blur input
+                applyAc(i);
+            });
+            box.appendChild(el);
+        });
+
+        box.style.display = 'flex';
+
+        // Position above the input bar
+        const inputRect = msgInput.getBoundingClientRect();
+        box.style.bottom  = (window.innerHeight - inputRect.top + 6) + 'px';
+        box.style.left    = inputRect.left + 'px';
+        box.style.top     = 'auto';
+    }
+
+    function setAcIdx(i) {
+        const box = getAcBox();
+        const els = box.querySelectorAll('[data-index]');
+        els.forEach(el => {
+            el.style.background = '';
+            el.style.color = '';
+        });
+        acIdx = i;
+        if (i >= 0 && i < els.length) {
+            els[i].style.background = 'rgba(229,0,26,0.14)';
+            els[i].scrollIntoView({ block: 'nearest' });
+        }
+    }
+
+    function applyAc(i) {
+        if (i < 0 || i >= acItems.length) return;
+        const item = acItems[i];
+        const val  = msgInput.value;
+        const tag  = item.type === 'user'
+            ? `<@${item.id}> `
+            : `<@&${item.id}> `;
+
+        // Replace from @ trigger pos to current caret
+        const before = val.slice(0, acTriggerPos);
+        const after  = val.slice(msgInput.selectionStart);
+        msgInput.value = before + tag + after;
+
+        // Move caret after inserted tag
+        const newPos = before.length + tag.length;
+        msgInput.setSelectionRange(newPos, newPos);
+        hideAc();
+        msgInput.focus();
+    }
+
+    // Wire up input events
+    msgInput.addEventListener('input', async () => {
+        const val    = msgInput.value;
+        const caret  = msgInput.selectionStart;
+
+        // Find nearest @ before caret that isn't preceded by a word char
+        let atPos = -1;
+        for (let i = caret - 1; i >= 0; i--) {
+            if (val[i] === '@') { atPos = i; break; }
+            if (val[i] === ' ' || val[i] === '\n') break;
+        }
+
+        if (atPos === -1) { hideAc(); return; }
+
+        const query = val.slice(atPos + 1, caret).toLowerCase();
+
+        // Don't show popup if query has a space (mention already complete)
+        if (query.includes(' ') && query.length > 0) { hideAc(); return; }
+
+        acTriggerPos = atPos;
+        await ensureAcData();
+
+        const MAX = 8;
+        let matches = [];
+
+        // Roles first (max 4)
+        const roleMatches = acRoles
+            .filter(r => r.name.toLowerCase().includes(query))
+            .slice(0, 4)
+            .map(r => ({ ...r, type: 'role' }));
+
+        // Members (fill remaining slots)
+        const memberMatches = acMembers
+            .filter(m =>
+                m.display.toLowerCase().includes(query) ||
+                m.username.toLowerCase().includes(query)
+            )
+            .slice(0, MAX - roleMatches.length)
+            .map(m => ({ ...m, type: 'user' }));
+
+        matches = [...roleMatches, ...memberMatches];
+        renderAc(matches);
+    });
+
+    msgInput.addEventListener('keydown', (e) => {
+        if (!acItems.length) return;
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setAcIdx(Math.min(acIdx + 1, acItems.length - 1));
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setAcIdx(Math.max(acIdx - 1, 0));
+        } else if (e.key === 'Tab' || e.key === 'Enter') {
+            if (acItems.length) {
+                e.preventDefault();
+                applyAc(acIdx >= 0 ? acIdx : 0);
+            }
+        } else if (e.key === 'Escape') {
+            hideAc();
+        }
+    });
+
+    msgInput.addEventListener('blur', () => {
+        // Delay so mousedown on ac item fires first
+        setTimeout(hideAc, 150);
+    });
+
+    window.addEventListener('scroll', hideAc, true);
 
     window.sendMessage = async () => {
         const content = msgInput.value.trim();
