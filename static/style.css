@@ -562,10 +562,11 @@ body {
 /* Header row: author left, timestamp right */
 .msg-header {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
     gap: 8px;
     min-width: 0;
+    overflow: visible;
 }
 
 .msg-time {
@@ -575,7 +576,7 @@ body {
     letter-spacing: 0.04em;
     white-space: nowrap;
     flex-shrink: 0;
-    opacity: 0;
+    opacity: 0.55;
     transition: opacity 160ms ease;
 }
 
@@ -1086,7 +1087,6 @@ body {
     pointer-events: none;
     transition: opacity 140ms ease;
     flex-shrink: 0;
-    margin-left: auto;
 }
 
 .message:hover .msg-actions {
@@ -1094,22 +1094,20 @@ body {
     pointer-events: auto;
 }
 
-/* Hide timestamp when actions are visible, show it when not hovering */
-.message:hover .msg-time { opacity: 0; }
-
 .msg-action-btn {
-    width: 28px;
-    height: 28px;
+    width: 26px;
+    height: 22px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--panel);
+    background: var(--lift);
     border: 1px solid var(--ghost);
     cursor: pointer;
-    font-size: 0.75rem;
+    font-size: 0.80rem;
     color: var(--grey);
     transition: all 140ms ease;
     line-height: 1;
+    padding: 0;
 }
 
 .msg-action-btn:hover { border-color: var(--blue-lo); color: var(--white); background: var(--lift); }
