@@ -362,7 +362,10 @@ def get_messages():
         results = []
         for row in rows:
             d = dict(row)
-            d['channel_id'] = str(d['channel_id'])
+            # Stringify all snowflake IDs — JS Number loses 64-bit precision
+            d['channel_id'] = str(d['channel_id']) if d.get('channel_id') else None
+            d['message_id'] = str(d['message_id']) if d.get('message_id') else None
+            d['author_id']  = str(d['author_id'])  if d.get('author_id')  else None
             results.append(d)
         return jsonify(results)
     except Exception as e:
@@ -457,7 +460,7 @@ def send_message():
             channel = await client.fetch_channel(c_id)
             sent = await channel.send(content)
             # return sent message info so the web client can update optimistic UI immediately
-            return {"success": True, "message_id": sent.id, "author_id": getattr(sent.author, 'id', None), "author_name": str(sent.author.name), "author_avatar": (str(sent.author.avatar.url) if getattr(sent.author, 'avatar', None) else None), "channel_name": getattr(channel, 'name', None), "timestamp": sent.created_at.isoformat()}
+            return {"success": True, "message_id": str(sent.id), "author_id": str(getattr(sent.author, 'id', '') or ''), "author_name": str(sent.author.name), "author_avatar": (str(sent.author.avatar.url) if getattr(sent.author, 'avatar', None) else None), "channel_name": getattr(channel, 'name', None), "timestamp": sent.created_at.isoformat()}
         except discord.NotFound:
             print(f"!!! [ERROR] Canal {channel_id} NO EXISTE.")
             return {"success": False, "error": "Canal no encontrado en Discord."}

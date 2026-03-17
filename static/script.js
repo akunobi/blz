@@ -193,7 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         decorateMessage(message);
                         chatFeed.appendChild(message);
 
-                        if (msg.message_id) lastMessageId[currentChannelId] = Math.max(lastMessageId[currentChannelId] || 0, Number(msg.message_id));
+                        if (msg.message_id) { const prev = lastMessageId[currentChannelId] || '0'; lastMessageId[currentChannelId] = BigInt(String(msg.message_id)) > BigInt(prev) ? String(msg.message_id) : prev; }
                     });
                 }
 
@@ -226,7 +226,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         chatFeed.appendChild(message);
                         chatFeed.scrollTop = chatFeed.scrollHeight;
 
-                        if (msg.message_id) lastMessageId[currentChannelId] = Math.max(lastMessageId[currentChannelId] || 0, Number(msg.message_id));
+                        if (msg.message_id) { const prev = lastMessageId[currentChannelId] || '0'; lastMessageId[currentChannelId] = BigInt(String(msg.message_id)) > BigInt(prev) ? String(msg.message_id) : prev; }
                     });
                 }
             }
