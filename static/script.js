@@ -73,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     chatChannelName.innerText = cName.toUpperCase();
                     startTimer();
 
-                    chatFeed.innerHTML = '<div class="feed-empty"><div class="feed-empty-num">⚡</div><div class="feed-empty-txt">SIGNAL INCOMING...</div></div>';
+                    chatFeed.innerHTML = '<div class="feed-empty"><div class="feed-empty-text">SIGNAL INCOMING...</div><div class="feed-empty-sub">信号受信中...</div></div>';
                     fetchMessages(true);
                 };
 
@@ -165,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (initial) {
                 chatFeed.innerHTML = '';
                 if (!msgs || msgs.length === 0) {
-                    chatFeed.innerHTML = '<div class="feed-empty"><div class="feed-empty-num">刀</div><div class="feed-empty-txt">NO SIGNAL</div></div>';
+                    chatFeed.innerHTML = '<div class="feed-empty"><div class="feed-empty-text">NO SIGNAL</div><div class="feed-empty-sub">信号なし</div></div>';
                 } else {
                     msgs.forEach(msg => {
                         const message = document.createElement('div');
@@ -1035,35 +1035,58 @@ document.addEventListener('DOMContentLoaded', () => {
     function drawGraph(type, data, avg, rank) {
         const W = 500, H = 500;
         ctx.clearRect(0, 0, W, H);
-        ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
 
-        // Speed lines bg
-        const isGK = type === 'gk';
-        const mainCol  = isGK ? '#C89B2A' : '#00B4FF';
-        const fillCol  = isGK ? 'rgba(200,155,42,0.28)' : 'rgba(0,180,255,0.25)';
-        const glowCol  = isGK ? 'rgba(200,155,42,0.55)' : 'rgba(0,180,255,0.55)';
+        // Deep void background
+        ctx.fillStyle = '#03030A';
+        ctx.fillRect(0, 0, W, H);
 
-        // Radial speed lines
+        // Radial chakra speed lines
         ctx.save();
-        for (let a = 0; a < 360; a += 7) {
+        const CX = 250, CY = 248;
+        for (let a = 0; a < 360; a += 6) {
             const rad = a * Math.PI / 180;
+            const isGK = type === 'gk';
             ctx.beginPath();
-            ctx.moveTo(250, 250);
-            ctx.lineTo(250 + Math.cos(rad) * 300, 250 + Math.sin(rad) * 300);
-            ctx.strokeStyle = 'rgba(229,0,26,0.04)';
+            ctx.moveTo(CX + Math.cos(rad) * 60, CY + Math.sin(rad) * 60);
+            ctx.lineTo(CX + Math.cos(rad) * 300, CY + Math.sin(rad) * 300);
+            ctx.strokeStyle = isGK ? 'rgba(136,68,255,0.04)' : 'rgba(255,90,0,0.05)';
             ctx.lineWidth = 0.5;
             ctx.stroke();
         }
         ctx.restore();
 
-        const CX = 250, CY = 248, R = 132;
+        // Scanlines
+        ctx.save();
+        for (let y = 0; y < H; y += 4) {
+            ctx.fillStyle = 'rgba(0,0,0,0.18)';
+            ctx.fillRect(0, y, W, 2);
+        }
+        ctx.restore();
+
+        const isGK = type === 'gk';
+        const mainCol  = isGK ? '#8844FF' : '#FF5A00';
+        const fillCol  = isGK ? 'rgba(136,68,255,0.28)' : 'rgba(255,90,0,0.25)';
+        const glowCol  = isGK ? 'rgba(136,68,255,0.60)' : 'rgba(255,90,0,0.55)';
+        const gridCol  = isGK ? 'rgba(136,68,255,{})' : 'rgba(255,90,0,{})';
+
+        const R = 134;
         const keys = Object.keys(data);
         const total = keys.length;
         const step = (Math.PI * 2) / total;
 
+        // Outer glow ring
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(CX, CY, R + 14, 0, Math.PI * 2);
+        ctx.strokeStyle = mainCol.replace(')', ',0.08)').replace('rgb', 'rgba') || 'rgba(255,90,0,0.08)';
+        ctx.lineWidth = 12;
+        ctx.stroke();
+        ctx.restore();
+
         // Grid rings
         for (let l = 1; l <= 4; l++) {
             const rad = (R / 4) * l;
+            const alpha = l === 4 ? 0.35 : 0.10;
             ctx.beginPath();
             if (isGK) {
                 ctx.arc(CX, CY, rad, 0, Math.PI * 2);
@@ -1075,7 +1098,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         : ctx.lineTo(CX + Math.cos(a) * rad, CY + Math.sin(a) * rad);
                 }
             }
-            ctx.strokeStyle = l === 4 ? 'rgba(229,0,26,0.45)' : 'rgba(229,0,26,0.12)';
+            ctx.strokeStyle = isGK ? `rgba(136,68,255,${alpha})` : `rgba(255,90,0,${alpha})`;
             ctx.lineWidth = l === 4 ? 1.5 : 0.8;
             ctx.stroke();
         }
@@ -1087,13 +1110,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.beginPath();
                 ctx.moveTo(CX, CY);
                 ctx.lineTo(CX + Math.cos(a) * R, CY + Math.sin(a) * R);
-                ctx.strokeStyle = 'rgba(229,0,26,0.15)';
+                ctx.strokeStyle = 'rgba(255,90,0,0.12)';
                 ctx.lineWidth = 0.8;
                 ctx.stroke();
             });
         }
 
-        // Stat shape
+        // Data polygon
         ctx.beginPath();
         keys.forEach((k, i) => {
             const rad = (data[k] / 10) * R;
@@ -1103,19 +1126,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 : ctx.lineTo(CX + Math.cos(a) * rad, CY + Math.sin(a) * rad);
         });
         ctx.closePath();
-        ctx.shadowBlur = 22; ctx.shadowColor = glowCol;
+        ctx.shadowBlur = 24; ctx.shadowColor = glowCol;
         ctx.fillStyle = fillCol; ctx.fill();
         ctx.strokeStyle = mainCol; ctx.lineWidth = 2.5; ctx.stroke();
         ctx.shadowBlur = 0;
 
-        // Vertex dots
+        // Vertex dots with inner glow
         keys.forEach((k, i) => {
             const rad = (data[k] / 10) * R;
             const a = i * step - Math.PI / 2;
             const x = CX + Math.cos(a) * rad, y = CY + Math.sin(a) * rad;
-            ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2);
-            ctx.shadowBlur = 12; ctx.shadowColor = glowCol;
-            ctx.fillStyle = '#FFF'; ctx.fill();
+            // Outer glow
+            ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2);
+            ctx.shadowBlur = 10; ctx.shadowColor = glowCol;
+            ctx.fillStyle = mainCol.replace('rgb', 'rgba').replace(')', ',0.20)') || 'rgba(255,90,0,0.20)';
+            ctx.fill(); ctx.shadowBlur = 0;
+            // Core dot
+            ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+            ctx.shadowBlur = 8; ctx.shadowColor = glowCol;
+            ctx.fillStyle = '#FFFFFF'; ctx.fill();
             ctx.shadowBlur = 0;
         });
 
@@ -1125,32 +1154,38 @@ document.addEventListener('DOMContentLoaded', () => {
             const lx = CX + Math.cos(a) * (R + 36);
             const ly = CY + Math.sin(a) * (R + 36);
             ctx.save();
+            ctx.shadowBlur = 8; ctx.shadowColor = glowCol;
             ctx.font = "900 16px 'Bebas Neue', sans-serif";
-            ctx.fillStyle = '#C89B2A';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.shadowBlur = 8; ctx.shadowColor = 'rgba(200,155,42,0.5)';
+            ctx.fillStyle = isGK ? '#BB88FF' : '#FF7A20';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             ctx.fillText(k.toUpperCase(), lx, ly);
             ctx.restore();
         });
 
-        // Divider
+        // Divider line
+        ctx.save();
+        const grad = ctx.createLinearGradient(40, 0, 460, 0);
+        grad.addColorStop(0,   'transparent');
+        grad.addColorStop(0.3, mainCol);
+        grad.addColorStop(0.7, mainCol);
+        grad.addColorStop(1,   'transparent');
         ctx.beginPath(); ctx.moveTo(40, 432); ctx.lineTo(460, 432);
-        ctx.strokeStyle = 'rgba(229,0,26,0.35)'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.strokeStyle = grad; ctx.lineWidth = 1; ctx.globalAlpha = 0.45; ctx.stroke();
+        ctx.restore();
 
         // AVG
         ctx.save();
-        ctx.font = "600 12px 'IBM Plex Mono', monospace";
-        ctx.fillStyle = '#444460'; ctx.textAlign = 'center';
-        ctx.fillText('AVG  ' + avg.toFixed(2) + '  /  10', CX, 450);
+        ctx.font = "400 12px 'Share Tech Mono', monospace";
+        ctx.fillStyle = '#554D66'; ctx.textAlign = 'center';
+        ctx.fillText('AVG  ' + avg.toFixed(2) + '  /  10', CX, 449);
         ctx.restore();
 
-        // Rank
+        // Rank text
         ctx.save();
-        ctx.shadowBlur = 20; ctx.shadowColor = glowCol;
-        ctx.font = "900 26px 'Bebas Neue', sans-serif";
+        ctx.shadowBlur = 22; ctx.shadowColor = glowCol;
+        ctx.font = "900 25px 'Bebas Neue', sans-serif";
         ctx.fillStyle = mainCol; ctx.textAlign = 'center';
-        ctx.fillText(rank, CX, 483);
+        ctx.fillText(rank, CX, 482);
         ctx.restore();
 
         try { window.latestStatsRank = String(rank || ''); } catch(e) {}

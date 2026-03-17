@@ -3,80 +3,118 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BLZ-T</title>
-    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <title>BLZ-T // 封印</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:ital,wght@0,300;0,600;0,700;1,400&family=Share+Tech+Mono&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 
-    <!-- Speed lines background -->
-    <div class="speed-bg" aria-hidden="true"></div>
+    <!-- ══ ANIMATED BG LAYERS ══ -->
+    <div class="bg-seal" aria-hidden="true">
+        <svg class="seal-svg" viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="300" cy="300" r="260" fill="none" stroke="rgba(255,90,0,0.07)" stroke-width="1"/>
+            <circle cx="300" cy="300" r="200" fill="none" stroke="rgba(255,90,0,0.05)" stroke-width="1"/>
+            <circle cx="300" cy="300" r="140" fill="none" stroke="rgba(255,90,0,0.04)" stroke-width="1"/>
+            <polygon points="300,60 520,420 80,420" fill="none" stroke="rgba(255,90,0,0.06)" stroke-width="1" class="tri1"/>
+            <polygon points="300,540 80,180 520,180" fill="none" stroke="rgba(0,140,255,0.05)" stroke-width="1" class="tri2"/>
+            <line x1="300" y1="40" x2="300" y2="560" stroke="rgba(255,90,0,0.04)" stroke-width="1"/>
+            <line x1="40" y1="300" x2="560" y2="300" stroke="rgba(255,90,0,0.04)" stroke-width="1"/>
+            <line x1="90" y1="90" x2="510" y2="510" stroke="rgba(0,140,255,0.03)" stroke-width="1"/>
+            <line x1="510" y1="90" x2="90" y2="510" stroke="rgba(0,140,255,0.03)" stroke-width="1"/>
+            <circle cx="300" cy="300" r="30" fill="none" stroke="rgba(255,90,0,0.10)" stroke-width="1.5"/>
+            <text x="300" y="310" text-anchor="middle" font-size="22" fill="rgba(255,90,0,0.12)" font-family="serif">封</text>
+        </svg>
+    </div>
+    <div class="bg-grid" aria-hidden="true"></div>
+    <div class="bg-scanline" aria-hidden="true"></div>
+    <div class="bg-vignette" aria-hidden="true"></div>
 
     <div class="app">
 
-        <!-- ═══ HEADER ═══ -->
+        <!-- ══ HEADER ══ -->
         <header class="hdr">
+            <div class="hdr-scanner" aria-hidden="true"></div>
             <div class="hdr-left">
                 <div class="hdr-emblem">
-                    <span class="hdr-kanji">無</span>
+                    <span class="emblem-kanji">封</span>
+                    <div class="emblem-ring"></div>
                 </div>
-                <div class="hdr-title-wrap">
-                    <span class="hdr-title">BLZ-T</span>
-                    <span class="hdr-slash">/</span>
-                    <span class="hdr-sub">COMMAND RELAY</span>
+                <div class="hdr-brand">
+                    <span class="brand-name">BLZ-T</span>
+                    <span class="brand-tag">COMMAND RELAY // 作戦室</span>
                 </div>
             </div>
+            <div class="hdr-center" aria-hidden="true">
+                <span class="hdr-deco">◈ ─── ◈ ─── ◈</span>
+            </div>
             <div class="hdr-right">
-                <div class="hdr-status">
-                    <span class="status-dot"></span>
-                    <span class="status-text">ONLINE</span>
+                <div class="hdr-stat">
+                    <span class="stat-dot"></span>
+                    <span class="stat-label">LIVE</span>
                 </div>
                 <button class="btn-metrics" onclick="toggleDrawer()">
-                    <span class="btn-metrics-icon">◈</span>
-                    METRICS
+                    <span class="btn-metrics-kanji">戦</span>
+                    <span class="btn-metrics-text">METRICS</span>
+                    <span class="btn-metrics-arrow">▶</span>
                 </button>
             </div>
         </header>
 
-        <!-- ═══ MAIN ═══ -->
+        <!-- ══ BODY ══ -->
         <div class="main">
 
             <!-- SIDEBAR -->
             <aside class="sidebar">
                 <div class="sidebar-hdr">
-                    <span class="sidebar-hdr-label">CHANNELS</span>
-                    <span class="sidebar-hdr-count" id="channel-count">0</span>
+                    <span class="sidebar-hdr-label">// CHANNELS</span>
+                    <span class="sidebar-hdr-count" id="channel-count">—</span>
                 </div>
                 <div id="channel-list" class="channel-list"></div>
-                <div class="sidebar-ftr">作戦室</div>
+                <div class="sidebar-ftr">
+                    <span class="sidebar-ftr-text">作戦室 · BLZ</span>
+                </div>
             </aside>
 
             <!-- CHAT -->
             <section class="chat">
-                <div class="chat-bar">
-                    <div class="chat-bar-channel">
-                        <span class="chat-bar-hash">#</span>
-                        <span id="chat-channel-name" class="chat-bar-name">——</span>
+                <!-- Chakra energy top bar -->
+                <div class="chat-topbar">
+                    <div class="chat-topbar-left">
+                        <span class="topbar-hash">#</span>
+                        <span id="chat-channel-name" class="topbar-channel">——</span>
                     </div>
-                    <div class="chat-bar-right">
-                        <span class="chat-bar-label">SESSION</span>
-                        <span id="chat-uptime" class="chat-bar-timer">00:00</span>
+                    <div class="chat-topbar-right">
+                        <span class="topbar-label">SESSION</span>
+                        <span id="chat-uptime" class="topbar-timer">00:00</span>
                     </div>
                 </div>
 
+                <!-- Feed -->
                 <div id="chat-feed" class="feed">
                     <div class="feed-empty">
-                        <div class="feed-empty-num">無</div>
-                        <div class="feed-empty-txt">AWAITING SIGNAL</div>
+                        <div class="feed-empty-seal">
+                            <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+                                <circle cx="60" cy="60" r="55" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3" class="empty-ring r1"/>
+                                <circle cx="60" cy="60" r="38" fill="none" stroke="currentColor" stroke-width="1" opacity="0.2" class="empty-ring r2"/>
+                                <polygon points="60,15 98,78 22,78" fill="none" stroke="currentColor" stroke-width="1" opacity="0.2"/>
+                                <text x="60" y="67" text-anchor="middle" font-size="20" fill="currentColor" opacity="0.35" font-family="serif">無</text>
+                            </svg>
+                        </div>
+                        <div class="feed-empty-text">AWAITING SIGNAL</div>
+                        <div class="feed-empty-sub">信号待機中</div>
                     </div>
                 </div>
 
-                <div class="input-bar">
-                    <span class="input-bar-prefix">▶</span>
-                    <input id="msg-input" class="input-field" type="text"
-                           placeholder="TRANSMIT MESSAGE..." autocomplete="off"/>
+                <!-- Input -->
+                <div class="input-row">
+                    <div class="input-wrap">
+                        <span class="input-prefix">▶</span>
+                        <input id="msg-input" class="input-field" type="text"
+                               placeholder="TRANSMIT MESSAGE  //  メッセージを送信..." autocomplete="off"/>
+                    </div>
                     <button id="send-btn" class="send-btn">
-                        <span class="send-jp">送信</span>
+                        <span class="send-kanji">送</span>
+                        <span class="send-label">SEND</span>
                     </button>
                 </div>
             </section>
@@ -84,10 +122,11 @@
         </div>
     </div>
 
-    <!-- ═══ METRICS PANEL ═══ -->
+    <!-- ══ METRICS OVERLAY ══ -->
     <div class="metrics-overlay" id="stats-drawer">
         <div class="metrics-backdrop" onclick="toggleDrawer()"></div>
         <div class="metrics-panel">
+            <div class="mp-seal" aria-hidden="true">戦</div>
             <div class="mp-hdr">
                 <div class="mp-title">
                     <span class="mp-title-jp">戦力</span>
@@ -96,30 +135,21 @@
                 <button class="mp-close" onclick="toggleDrawer()">✕</button>
             </div>
             <div class="mp-body">
-
                 <div class="mg mg--atk">
-                    <div class="mg-label">
-                        <span class="mg-tag mg-tag--atk">ATK</span>
-                        <span class="mg-name">OFFENSIVE</span>
-                    </div>
+                    <div class="mg-label"><span class="mg-tag mg-tag--atk">ATK</span><span>OFFENSIVE</span></div>
                     <div class="mg-row"><label>SHT</label><input type="number" id="sht" placeholder="0"></div>
                     <div class="mg-row"><label>DBL</label><input type="number" id="dbl" placeholder="0"></div>
                     <div class="mg-row"><label>STL</label><input type="number" id="stl" placeholder="0"></div>
                     <div class="mg-row"><label>PSN</label><input type="number" id="psn" placeholder="0"></div>
                     <div class="mg-row"><label>DFD</label><input type="number" id="dfd" placeholder="0"></div>
                 </div>
-
                 <div class="mg mg--gk">
-                    <div class="mg-label">
-                        <span class="mg-tag mg-tag--gk">GK</span>
-                        <span class="mg-name">GOALKEEP</span>
-                    </div>
+                    <div class="mg-label"><span class="mg-tag mg-tag--gk">GK</span><span>GOALKEEP</span></div>
                     <div class="mg-row"><label>DVG</label><input type="number" id="dvg" placeholder="—"></div>
                     <div class="mg-row"><label>BIQ</label><input type="number" id="biq" placeholder="—"></div>
                     <div class="mg-row"><label>RFX</label><input type="number" id="rfx" placeholder="—"></div>
                     <div class="mg-row"><label>DTG</label><input type="number" id="dtg" placeholder="—"></div>
                 </div>
-
             </div>
             <button id="ui-stats-btn" class="mp-submit" onclick="generateStats()">
                 <span class="mp-submit-jp">解析</span>
@@ -128,11 +158,11 @@
         </div>
     </div>
 
-    <!-- ═══ STATS MODAL ═══ -->
+    <!-- ══ STATS MODAL ══ -->
     <div id="stats-modal" class="stats-overlay">
         <div class="stats-panel">
             <div class="stats-hdr">
-                <span class="stats-title">STATS SEAL // 印</span>
+                <span class="stats-title">STATS SEAL // 封印</span>
                 <button id="close-modal" class="stats-close">✕</button>
             </div>
             <canvas id="stats-canvas" width="500" height="500"></canvas>
