@@ -177,8 +177,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         const rendered = renderDiscordContent(msg.content || '');
 
                         message.innerHTML = `
-                                <div class="msg-time">${formatTimestamp(msg.timestamp || '')}</div>
-                                <div class="msg-author">${escapeHtml(msg.author_name || 'Unknown')}</div>
+                                <div class="msg-header"><div class="msg-time">${formatTimestamp(msg.timestamp || '')}</div>
+                                <div class="msg-author">${escapeHtml(msg.author_name || 'Unknown')}</div></div>
                                 <div class="msg-content">${rendered}</div>
                             `;
                         // Ensure visibility (prevent unexpected hidden styles)
@@ -209,8 +209,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         const rendered = renderDiscordContent(msg.content || '');
                         message.innerHTML = `
-                            <div class="msg-time">${formatTimestamp(msg.timestamp || '')}</div>
-                            <div class="msg-author">${escapeHtml(msg.author_name || 'Unknown')}</div>
+                            <div class="msg-header"><div class="msg-time">${formatTimestamp(msg.timestamp || '')}</div>
+                            <div class="msg-author">${escapeHtml(msg.author_name || 'Unknown')}</div></div>
                             <div class="msg-content">${rendered}</div>
                         `;
                         message.style.display = '';
@@ -701,8 +701,8 @@ document.addEventListener('DOMContentLoaded', () => {
             optimisticNode.dataset.clientId = optimisticClientId;
             optimisticNode.dataset.optimisticTs = String(Date.now());
             optimisticNode.innerHTML = `
-                <div class="msg-time">——:——</div>
-                <div class="msg-author">${author}</div>
+                <div class="msg-header"><div class="msg-time">——:——</div>
+                <div class="msg-author">${author}</div></div>
                 <div class="msg-content">${formatLinks(content)}</div>
             `;
             chatFeed.appendChild(optimisticNode);
@@ -741,8 +741,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     message.dataset.msgId = String(realMsg.message_id);
                     message.innerHTML = `
-                        <div class="msg-time">${formatTimestamp(realMsg.timestamp || '')}</div>
-                        <div class="msg-author">${escapeHtml(realMsg.author_name || 'Unknown')}</div>
+                        <div class="msg-header"><div class="msg-time">${formatTimestamp(realMsg.timestamp || '')}</div>
+                        <div class="msg-author">${escapeHtml(realMsg.author_name || 'Unknown')}</div></div>
                         <div class="msg-content">${renderDiscordContent(realMsg.content || '')}</div>
                     `;
                     message.style.display = '';
