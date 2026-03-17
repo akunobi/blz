@@ -641,7 +641,14 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             actions.appendChild(delBtn);
         }
-        msgEl.appendChild(actions);
+
+        // Insert inside msg-header so they appear inline on the right
+        const header = msgEl.querySelector('.msg-header');
+        if (header) {
+            header.appendChild(actions);
+        } else {
+            msgEl.appendChild(actions);
+        }
     }
 
     // ═══════════════════════════════════════════════

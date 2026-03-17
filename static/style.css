@@ -1078,24 +1078,24 @@ body {
    MESSAGE ACTIONS (edit / delete / react)
    ════════════════════════════════════ */
 
-.message { position: relative; }
-
 .msg-actions {
-    position: absolute;
-    top: 6px;
-    right: 10px;
     display: flex;
     align-items: center;
     gap: 2px;
     opacity: 0;
     pointer-events: none;
     transition: opacity 140ms ease;
+    flex-shrink: 0;
+    margin-left: auto;
 }
 
 .message:hover .msg-actions {
     opacity: 1;
     pointer-events: auto;
 }
+
+/* Hide timestamp when actions are visible, show it when not hovering */
+.message:hover .msg-time { opacity: 0; }
 
 .msg-action-btn {
     width: 28px;
