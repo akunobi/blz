@@ -190,6 +190,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (existing) return; // skip this message
                             message.dataset.msgId = String(msg.message_id);
                         }
+                        renderComponents(message, msg.components || null);
                         decorateMessage(message);
                         chatFeed.appendChild(message);
 
@@ -222,6 +223,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (existing) return;
                             message.dataset.msgId = String(msg.message_id);
                         }
+                        renderComponents(message, msg.components || null);
                         decorateMessage(message);
                         chatFeed.appendChild(message);
                         chatFeed.scrollTop = chatFeed.scrollHeight;
@@ -444,6 +446,94 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ═══════════════════════════════════════════════
+    // DISCORD COMPONENTS (buttons from bots)
+    // ═══════════════════════════════════════════════
+
+    // Style labels for button types
+    const BTN_STYLE = {
+        1: 'btn-primary',    // Blurple
+        2: 'btn-secondary',  // Grey
+        3: 'btn-success',    // Green
+        4: 'btn-danger',     // Red
+        5: 'btn-link',       // URL
+    };
+
+    function renderComponents(msgEl, componentsJson) {
+        if (!componentsJson) return;
+        let rows;
+        try { rows = JSON.parse(componentsJson); } catch(e) { return; }
+        if (!rows || !rows.length) return;
+
+        const container = document.createElement('div');
+        container.className = 'msg-components';
+
+        rows.forEach(row => {
+            if (!row.components || !row.components.length) return;
+            const rowEl = document.createElement('div');
+            rowEl.className = 'comp-row';
+
+            row.components.forEach(comp => {
+                if (comp.type !== 2) return; // only buttons for now
+
+                const btn = document.createElement('button');
+                const styleClass = BTN_STYLE[comp.style] || 'btn-secondary';
+                btn.className = 'comp-btn ' + styleClass;
+                if (comp.disabled) btn.disabled = true;
+
+                // Label + emoji
+                if (comp.emoji) {
+                    const em = document.createElement('span');
+                    em.className = 'comp-btn-emoji';
+                    em.textContent = comp.emoji.name || '';
+                    btn.appendChild(em);
+                }
+                if (comp.label) {
+                    const lbl = document.createElement('span');
+                    lbl.textContent = comp.label;
+                    btn.appendChild(lbl);
+                }
+
+                // Link button
+                if (comp.style === 5 && comp.url) {
+                    btn.onclick = () => window.open(comp.url, '_blank');
+                } else if (comp.custom_id) {
+                    btn.onclick = async () => {
+                        if (btn.disabled) return;
+                        btn.classList.add('comp-btn--loading');
+                        btn.disabled = true;
+                        try {
+                            const r = await fetch('/api/messages/' + msgEl.dataset.msgId + '/interact', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    channel_id: currentChannelId,
+                                    custom_id: comp.custom_id
+                                })
+                            });
+                            const j = await r.json();
+                            if (!r.ok) showMsgError(msgEl, j.error || 'Error');
+                        } catch(e) {
+                            showMsgError(msgEl, 'Error de red');
+                        } finally {
+                            btn.classList.remove('comp-btn--loading');
+                            btn.disabled = false;
+                        }
+                    };
+                }
+                rowEl.appendChild(btn);
+            });
+
+            if (rowEl.children.length) container.appendChild(rowEl);
+        });
+
+        if (container.children.length) {
+            const contentEl = msgEl.querySelector('.msg-content');
+            if (contentEl) contentEl.after(container);
+            else msgEl.appendChild(container);
+        }
+    }
+
+    // ═══════════════════════════════════════════════
     // MESSAGE ACTIONS: edit / delete / react
     // ═══════════════════════════════════════════════
 
@@ -461,6 +551,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (emojiPicker) return emojiPicker;
         emojiPicker = document.createElement('div');
         emojiPicker.id = 'emoji-picker';
+        const pickerHeader = document.createElement('div');
+        pickerHeader.className = 'emoji-picker-hdr';
+        pickerHeader.textContent = 'React';
+        emojiPicker.appendChild(pickerHeader);
+        const grid = document.createElement('div');
+        grid.className = 'emoji-grid';
+        emojiPicker.appendChild(grid);
         EMOJI_LIST.forEach(e => {
             const btn = document.createElement('button');
             btn.className = 'emoji-btn';
@@ -470,7 +567,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 doReact(emojiTargetMsgId, emojiTargetChannelId, e);
                 closeEmojiPicker();
             });
-            emojiPicker.appendChild(btn);
+            grid.appendChild(btn);
         });
         document.body.appendChild(emojiPicker);
         document.addEventListener('click', (ev) => {
@@ -681,27 +778,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (acBox) return acBox;
         acBox = document.createElement('div');
         acBox.id = 'ac-box';
-        acBox.style.cssText = `
-            position: fixed;
-            z-index: 500;
-            background: var(--navy, #070B14);
-            border: 1px solid rgba(229,0,26,0.45);
-            border-top: 2px solid var(--red, #E5001A);
-            min-width: 260px;
-            max-width: 340px;
-            max-height: 240px;
-            overflow-y: auto;
-            display: none;
-            flex-direction: column;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.7);
-        `;
         document.body.appendChild(acBox);
         return acBox;
     }
 
     function hideAc() {
         const box = getAcBox();
-        box.style.display = 'none';
+        box.classList.remove('ac-open');
         acItems = [];
         acIdx   = -1;
         acTriggerPos = -1;
@@ -712,96 +795,74 @@ document.addEventListener('DOMContentLoaded', () => {
         box.innerHTML = '';
         acItems = matches;
         acIdx   = -1;
-        if (!matches.length) { box.style.display = 'none'; return; }
+        if (!matches.length) { box.classList.remove('ac-open'); return; }
 
         matches.forEach((item, i) => {
             const el = document.createElement('div');
-            el.style.cssText = `
-                display: flex; align-items: center; gap: 10px;
-                padding: 8px 14px; cursor: pointer;
-                font-family: 'Barlow Condensed', 'IBM Plex Mono', monospace;
-                font-size: 0.88rem; letter-spacing: 0.06em;
-                border-bottom: 1px solid rgba(255,255,255,0.04);
-                transition: background 100ms ease;
-            `;
+            el.className = 'ac-item';
             el.dataset.index = i;
 
             if (item.type === 'user') {
-                const dot = document.createElement('span');
-                dot.style.cssText = `
-                    width: 28px; height: 28px; border-radius: 50%;
-                    background: var(--lift, #111520); flex-shrink: 0;
-                    display: flex; align-items: center; justify-content: center;
-                    font-family: 'Bebas Neue', sans-serif; font-size: 0.85rem;
-                    color: var(--blue, #00B4FF); border: 1px solid rgba(0,180,255,0.25);
-                    overflow: hidden;
-                `;
+                const avatar = document.createElement('div');
+                avatar.className = 'ac-avatar';
                 if (item.avatar) {
                     const img = document.createElement('img');
                     img.src = item.avatar;
-                    img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
-                    dot.appendChild(img);
+                    img.className = 'ac-avatar-img';
+                    avatar.appendChild(img);
                 } else {
-                    dot.textContent = (item.display || item.username || '?')[0].toUpperCase();
+                    avatar.textContent = (item.display || item.username || '?')[0].toUpperCase();
                 }
-                const nameWrap = document.createElement('div');
-                nameWrap.style.cssText = 'display:flex;flex-direction:column;gap:1px;min-width:0;';
-                const displayName = document.createElement('span');
-                displayName.textContent = item.display;
-                displayName.style.cssText = 'color: #F0EEF8; font-weight: 700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
-                const username = document.createElement('span');
-                username.textContent = '@' + item.username;
-                username.style.cssText = 'color: #444460; font-size:0.75rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
-                nameWrap.appendChild(displayName);
-                nameWrap.appendChild(username);
-                el.appendChild(dot);
-                el.appendChild(nameWrap);
+                const info = document.createElement('div');
+                info.className = 'ac-info';
+                const name = document.createElement('span');
+                name.className = 'ac-name';
+                name.textContent = item.display;
+                const handle = document.createElement('span');
+                handle.className = 'ac-handle';
+                handle.textContent = '@' + item.username;
+                info.appendChild(name);
+                info.appendChild(handle);
+                el.appendChild(avatar);
+                el.appendChild(info);
             } else {
-                // Role
-                const bullet = document.createElement('span');
-                bullet.style.cssText = `
-                    width: 10px; height: 10px; border-radius: 50%;
-                    background: ${item.color}; flex-shrink: 0;
-                    box-shadow: 0 0 6px ${item.color}88;
-                `;
+                const dot = document.createElement('span');
+                dot.className = 'ac-role-dot';
+                dot.style.background = item.color;
+                dot.style.boxShadow = '0 0 6px ' + item.color + '88';
                 const label = document.createElement('span');
-                label.style.cssText = `color: ${item.color}; font-weight: 700;`;
+                label.className = 'ac-role-name';
+                label.style.color = item.color;
                 label.textContent = '@' + item.name;
                 const tag = document.createElement('span');
-                tag.style.cssText = 'color: #444460; font-size: 0.72rem; margin-left: auto; flex-shrink:0; padding-left:8px;';
+                tag.className = 'ac-role-tag';
                 tag.textContent = 'ROLE';
-                el.appendChild(bullet);
+                el.appendChild(dot);
                 el.appendChild(label);
                 el.appendChild(tag);
             }
 
             el.addEventListener('mouseenter', () => setAcIdx(i));
-            el.addEventListener('mousedown', (e) => {
-                e.preventDefault(); // don't blur input
-                applyAc(i);
-            });
+            el.addEventListener('mousedown', (e) => { e.preventDefault(); applyAc(i); });
             box.appendChild(el);
         });
 
-        box.style.display = 'flex';
+        box.classList.add('ac-open');
 
-        // Position above the input bar
+        // Position above the composer input
         const inputRect = msgInput.getBoundingClientRect();
-        box.style.bottom  = (window.innerHeight - inputRect.top + 6) + 'px';
-        box.style.left    = inputRect.left + 'px';
+        box.style.bottom  = (window.innerHeight - inputRect.top + 8) + 'px';
+        box.style.left    = (inputRect.left + 60) + 'px';
         box.style.top     = 'auto';
     }
 
     function setAcIdx(i) {
         const box = getAcBox();
-        const els = box.querySelectorAll('[data-index]');
-        els.forEach(el => {
-            el.style.background = '';
-            el.style.color = '';
-        });
+        const els = box.querySelectorAll('.ac-item');
+        els.forEach(el => el.classList.remove('ac-item--active'));
         acIdx = i;
         if (i >= 0 && i < els.length) {
-            els[i].style.background = 'rgba(229,0,26,0.14)';
+            els[i].classList.add('ac-item--active');
             els[i].scrollIntoView({ block: 'nearest' });
         }
     }

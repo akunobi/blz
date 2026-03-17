@@ -56,7 +56,8 @@ def init_db():
                 content TEXT,
                 author_id INTEGER,
                 message_id INTEGER UNIQUE,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                components TEXT DEFAULT NULL
             )
         ''')
         conn.commit()
@@ -66,20 +67,19 @@ def init_db():
 
 
 def ensure_author_id_column():
-    """Ensure `author_id` column exists on messages table; add it if missing.
-    This performs a safe ALTER TABLE for older DBs created before this column existed.
-    """
+    """Ensure `author_id` and `components` columns exist on messages table."""
     try:
         conn = get_db_connection()
         cur = conn.execute("PRAGMA table_info(messages)").fetchall()
         cols = [r['name'] for r in cur]
         if 'author_id' not in cols:
-            try:
-                conn.execute('ALTER TABLE messages ADD COLUMN author_id INTEGER')
-                conn.commit()
-                print('>>> [DB MIGRATION] Added column author_id')
-            except Exception as e:
-                print(f'!!! [DB MIGRATION ERROR]: {e}')
+            conn.execute('ALTER TABLE messages ADD COLUMN author_id INTEGER')
+            conn.commit()
+            print('>>> [DB MIGRATION] Added column author_id')
+        if 'components' not in cols:
+            conn.execute('ALTER TABLE messages ADD COLUMN components TEXT DEFAULT NULL')
+            conn.commit()
+            print('>>> [DB MIGRATION] Added column components')
         conn.close()
     except Exception as e:
         print(f'!!! [DB CHECK ERROR]: {e}')
@@ -109,9 +109,28 @@ async def on_message(message):
         if message.channel.category.id == TARGET_CATEGORY_ID:
             try:
                 conn = get_db_connection()
+                import json as _json
+                _comps = None
+                try:
+                    if message.components:
+                        _comps = _json.dumps([
+                            {'type': row.type.value if hasattr(row.type,'value') else int(row.type),
+                             'components': [
+                                 {'type': c.type.value if hasattr(c.type,'value') else int(c.type),
+                                  'custom_id': getattr(c, 'custom_id', None),
+                                  'label': getattr(c, 'label', None),
+                                  'style': c.style.value if hasattr(getattr(c,'style',None),'value') else getattr(c,'style',None),
+                                  'emoji': {'name': c.emoji.name, 'id': str(c.emoji.id) if c.emoji.id else None} if getattr(c,'emoji',None) else None,
+                                  'url': getattr(c, 'url', None),
+                                  'disabled': getattr(c, 'disabled', False),
+                                 } for c in row.children
+                             ]} for row in message.components
+                        ])
+                except Exception as _e:
+                    print(f'!!! [COMPONENTS SERIALIZE]: {_e}')
                 conn.execute('''
-                    INSERT OR IGNORE INTO messages (channel_id, channel_name, author_name, author_avatar, content, author_id, message_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT OR IGNORE INTO messages (channel_id, channel_name, author_name, author_avatar, content, author_id, message_id, components)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     message.channel.id,
                     message.channel.name,
@@ -119,7 +138,8 @@ async def on_message(message):
                     str(message.author.avatar.url) if message.author.avatar else "https://cdn.discordapp.com/embed/avatars/0.png",
                     message.content,
                     getattr(message.author, 'id', None),
-                    message.id
+                    message.id,
+                    _comps
                 ))
                 conn.commit()
                 conn.close()
@@ -149,9 +169,27 @@ async def sync_category_history(limit=200):
                     async for msg in c.history(limit=limit):
                         try:
                             conn = get_db_connection()
+                            import json as _json2
+                            _comps2 = None
+                            try:
+                                if msg.components:
+                                    _comps2 = _json2.dumps([
+                                        {'type': row.type.value if hasattr(row.type,'value') else int(row.type),
+                                         'components': [
+                                             {'type': c2.type.value if hasattr(c2.type,'value') else int(c2.type),
+                                              'custom_id': getattr(c2,'custom_id',None),
+                                              'label': getattr(c2,'label',None),
+                                              'style': c2.style.value if hasattr(getattr(c2,'style',None),'value') else getattr(c2,'style',None),
+                                              'emoji': {'name': c2.emoji.name,'id': str(c2.emoji.id) if c2.emoji.id else None} if getattr(c2,'emoji',None) else None,
+                                              'url': getattr(c2,'url',None),
+                                              'disabled': getattr(c2,'disabled',False),
+                                             } for c2 in row.children
+                                         ]} for row in msg.components
+                                    ])
+                            except Exception: pass
                             conn.execute('''
-                                INSERT OR IGNORE INTO messages (channel_id, channel_name, author_name, author_avatar, content, author_id, message_id, timestamp)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                INSERT OR IGNORE INTO messages (channel_id, channel_name, author_name, author_avatar, content, author_id, message_id, timestamp, components)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                             ''', (
                                 c.id,
                                 c.name,
@@ -160,7 +198,8 @@ async def sync_category_history(limit=200):
                                 msg.content,
                                 getattr(msg.author, 'id', None),
                                 msg.id,
-                                msg.created_at.isoformat()
+                                msg.created_at.isoformat(),
+                                _comps2
                             ))
                             conn.commit()
                             conn.close()
@@ -676,3 +715,51 @@ if __name__ == '__main__':
     start_periodic_sync_thread()
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+@app.route('/api/messages/<int:message_id>/interact', methods=['POST'])
+def interact_message(message_id):
+    """Click a bot button component on a message."""
+    data = request.json or {}
+    channel_id = data.get('channel_id')
+    custom_id  = data.get('custom_id')
+    if not channel_id or not custom_id:
+        return jsonify({'error': 'channel_id and custom_id required'}), 400
+    if not bot_loop or not bot_ready_event.is_set():
+        return jsonify({'error': 'Bot desconectado'}), 503
+
+    async def _click():
+        try:
+            channel = await client.fetch_channel(int(channel_id))
+            msg = await channel.fetch_message(message_id)
+
+            # Find the matching component
+            target_component = None
+            for row in msg.components:
+                for comp in row.children:
+                    if getattr(comp, 'custom_id', None) == custom_id:
+                        target_component = comp
+                        break
+                if target_component:
+                    break
+
+            if not target_component:
+                return {'success': False, 'error': 'Botón no encontrado en el mensaje'}
+
+            # Simulate the click via the interaction
+            await target_component.click()
+            return {'success': True}
+        except AttributeError:
+            return {'success': False, 'error': 'Esta versión de discord.py no soporta .click(). Usa discord.py 2.0+ o py-cord.'}
+        except discord.NotFound:
+            return {'success': False, 'error': 'Mensaje no encontrado'}
+        except discord.Forbidden:
+            return {'success': False, 'error': 'Sin permisos'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    try:
+        result = asyncio.run_coroutine_threadsafe(_click(), bot_loop).result(timeout=10)
+        if result['success']:
+            return jsonify({'status': 'clicked'})
+        return jsonify({'error': result['error']}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
