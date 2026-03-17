@@ -184,13 +184,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Ensure visibility (prevent unexpected hidden styles)
                         message.style.display = '';
                         message.style.visibility = 'visible';
-                        decorateMessage(message);
                         // dedupe: skip if message with same id already present
                         if (msg.message_id) {
                             const existing = chatFeed.querySelector(`[data-msg-id="${msg.message_id}"]`);
                             if (existing) return; // skip this message
                             message.dataset.msgId = String(msg.message_id);
                         }
+                        decorateMessage(message);
                         chatFeed.appendChild(message);
 
                         if (msg.message_id) lastMessageId[currentChannelId] = Math.max(lastMessageId[currentChannelId] || 0, Number(msg.message_id));
@@ -216,13 +216,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         `;
                         message.style.display = '';
                         message.style.visibility = 'visible';
-                        decorateMessage(message);
                         // dedupe before appending
                         if (msg.message_id) {
                             const existing = chatFeed.querySelector(`[data-msg-id="${msg.message_id}"]`);
                             if (existing) return;
                             message.dataset.msgId = String(msg.message_id);
                         }
+                        decorateMessage(message);
                         chatFeed.appendChild(message);
                         chatFeed.scrollTop = chatFeed.scrollHeight;
 
@@ -957,8 +957,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     `;
                     message.style.display = '';
                     message.style.visibility = 'visible';
-                    decorateMessage(message);
 
+                    decorateMessage(message);
                     if (opt) opt.replaceWith(message);
                     else chatFeed.appendChild(message);
                     chatFeed.scrollTop = chatFeed.scrollHeight;
