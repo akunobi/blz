@@ -29,6 +29,7 @@ except ValueError:
 # --- SETUP DISCORD ---
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True   # Required for member list autocomplete
 client = discord.Client(intents=intents)
 
 bot_loop = None
@@ -384,7 +385,7 @@ def get_members():
                 return {'members': [], 'roles': []}
 
             members = []
-            for m in guild.members:
+            async for m in guild.fetch_members(limit=1000):
                 members.append({
                     'id': str(m.id),
                     'display': m.display_name,
