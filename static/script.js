@@ -184,6 +184,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Ensure visibility (prevent unexpected hidden styles)
                         message.style.display = '';
                         message.style.visibility = 'visible';
+                        decorateMessage(message);
                         // dedupe: skip if message with same id already present
                         if (msg.message_id) {
                             const existing = chatFeed.querySelector(`[data-msg-id="${msg.message_id}"]`);
@@ -215,6 +216,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         `;
                         message.style.display = '';
                         message.style.visibility = 'visible';
+                        decorateMessage(message);
                         // dedupe before appending
                         if (msg.message_id) {
                             const existing = chatFeed.querySelector(`[data-msg-id="${msg.message_id}"]`);
@@ -439,6 +441,207 @@ document.addEventListener('DOMContentLoaded', () => {
             console.warn('enrichUnresolvedMentions error', e);
             els.forEach(el => el.classList.remove('mention-loading'));
         }
+    }
+
+    // ═══════════════════════════════════════════════
+    // MESSAGE ACTIONS: edit / delete / react
+    // ═══════════════════════════════════════════════
+
+    const EMOJI_LIST = [
+        '👍','👎','❤️','🔥','⚡','😂','😭','😤','💀','👀',
+        '✅','❌','🎯','⚔️','🛡️','🏆','💪','🤝','🫡','💯',
+        '🗡️','🔴','🔵','⭐','💥','🙏','😮','🤔','😈','🥶'
+    ];
+
+    let emojiPicker = null;
+    let emojiTargetMsgId = null;
+    let emojiTargetChannelId = null;
+
+    function getEmojiPicker() {
+        if (emojiPicker) return emojiPicker;
+        emojiPicker = document.createElement('div');
+        emojiPicker.id = 'emoji-picker';
+        EMOJI_LIST.forEach(e => {
+            const btn = document.createElement('button');
+            btn.className = 'emoji-btn';
+            btn.textContent = e;
+            btn.addEventListener('mousedown', (ev) => {
+                ev.preventDefault();
+                doReact(emojiTargetMsgId, emojiTargetChannelId, e);
+                closeEmojiPicker();
+            });
+            emojiPicker.appendChild(btn);
+        });
+        document.body.appendChild(emojiPicker);
+        document.addEventListener('click', (ev) => {
+            if (emojiPicker && !emojiPicker.contains(ev.target) && !ev.target.closest('.msg-action-btn')) closeEmojiPicker();
+        });
+        return emojiPicker;
+    }
+
+    function openEmojiPicker(msgId, channelId, anchorEl) {
+        emojiTargetMsgId = msgId;
+        emojiTargetChannelId = channelId;
+        const picker = getEmojiPicker();
+        picker.classList.add('open');
+        const rect = anchorEl.getBoundingClientRect();
+        picker.style.top    = 'auto';
+        picker.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
+        picker.style.left   = Math.max(4, rect.right - 248) + 'px';
+    }
+
+    function closeEmojiPicker() {
+        if (emojiPicker) emojiPicker.classList.remove('open');
+    }
+
+    async function doDelete(msgId, channelId, msgEl) {
+        msgEl.style.opacity = '0.4';
+        try {
+            const r = await fetch('/api/messages/' + msgId + '/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ channel_id: channelId })
+            });
+            const j = await r.json();
+            if (r.ok) {
+                msgEl.style.transition = 'opacity 200ms, max-height 200ms, padding 200ms';
+                msgEl.style.opacity    = '0';
+                msgEl.style.maxHeight  = '0';
+                msgEl.style.overflow   = 'hidden';
+                msgEl.style.padding    = '0';
+                setTimeout(() => msgEl.remove(), 220);
+            } else {
+                msgEl.style.opacity = '1';
+                showMsgError(msgEl, j.error || 'Error al borrar');
+            }
+        } catch(e) { msgEl.style.opacity = '1'; showMsgError(msgEl, 'Error de red'); }
+    }
+
+    async function doEdit(msgId, channelId, msgEl, newContent) {
+        try {
+            const r = await fetch('/api/messages/' + msgId + '/edit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ channel_id: channelId, content: newContent })
+            });
+            const j = await r.json();
+            if (r.ok) {
+                const contentEl = msgEl.querySelector('.msg-content');
+                if (contentEl) {
+                    contentEl.innerHTML = renderDiscordContent(newContent);
+                    if (!contentEl.querySelector('.msg-edited')) {
+                        const tag = document.createElement('span');
+                        tag.className = 'msg-edited';
+                        tag.textContent = ' (editado)';
+                        tag.style.cssText = 'font-size:0.63rem;color:var(--dim);font-family:var(--f-mono);';
+                        contentEl.appendChild(tag);
+                    }
+                }
+                cancelEdit(msgEl);
+            } else {
+                showMsgError(msgEl, j.error || 'Error al editar');
+            }
+        } catch(e) { showMsgError(msgEl, 'Error de red'); }
+    }
+
+    async function doReact(msgId, channelId, emoji) {
+        try {
+            await fetch('/api/messages/' + msgId + '/react', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ channel_id: channelId, emoji })
+            });
+        } catch(e) { console.warn('React error:', e); }
+    }
+
+    function openEdit(msgEl) {
+        if (msgEl.querySelector('.msg-edit-wrap')) return;
+        const contentEl = msgEl.querySelector('.msg-content');
+        if (!contentEl) return;
+        const rawText = contentEl.innerText || '';
+
+        const wrap    = document.createElement('div');
+        wrap.className = 'msg-edit-wrap';
+        const ta      = document.createElement('textarea');
+        ta.className   = 'msg-edit-input';
+        ta.value       = rawText.replace(' (editado)', '');
+        ta.rows        = Math.max(1, Math.min(6, (rawText.match(/\n/g) || []).length + 1));
+        const saveBtn  = document.createElement('button');
+        saveBtn.className = 'msg-edit-save';
+        saveBtn.textContent = 'SAVE';
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'msg-edit-cancel';
+        cancelBtn.textContent = 'ESC';
+
+        wrap.appendChild(ta);
+        wrap.appendChild(saveBtn);
+        wrap.appendChild(cancelBtn);
+        contentEl.after(wrap);
+        ta.focus();
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+
+        const msgId = msgEl.dataset.msgId;
+        const chId  = currentChannelId;
+        saveBtn.onclick   = () => { const v = ta.value.trim(); if (v) doEdit(msgId, chId, msgEl, v); else cancelEdit(msgEl); };
+        cancelBtn.onclick = () => cancelEdit(msgEl);
+        ta.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveBtn.click(); }
+            else if (e.key === 'Escape') cancelEdit(msgEl);
+        });
+    }
+
+    function cancelEdit(msgEl) {
+        const w = msgEl.querySelector('.msg-edit-wrap');
+        if (w) w.remove();
+    }
+
+    function showMsgError(msgEl, text) {
+        let err = msgEl.querySelector('.msg-err');
+        if (!err) {
+            err = document.createElement('span');
+            err.className = 'msg-err';
+            err.style.cssText = 'font-size:0.63rem;color:var(--red);font-family:var(--f-mono);margin-top:2px;display:block;';
+            msgEl.appendChild(err);
+        }
+        err.textContent = text;
+        setTimeout(() => { if (err.parentNode) err.remove(); }, 3000);
+    }
+
+    function decorateMessage(msgEl) {
+        if (!msgEl.dataset.msgId || msgEl.querySelector('.msg-actions')) return;
+        const isOwn = msgEl.classList.contains('msg-me');
+        const actions = document.createElement('div');
+        actions.className = 'msg-actions';
+
+        const reactBtn = document.createElement('button');
+        reactBtn.className = 'msg-action-btn';
+        reactBtn.title     = 'Reaccionar';
+        reactBtn.innerHTML = '😊';
+        reactBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openEmojiPicker(msgEl.dataset.msgId, currentChannelId, reactBtn);
+        });
+        actions.appendChild(reactBtn);
+
+        if (isOwn) {
+            const editBtn = document.createElement('button');
+            editBtn.className = 'msg-action-btn';
+            editBtn.title     = 'Editar';
+            editBtn.innerHTML = '✏️';
+            editBtn.addEventListener('click', (e) => { e.stopPropagation(); openEdit(msgEl); });
+            actions.appendChild(editBtn);
+
+            const delBtn = document.createElement('button');
+            delBtn.className = 'msg-action-btn del';
+            delBtn.title     = 'Borrar';
+            delBtn.innerHTML = '🗑️';
+            delBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (confirm('¿Borrar este mensaje?')) doDelete(msgEl.dataset.msgId, currentChannelId, msgEl);
+            });
+            actions.appendChild(delBtn);
+        }
+        msgEl.appendChild(actions);
     }
 
     // ═══════════════════════════════════════════════
@@ -747,6 +950,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     `;
                     message.style.display = '';
                     message.style.visibility = 'visible';
+                    decorateMessage(message);
 
                     if (opt) opt.replaceWith(message);
                     else chatFeed.appendChild(message);

@@ -1073,3 +1073,134 @@ body {
     .metrics-panel { width: 100%; max-height: 100vh; }
     .mp-body { grid-template-columns: 1fr; }
 }
+
+/* ════════════════════════════════════
+   MESSAGE ACTIONS (edit / delete / react)
+   ════════════════════════════════════ */
+
+.message { position: relative; }
+
+.msg-actions {
+    position: absolute;
+    top: 6px;
+    right: 10px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 140ms ease;
+}
+
+.message:hover .msg-actions {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.msg-action-btn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--panel);
+    border: 1px solid var(--ghost);
+    cursor: pointer;
+    font-size: 0.75rem;
+    color: var(--grey);
+    transition: all 140ms ease;
+    line-height: 1;
+}
+
+.msg-action-btn:hover { border-color: var(--blue-lo); color: var(--white); background: var(--lift); }
+.msg-action-btn.del:hover { border-color: var(--red); color: var(--red); background: var(--red-dim); }
+
+/* ── Inline edit mode ── */
+.msg-edit-wrap {
+    display: flex;
+    gap: 0;
+    margin-top: 4px;
+}
+
+.msg-edit-input {
+    flex: 1;
+    background: var(--black);
+    border: 1px solid var(--blue-lo);
+    border-right: none;
+    color: var(--white);
+    font-family: var(--f-body);
+    font-size: 0.97rem;
+    padding: 6px 10px;
+    outline: none;
+    resize: none;
+    min-height: 36px;
+    max-height: 120px;
+    line-height: 1.5;
+    overflow-y: auto;
+}
+
+.msg-edit-input:focus { border-color: var(--blue); }
+
+.msg-edit-save {
+    padding: 0 14px;
+    background: var(--blue-lo);
+    border: 1px solid var(--blue);
+    color: var(--white);
+    font-family: var(--f-display);
+    font-size: 0.80rem;
+    letter-spacing: 0.10em;
+    cursor: pointer;
+    transition: background 140ms ease;
+    white-space: nowrap;
+}
+.msg-edit-save:hover { background: var(--blue); }
+
+.msg-edit-cancel {
+    padding: 0 10px;
+    background: transparent;
+    border: 1px solid var(--ghost);
+    border-left: none;
+    color: var(--dim);
+    font-family: var(--f-mono);
+    font-size: 0.70rem;
+    cursor: pointer;
+    transition: all 140ms ease;
+}
+.msg-edit-cancel:hover { color: var(--white); border-color: var(--grey); }
+
+/* ── Emoji picker ── */
+#emoji-picker {
+    position: fixed;
+    z-index: 600;
+    background: var(--navy);
+    border: 1px solid rgba(229,0,26,0.40);
+    border-top: 2px solid var(--red);
+    padding: 10px;
+    display: none;
+    flex-wrap: wrap;
+    gap: 4px;
+    width: 248px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+}
+
+#emoji-picker.open { display: flex; }
+
+.emoji-btn {
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+    cursor: pointer;
+    border: 1px solid transparent;
+    background: transparent;
+    transition: all 120ms ease;
+    border-radius: 0;
+}
+
+.emoji-btn:hover {
+    background: var(--lift);
+    border-color: var(--ghost);
+    transform: scale(1.18);
+}
