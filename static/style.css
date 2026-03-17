@@ -1104,3 +1104,114 @@ body {
     transition: all 120ms ease;
 }
 .emoji-btn:hover { background: var(--amber-soft); border-color: var(--border); transform: scale(1.2); }
+
+/* ════════════════════════════════════
+   RIGHT SIDEBAR — channel list
+   ════════════════════════════════════ */
+
+/* Body row: chat column + right sidebar */
+.body-row {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    overflow: hidden;
+}
+
+.chat-col {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-right: 1px solid var(--border);
+}
+
+/* Right sidebar */
+.right-sidebar {
+    width: 230px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    background: rgba(20,18,31,0.60);
+    backdrop-filter: blur(12px);
+    overflow: hidden;
+}
+
+.rsidebar-hdr {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.rsidebar-hdr-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: var(--t2);
+    text-transform: uppercase;
+}
+
+.rsidebar-hdr-count {
+    font-family: var(--f-mono);
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--amber);
+    background: var(--amber-dim);
+    border: 1px solid rgba(245,166,35,0.20);
+    border-radius: 10px;
+    padding: 1px 8px;
+    min-width: 24px;
+    text-align: center;
+}
+
+.rsidebar-list {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 0;
+    padding: 8px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.rsidebar-list::-webkit-scrollbar { width: 3px; }
+.rsidebar-list::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 3px; }
+
+/* Override channel-item for right sidebar context */
+.rsidebar-list .channel-item {
+    padding: 8px 12px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    gap: 8px;
+}
+
+.rsidebar-list .channel-item::before {
+    font-size: 0.60rem;
+    min-width: 18px;
+    padding: 1px 4px;
+}
+
+.rsidebar-list .ch-name {
+    font-size: 0.76rem;
+    letter-spacing: 0.03em;
+}
+
+.rsidebar-ftr {
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    font-family: var(--f-jp);
+    font-size: 0.75rem;
+    color: var(--t3);
+    text-align: center;
+    letter-spacing: 0.10em;
+}
+
+/* Remove old top pills styles that are no longer used */
+.channel-pills-wrap, .channel-pills { display: none; }
+
+@media (max-width: 900px) {
+    .right-sidebar { display: none; }
+}

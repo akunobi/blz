@@ -24,11 +24,6 @@
                 <span class="brand-name">BLZ-T</span>
             </div>
 
-            <!-- Channel pills — horizontal scroll -->
-            <div class="channel-pills-wrap">
-                <div id="channel-list" class="channel-pills"></div>
-            </div>
-
             <div class="topnav-actions">
                 <div class="uptime-chip">
                     <span class="uptime-dot"></span>
@@ -41,7 +36,13 @@
             </div>
         </nav>
 
-        <!-- ═══ CHANNEL TITLE BAR ═══ -->
+        <!-- ═══ BODY ROW ═══ -->
+        <div class="body-row">
+
+        <!-- CHAT COLUMN -->
+        <div class="chat-col">
+
+        <!-- Channel title bar -->
         <div class="channel-bar">
             <div class="channel-bar-inner">
                 <span class="channel-bar-hash">#</span>
@@ -73,6 +74,20 @@
                 </button>
             </div>
         </div>
+
+        </div><!-- /chat-col -->
+
+        <!-- RIGHT SIDEBAR -->
+        <aside class="right-sidebar">
+            <div class="rsidebar-hdr">
+                <span class="rsidebar-hdr-label">Channels</span>
+                <span class="rsidebar-hdr-count" id="channel-count">—</span>
+            </div>
+            <div id="channel-list" class="rsidebar-list"></div>
+            <div class="rsidebar-ftr">作戦室</div>
+        </aside>
+
+        </div><!-- /body-row -->
 
     </div><!-- /app -->
 
