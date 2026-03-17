@@ -558,37 +558,64 @@ document.addEventListener('DOMContentLoaded', () => {
         const grid = document.createElement('div');
         grid.className = 'emoji-grid';
         emojiPicker.appendChild(grid);
-        EMOJI_LIST.forEach(e => {
+        EMOJI_LIST.forEach(emoji => {
             const btn = document.createElement('button');
             btn.className = 'emoji-btn';
-            btn.textContent = e;
-            btn.addEventListener('mousedown', (ev) => {
+            btn.textContent = emoji;
+            btn.type = 'button';
+            btn.addEventListener('click', (ev) => {
+                ev.stopPropagation();
                 ev.preventDefault();
-                doReact(emojiTargetMsgId, emojiTargetChannelId, e);
+                const targetId  = emojiTargetMsgId;
+                const targetCh  = emojiTargetChannelId;
                 closeEmojiPicker();
+                if (targetId && targetCh) doReact(targetId, targetCh, emoji, btn);
             });
             grid.appendChild(btn);
         });
         document.body.appendChild(emojiPicker);
+        // Close on outside click — use capture phase so it fires before anything else
         document.addEventListener('click', (ev) => {
-            if (emojiPicker && !emojiPicker.contains(ev.target) && !ev.target.closest('.msg-action-btn')) closeEmojiPicker();
-        });
+            if (!emojiPicker || !emojiPicker.classList.contains('open')) return;
+            if (!emojiPicker.contains(ev.target) && !ev.target.closest('.msg-action-btn')) {
+                closeEmojiPicker();
+            }
+        }, true);
         return emojiPicker;
     }
 
     function openEmojiPicker(msgId, channelId, anchorEl) {
-        emojiTargetMsgId = msgId;
+        emojiTargetMsgId     = msgId;
         emojiTargetChannelId = channelId;
         const picker = getEmojiPicker();
+
+        // Smart positioning: above or below the anchor
+        const rect    = anchorEl.getBoundingClientRect();
+        const pickerH = 220; // approx height
+        const pickerW = 280;
+        const spaceAbove = rect.top;
+        const spaceBelow = window.innerHeight - rect.bottom;
+
+        picker.style.left = Math.min(
+            Math.max(8, rect.left),
+            window.innerWidth - pickerW - 8
+        ) + 'px';
+
+        if (spaceAbove > pickerH || spaceAbove > spaceBelow) {
+            picker.style.top    = 'auto';
+            picker.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
+        } else {
+            picker.style.bottom = 'auto';
+            picker.style.top    = (rect.bottom + 6) + 'px';
+        }
+
         picker.classList.add('open');
-        const rect = anchorEl.getBoundingClientRect();
-        picker.style.top    = 'auto';
-        picker.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
-        picker.style.left   = Math.max(4, rect.right - 248) + 'px';
     }
 
     function closeEmojiPicker() {
         if (emojiPicker) emojiPicker.classList.remove('open');
+        emojiTargetMsgId     = null;
+        emojiTargetChannelId = null;
     }
 
     async function doDelete(msgId, channelId, msgEl) {
@@ -641,14 +668,35 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch(e) { showMsgError(msgEl, 'Error de red'); }
     }
 
-    async function doReact(msgId, channelId, emoji) {
+    async function doReact(msgId, channelId, emoji, originBtn) {
+        // Flash the react button in the message
+        const msgEl = chatFeed.querySelector('[data-msg-id="' + msgId + '"]');
+        const reactBtn = msgEl ? msgEl.querySelector('.msg-action-btn') : null;
+        if (reactBtn) reactBtn.textContent = emoji;
+
         try {
-            await fetch('/api/messages/' + msgId + '/react', {
+            const r = await fetch('/api/messages/' + msgId + '/react', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ channel_id: channelId, emoji })
             });
-        } catch(e) { console.warn('React error:', e); }
+            if (r.ok) {
+                if (reactBtn) {
+                    reactBtn.classList.add('react-sent');
+                    setTimeout(() => {
+                        reactBtn.textContent = '😊';
+                        reactBtn.classList.remove('react-sent');
+                    }, 1800);
+                }
+            } else {
+                const j = await r.json();
+                if (reactBtn) reactBtn.textContent = '😊';
+                showToast(j.error || 'Error al reaccionar', 'error');
+            }
+        } catch(e) {
+            if (reactBtn) reactBtn.textContent = '😊';
+            showToast('Error de red', 'error');
+        }
     }
 
     function openEdit(msgEl) {
@@ -704,6 +752,61 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => { if (err.parentNode) err.remove(); }, 3000);
     }
 
+    // ── Toast notification ──
+    let _toastTimer = null;
+    function showToast(msg, type = 'info') {
+        let toast = document.getElementById('blz-toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'blz-toast';
+            document.body.appendChild(toast);
+        }
+        toast.textContent = msg;
+        toast.className = 'blz-toast blz-toast--' + type + ' blz-toast--show';
+        clearTimeout(_toastTimer);
+        _toastTimer = setTimeout(() => toast.classList.remove('blz-toast--show'), 2800);
+    }
+
+    // ── Custom delete confirm modal ──
+    let _deleteModal = null;
+    function showDeleteConfirm(msgId, channelId, msgEl) {
+        if (!_deleteModal) {
+            _deleteModal = document.createElement('div');
+            _deleteModal.id = 'delete-modal';
+            _deleteModal.innerHTML = `
+                <div class="del-modal-backdrop"></div>
+                <div class="del-modal-card">
+                    <div class="del-modal-icon">🗑️</div>
+                    <div class="del-modal-title">Borrar mensaje</div>
+                    <div class="del-modal-body">Esta acción es permanente y no se puede deshacer.</div>
+                    <div class="del-modal-actions">
+                        <button class="del-btn del-btn--cancel">Cancelar</button>
+                        <button class="del-btn del-btn--confirm">Borrar</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(_deleteModal);
+            _deleteModal.querySelector('.del-modal-backdrop').addEventListener('click', hideDeleteConfirm);
+            _deleteModal.querySelector('.del-btn--cancel').addEventListener('click', hideDeleteConfirm);
+        }
+
+        // Store current target on the confirm button
+        const confirmBtn = _deleteModal.querySelector('.del-btn--confirm');
+        confirmBtn.onclick = () => {
+            hideDeleteConfirm();
+            doDelete(msgId, channelId, msgEl);
+        };
+
+        _deleteModal.classList.add('del-modal--open');
+        requestAnimationFrame(() => _deleteModal.classList.add('del-modal--visible'));
+    }
+
+    function hideDeleteConfirm() {
+        if (!_deleteModal) return;
+        _deleteModal.classList.remove('del-modal--visible');
+        setTimeout(() => _deleteModal.classList.remove('del-modal--open'), 220);
+    }
+
     function decorateMessage(msgEl) {
         if (!msgEl.dataset.msgId || msgEl.querySelector('.msg-actions')) return;
         const isOwn = msgEl.classList.contains('msg-me');
@@ -734,7 +837,7 @@ document.addEventListener('DOMContentLoaded', () => {
             delBtn.innerHTML = '🗑️';
             delBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                if (confirm('¿Borrar este mensaje?')) doDelete(msgEl.dataset.msgId, currentChannelId, msgEl);
+                showDeleteConfirm(msgEl.dataset.msgId, currentChannelId, msgEl);
             });
             actions.appendChild(delBtn);
         }

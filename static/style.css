@@ -1413,3 +1413,150 @@ body {
 }
 
 .comp-btn-emoji { font-size: 1.0rem; }
+
+/* ════════════════════════════════════
+   TOAST NOTIFICATION
+   ════════════════════════════════════ */
+.blz-toast {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-family: var(--f-display);
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 200ms ease, transform 200ms ease;
+    z-index: 9000;
+    white-space: nowrap;
+    backdrop-filter: blur(10px);
+}
+.blz-toast--show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+.blz-toast--info    { background: var(--surface); border: 1px solid var(--border-hi); color: var(--t0); }
+.blz-toast--error   { background: var(--coral-dim); border: 1px solid var(--coral); color: var(--coral-hi); }
+.blz-toast--success { background: var(--teal-dim); border: 1px solid var(--teal); color: var(--teal-hi); }
+
+/* React sent feedback */
+.react-sent {
+    color: var(--teal) !important;
+    border-color: var(--teal) !important;
+    background: var(--teal-dim) !important;
+    transform: scale(1.15);
+    transition: all 200ms ease !important;
+}
+
+/* ════════════════════════════════════
+   DELETE CONFIRM MODAL
+   ════════════════════════════════════ */
+#delete-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 800;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+#delete-modal.del-modal--open { display: flex; }
+
+.del-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(10,9,18,0.75);
+    backdrop-filter: blur(6px);
+    opacity: 0;
+    transition: opacity 220ms ease;
+}
+#delete-modal.del-modal--visible .del-modal-backdrop { opacity: 1; }
+
+.del-modal-card {
+    position: relative;
+    z-index: 1;
+    background: var(--bg2);
+    border: 1px solid var(--border-hi);
+    border-top: 3px solid var(--coral);
+    border-radius: 20px;
+    padding: 28px 28px 22px;
+    width: 100%;
+    max-width: 360px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    text-align: center;
+    opacity: 0;
+    transform: scale(0.90) translateY(16px);
+    transition: opacity 220ms ease, transform 260ms cubic-bezier(0.34, 1.4, 0.64, 1);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.55);
+}
+#delete-modal.del-modal--visible .del-modal-card {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+}
+
+.del-modal-icon {
+    font-size: 2.2rem;
+    line-height: 1;
+    margin-bottom: 4px;
+}
+
+.del-modal-title {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--t0);
+    letter-spacing: 0.04em;
+}
+
+.del-modal-body {
+    font-size: 0.82rem;
+    color: var(--t2);
+    line-height: 1.5;
+    font-weight: 400;
+    max-width: 260px;
+}
+
+.del-modal-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+    width: 100%;
+}
+
+.del-btn {
+    flex: 1;
+    padding: 11px;
+    border-radius: 12px;
+    font-family: var(--f-display);
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: all 180ms ease;
+    border: 1px solid transparent;
+}
+
+.del-btn--cancel {
+    background: var(--surface);
+    border-color: var(--border-hi);
+    color: var(--t1);
+}
+.del-btn--cancel:hover { background: var(--lift); color: var(--t0); }
+
+.del-btn--confirm {
+    background: linear-gradient(135deg, var(--coral), #E84040);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 3px 14px rgba(255,107,107,0.25);
+}
+.del-btn--confirm:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(255,107,107,0.35);
+}
+.del-btn--confirm:active { transform: scale(0.97); }
