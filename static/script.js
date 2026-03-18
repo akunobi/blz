@@ -1432,25 +1432,70 @@ document.addEventListener('DOMContentLoaded', () => {
     cur.id = 'custom-cursor';
     document.body.appendChild(cur);
 
-    let cx = -100, cy = -100;
+    // Determine cursor type by inspecting the element itself,
+    // NOT via getComputedStyle — that returns 'none' because we override it.
+    function getCursorType(el) {
+        if (!el) return 'default';
+
+        // Walk up the DOM tree to find the meaningful element
+        let node = el;
+        while (node && node !== document.body) {
+            const tag = node.tagName;
+
+            // Text inputs
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || node.isContentEditable) {
+                return 'text';
+            }
+
+            // Disabled
+            if (node.disabled || node.hasAttribute('disabled')) {
+                return 'not-allowed';
+            }
+
+            // Clickable
+            if (
+                tag === 'BUTTON' || tag === 'A' || tag === 'LABEL' ||
+                node.getAttribute('role') === 'button' ||
+                node.getAttribute('tabindex') !== null && node.getAttribute('tabindex') >= 0 ||
+                node.classList.contains('channel-item') ||
+                node.classList.contains('metrics-pill') ||
+                node.classList.contains('comp-btn') ||
+                node.classList.contains('emoji-btn') ||
+                node.classList.contains('ac-item') ||
+                node.classList.contains('stats-btn') ||
+                node.classList.contains('del-btn') ||
+                node.classList.contains('modal-submit') ||
+                node.classList.contains('brand-orb') ||
+                node.classList.contains('msg-action-btn') ||
+                node.classList.contains('modal-close') ||
+                node.classList.contains('stats-close') ||
+                node.classList.contains('mp-close') ||
+                node.classList.contains('composer-send') ||
+                node.classList.contains('settings-btn') ||
+                node.classList.contains('cursor-upload-btn') ||
+                node.classList.contains('cursor-reset-btn') ||
+                node.classList.contains('quality-btn') ||
+                node.classList.contains('settings-close')
+            ) {
+                return 'pointer';
+            }
+
+            node = node.parentElement;
+        }
+        return 'default';
+    }
 
     document.addEventListener('mousemove', (e) => {
-        cx = e.clientX;
-        cy = e.clientY;
-        cur.style.left = cx + 'px';
-        cur.style.top  = cy + 'px';
+        cur.style.left = e.clientX + 'px';
+        cur.style.top  = e.clientY + 'px';
 
-        // Read what the browser thinks the cursor should be for this element
-        const el = document.elementFromPoint(cx, cy);
-        const computed = el ? getComputedStyle(el).cursor : 'auto';
+        const el   = document.elementFromPoint(e.clientX, e.clientY);
+        const type = getCursorType(el);
 
         cur.classList.remove('is-pointer', 'is-text', 'is-notallowed');
-
-        if (computed === 'pointer')     cur.classList.add('is-pointer');
-        else if (computed === 'text' ||
-                 computed === 'vertical-text') cur.classList.add('is-text');
-        else if (computed === 'not-allowed' ||
-                 computed === 'no-drop')       cur.classList.add('is-notallowed');
+        if (type === 'pointer')     cur.classList.add('is-pointer');
+        else if (type === 'text')        cur.classList.add('is-text');
+        else if (type === 'not-allowed') cur.classList.add('is-notallowed');
     });
 
     document.addEventListener('mouseleave', () => { cur.style.opacity = '0'; });
@@ -1503,7 +1548,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }\n`;
         }
         if (cursors.text) {
-            css += `input, textarea, [contenteditable] {
+            // Use high-specificity selector to beat * { cursor: none !important }
+            css += `html body input, html body textarea, html body [contenteditable] {
                 cursor: url('${cursors.text}') 0 0, text !important;
             }\n`;
         }
@@ -1527,6 +1573,42 @@ document.addEventListener('DOMContentLoaded', () => {
         prev.innerHTML = dataUrl
             ? `<img src="${dataUrl}" alt="cursor">`
             : `<span class="cursor-upload-placeholder">${type === 'normal' ? '↖' : type === 'pointer' ? '☝' : 'I'}</span>`;
+    }
+
+    // ── Convert any image format to PNG via canvas ──
+    // Browsers render ICO/CUR poorly — normalizing to PNG fixes color + size
+    function normalizeImageToPng(file, size) {
+        return new Promise((resolve, reject) => {
+            const url = URL.createObjectURL(file);
+            const img = new Image();
+
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width  = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d');
+
+                // Draw image scaled to desired size, preserving aspect ratio centered
+                const scale = Math.min(size / img.naturalWidth, size / img.naturalHeight);
+                const w = img.naturalWidth  * scale;
+                const h = img.naturalHeight * scale;
+                const x = (size - w) / 2;
+                const y = (size - h) / 2;
+
+                ctx.clearRect(0, 0, size, size);
+                ctx.drawImage(img, x, y, w, h);
+
+                URL.revokeObjectURL(url);
+                resolve(canvas.toDataURL('image/png'));
+            };
+
+            img.onerror = () => {
+                URL.revokeObjectURL(url);
+                reject(new Error('Image load failed'));
+            };
+
+            img.src = url;
+        });
     }
 
     // ── Init on DOM ready ──
@@ -1560,18 +1642,22 @@ document.addEventListener('DOMContentLoaded', () => {
             input.addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    const dataUrl = ev.target.result;
+
+                // Convert any format (ICO, CUR, PNG, SVG) to PNG via canvas
+                // This ensures consistent color and size across all browsers
+                normalizeImageToPng(file, 64).then(pngDataUrl => {
                     const s = loadSettings();
                     s.cursors = s.cursors || {};
-                    s.cursors[type] = dataUrl;
+                    s.cursors[type] = pngDataUrl;
                     saveSettings(s);
                     applyCursors(s.cursors);
-                    updatePreview(type, dataUrl);
-                };
-                reader.readAsDataURL(file);
-                input.value = ''; // reset so same file can be re-uploaded
+                    updatePreview(type, pngDataUrl);
+                }).catch(err => {
+                    console.warn('Cursor conversion failed:', err);
+                    showToast('Could not read cursor file', 'error');
+                });
+
+                input.value = '';
             });
         });
 
