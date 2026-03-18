@@ -1071,7 +1071,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Do nothing here — close is handled by pointerdown outside or Escape
     });
 
-    window.addEventListener('scroll', hideAc, true);
+    // NOTE: scroll listener removed — was closing popup on chat feed auto-scroll
 
     // Close autocomplete on pointerdown outside the box and input
     // pointerdown fires BEFORE blur, so this is safe
