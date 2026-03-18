@@ -321,7 +321,7 @@ body {
     transform: translateY(-1px);
 }
 
-.metrics-pill-icon { font-size: 0.85rem; }
+.metrics-pill-icon { width: 14px; height: 14px; flex-shrink: 0; }
 
 /* ════════════════════════════════════
    CHANNEL TITLE BAR
@@ -1225,43 +1225,50 @@ body {
     background: var(--bg2);
     border: 1px solid var(--border-hi);
     border-top: 3px solid var(--amber);
-    border-radius: 14px;
-    min-width: 300px;
-    max-width: 380px;
-    max-height: 280px;
+    border-radius: 16px;
+    /* width set by JS to match composer */
+    min-width: 320px;
+    max-height: 360px;
     overflow-y: auto;
     display: none;
     flex-direction: column;
-    box-shadow: 0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04);
-    scrollbar-width: none;
-    padding: 6px;
+    box-shadow: 0 16px 50px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.05);
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-hi) transparent;
+    padding: 8px;
+    gap: 2px;
 }
-#ac-box::-webkit-scrollbar { display: none; }
+#ac-box::-webkit-scrollbar { width: 4px; }
+#ac-box::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 4px; }
 #ac-box.ac-open { display: flex; }
 
 .ac-item {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 9px 12px;
-    border-radius: 10px;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: 12px;
     cursor: pointer;
-    transition: background 120ms ease;
+    transition: background 100ms ease;
     min-width: 0;
+    user-select: none;
 }
 .ac-item:hover,
-.ac-item--active { background: var(--amber-dim); }
+.ac-item--active {
+    background: var(--amber-dim);
+    outline: 1px solid rgba(245,166,35,0.18);
+}
 
 /* User avatar */
 .ac-avatar {
-    width: 34px; height: 34px;
+    width: 38px; height: 38px;
     border-radius: 50%;
     background: var(--surface);
     border: 1px solid var(--border-hi);
     flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     font-family: var(--f-display);
-    font-size: 0.90rem;
+    font-size: 1.0rem;
     font-weight: 800;
     color: var(--teal);
     overflow: hidden;
@@ -1269,34 +1276,34 @@ body {
 .ac-avatar-img { width: 100%; height: 100%; object-fit: cover; }
 
 .ac-info {
-    display: flex; flex-direction: column; gap: 2px;
-    min-width: 0;
+    display: flex; flex-direction: column; gap: 3px;
+    min-width: 0; flex: 1;
 }
 .ac-name {
-    font-size: 0.84rem; font-weight: 700;
+    font-size: 0.92rem; font-weight: 700;
     color: var(--t0);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .ac-handle {
-    font-family: var(--f-mono); font-size: 0.68rem;
+    font-family: var(--f-mono); font-size: 0.72rem;
     color: var(--t2);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
 /* Role item */
 .ac-role-dot {
-    width: 11px; height: 11px;
+    width: 14px; height: 14px;
     border-radius: 50%; flex-shrink: 0;
 }
 .ac-role-name {
-    font-size: 0.84rem; font-weight: 700; flex: 1; min-width: 0;
+    font-size: 0.92rem; font-weight: 700; flex: 1; min-width: 0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .ac-role-tag {
-    font-family: var(--f-mono); font-size: 0.62rem;
+    font-family: var(--f-mono); font-size: 0.64rem;
     color: var(--t3); flex-shrink: 0;
     background: var(--surface); border-radius: 6px;
-    padding: 2px 6px; letter-spacing: 0.08em;
+    padding: 2px 8px; letter-spacing: 0.08em;
 }
 
 /* ════════════════════════════════════
@@ -1560,3 +1567,864 @@ body {
     box-shadow: 0 6px 20px rgba(255,107,107,0.35);
 }
 .del-btn--confirm:active { transform: scale(0.97); }
+
+/* ════════════════════════════════════
+   EXTRA DYNAMISM & ANIMATIONS
+   ════════════════════════════════════ */
+
+/* ── 1. Ambient particles on the bg orbs ── */
+.orb-1 { animation: orbFloat 14s ease-in-out infinite, orbScale 8s ease-in-out infinite; }
+.orb-2 { animation: orbFloat 18s ease-in-out infinite reverse, orbScale 11s ease-in-out infinite 2s; }
+.orb-3 { animation: orbFloat 22s ease-in-out infinite 4s, orbScale 7s ease-in-out infinite 1s; }
+
+@keyframes orbScale {
+    0%, 100% { transform: scale(1); }
+    50%       { transform: scale(1.18); }
+}
+
+/* ── 2. Topnav brand: amber shimmer on hover ── */
+.brand-orb::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 50%;
+    background: conic-gradient(
+        from 0deg,
+        transparent 0deg,
+        rgba(245,166,35,0.5) 60deg,
+        transparent 120deg
+    );
+    animation: orbSpin 3s linear infinite;
+    opacity: 0;
+    transition: opacity 300ms ease;
+}
+
+.topnav-brand:hover .brand-orb::after { opacity: 1; }
+
+@keyframes orbSpin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
+/* ── 3. Channel pill: slide-in stagger on load ── */
+.channel-item {
+    opacity: 0;
+    animation: pillIn 350ms ease forwards;
+}
+
+@keyframes pillIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* JS will set --i on each item via data-index for stagger */
+.channel-item:nth-child(1)  { animation-delay: 30ms; }
+.channel-item:nth-child(2)  { animation-delay: 60ms; }
+.channel-item:nth-child(3)  { animation-delay: 90ms; }
+.channel-item:nth-child(4)  { animation-delay: 120ms; }
+.channel-item:nth-child(5)  { animation-delay: 150ms; }
+.channel-item:nth-child(6)  { animation-delay: 180ms; }
+.channel-item:nth-child(7)  { animation-delay: 210ms; }
+.channel-item:nth-child(8)  { animation-delay: 240ms; }
+.channel-item:nth-child(n+9){ animation-delay: 270ms; }
+
+/* ── 4. Active channel: animated left bar glow ── */
+.channel-item.active {
+    position: relative;
+}
+.channel-item.active::after {
+    content: '';
+    position: absolute;
+    left: 0; top: 20%; bottom: 20%;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--amber);
+    box-shadow: 0 0 10px var(--amber-glow), 0 0 24px var(--amber-glow);
+    animation: activeBar 2s ease-in-out infinite;
+}
+@keyframes activeBar {
+    0%, 100% { opacity: 0.7; box-shadow: 0 0 8px var(--amber-glow); top: 20%; bottom: 20%; }
+    50%       { opacity: 1;   box-shadow: 0 0 20px var(--amber-glow), 0 0 40px rgba(245,166,35,0.15); top: 10%; bottom: 10%; }
+}
+
+/* ── 5. Channel bar: animated hash pulse ── */
+.channel-bar-hash {
+    animation: hashPulse 3s ease-in-out infinite;
+}
+@keyframes hashPulse {
+    0%, 100% { text-shadow: 0 0 8px var(--amber-glow); opacity: 0.8; }
+    50%       { text-shadow: 0 0 22px var(--amber-glow), 0 0 40px rgba(245,166,35,0.20); opacity: 1; }
+}
+
+/* ── 6. Message enter: better spring + blur clear ── */
+@keyframes cardIn {
+    0%   { opacity: 0; transform: translateY(10px) scale(0.97); filter: blur(3px); }
+    50%  { filter: blur(0); }
+    100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+@keyframes cardInRight {
+    0%   { opacity: 0; transform: translateY(10px) scale(0.97); filter: blur(3px); }
+    50%  { filter: blur(0); }
+    100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+
+/* ── 7. Message hover: glow on author name ── */
+.message:hover .msg-author {
+    text-shadow: 0 0 14px var(--amber-glow);
+    transition: text-shadow 200ms ease;
+}
+.message.msg-me:hover .msg-author {
+    text-shadow: 0 0 14px var(--teal-glow);
+}
+
+/* ── 8. Composer send button: continuous subtle pulse ── */
+.composer-send {
+    animation: sendIdle 4s ease-in-out infinite;
+}
+@keyframes sendIdle {
+    0%, 100% { box-shadow: 0 2px 12px var(--amber-glow); }
+    50%       { box-shadow: 0 4px 28px rgba(245,166,35,0.50), 0 0 0 4px rgba(245,166,35,0.06); }
+}
+
+/* ── 9. Composer: typing glow effect on the ring ── */
+.composer-inner {
+    transition: border-color 200ms, box-shadow 200ms, background 200ms;
+}
+.composer-inner:focus-within {
+    border-color: rgba(245,166,35,0.55);
+    box-shadow:
+        0 0 0 3px rgba(245,166,35,0.08),
+        0 0 0 1px rgba(245,166,35,0.20),
+        0 6px 30px rgba(0,0,0,0.40);
+    background: var(--lift);
+}
+
+/* ── 10. Right sidebar items: hover left slide ── */
+.rsidebar-list .channel-item {
+    transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+.rsidebar-list .channel-item:hover {
+    transform: translateX(3px);
+}
+.rsidebar-list .channel-item.active {
+    transform: translateX(3px);
+}
+
+/* ── 11. Metrics pill button: glow sweep ── */
+.metrics-pill {
+    overflow: hidden;
+}
+.metrics-pill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+    transform: translateX(-100%);
+    transition: none;
+}
+.metrics-pill:hover::after {
+    animation: pillSweep 500ms ease forwards;
+}
+@keyframes pillSweep {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(100%); }
+}
+
+/* ── 12. Modal card entrance: spring from below ── */
+.modal-card {
+    transition: opacity 280ms ease, transform 320ms cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+/* ── 13. Timer: color shift when session gets long ── */
+.uptime-val {
+    transition: color 1s ease;
+}
+
+/* ── 14. Feed empty state: orbit rings ── */
+.feed-empty-icon {
+    position: relative;
+}
+.feed-empty-icon::before,
+.feed-empty-icon::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    border: 1px solid rgba(245,166,35,0.15);
+    animation: emptyRing 3s ease-in-out infinite;
+}
+.feed-empty-icon::after {
+    inset: -16px;
+    border-color: rgba(38,201,184,0.10);
+    animation-delay: -1.5s;
+    animation-duration: 4s;
+}
+@keyframes emptyRing {
+    0%, 100% { transform: scale(1); opacity: 0.5; }
+    50%       { transform: scale(1.08); opacity: 1; }
+}
+
+/* ── 15. Stats modal: canvas glow on load ── */
+#stats-canvas {
+    transition: box-shadow 400ms ease;
+    border-radius: 12px;
+}
+.stats-overlay.active #stats-canvas {
+    box-shadow: 0 0 40px rgba(245,166,35,0.08), inset 0 0 20px rgba(0,0,0,0.3);
+}
+
+/* ── 16. Uptime dot: color cycle ── */
+.uptime-dot {
+    animation: dotPulse 2s ease-in-out infinite, dotColor 12s ease-in-out infinite;
+}
+@keyframes dotColor {
+    0%, 100% { background: var(--teal); box-shadow: 0 0 6px var(--teal-glow); }
+    33%       { background: var(--amber); box-shadow: 0 0 6px var(--amber-glow); }
+    66%       { background: var(--lav); box-shadow: 0 0 6px rgba(167,139,250,0.5); }
+}
+
+/* ── 17. Topnav bottom border: animated gradient sweep ── */
+.topnav::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        var(--amber) 20%,
+        var(--teal) 50%,
+        var(--lav) 80%,
+        transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: navBorder 6s ease-in-out infinite;
+    opacity: 0.5;
+}
+.topnav { position: relative; overflow: visible; }
+@keyframes navBorder {
+    0%   { background-position: 0% 0%; opacity: 0.3; }
+    50%  { background-position: 100% 0%; opacity: 0.7; }
+    100% { background-position: 0% 0%; opacity: 0.3; }
+}
+
+/* ── 18. Action buttons: pop on hover ── */
+.msg-action-btn {
+    transition: all 150ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.msg-action-btn:hover {
+    transform: scale(1.18) translateY(-1px);
+}
+
+/* ── 19. Delete modal: shake on confirm ── */
+.del-btn--confirm:active {
+    animation: shake 300ms ease;
+}
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20%       { transform: translateX(-4px); }
+    60%       { transform: translateX(4px); }
+}
+
+/* ── 20. Comp buttons: energy on hover ── */
+.comp-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+
+
+
+/* ════════════════════════════════════
+   CUSTOM CURSOR
+   ════════════════════════════════════ */
+
+/* Hide system cursor globally */
+* { cursor: none !important; }
+
+#custom-cursor {
+    position: fixed;
+    top: 0; left: 0;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--amber);
+    box-shadow: 0 0 10px var(--amber-glow);
+    pointer-events: none;
+    z-index: 999999;
+    transform: translate(-50%, -50%);
+    transition: width 150ms ease, height 150ms ease,
+                background 150ms ease, box-shadow 150ms ease,
+                border-radius 150ms ease;
+    mix-blend-mode: screen;
+}
+
+/* Pointer state — clickable */
+#custom-cursor.is-pointer {
+    width: 16px; height: 16px;
+    background: var(--teal);
+    box-shadow: 0 0 14px var(--teal-glow);
+}
+
+/* Text state — inputs */
+#custom-cursor.is-text {
+    width: 3px; height: 20px;
+    border-radius: 2px;
+    background: var(--amber);
+    box-shadow: 0 0 8px var(--amber-glow);
+}
+
+/* Not-allowed state */
+#custom-cursor.is-notallowed {
+    width: 14px; height: 14px;
+    background: var(--coral);
+    box-shadow: 0 0 12px rgba(255,107,107,0.5);
+}
+
+/* ════════════════════════════════════
+   SETTINGS BUTTON
+   ════════════════════════════════════ */
+.settings-btn {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1px solid var(--border-hi);
+    color: var(--t2);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: all 200ms ease;
+    flex-shrink: 0;
+}
+.settings-btn:hover {
+    color: var(--amber);
+    border-color: rgba(245,166,35,0.40);
+    background: var(--amber-dim);
+    transform: rotate(60deg);
+}
+.settings-btn svg { pointer-events: none; }
+
+/* ════════════════════════════════════
+   SETTINGS PANEL
+   ════════════════════════════════════ */
+.settings-overlay {
+    position: fixed; inset: 0;
+    z-index: 400;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+    pointer-events: none;
+}
+.settings-overlay.active { pointer-events: auto; }
+
+.settings-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(10,9,18,0.80);
+    backdrop-filter: blur(8px);
+    opacity: 0;
+    transition: opacity 240ms ease;
+}
+.settings-overlay.active .settings-backdrop { opacity: 1; }
+
+.settings-card {
+    position: relative; z-index: 1;
+    width: 480px; max-width: 96vw;
+    max-height: 90vh;
+    background: var(--bg2);
+    border: 1px solid var(--border-hi);
+    border-radius: 22px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    opacity: 0;
+    transform: scale(0.92) translateY(20px);
+    transition: opacity 260ms ease, transform 300ms cubic-bezier(0.34,1.4,0.64,1);
+    box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+}
+.settings-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--amber), var(--teal) 55%, var(--lav));
+    border-radius: 22px 22px 0 0;
+}
+.settings-overlay.active .settings-card {
+    opacity: 1; transform: scale(1) translateY(0);
+}
+
+.settings-hdr {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 22px 16px;
+    border-bottom: 1px solid var(--border);
+}
+.settings-title {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 1.0rem; font-weight: 800;
+    color: var(--t0); letter-spacing: 0.04em;
+}
+.settings-title svg { color: var(--amber); flex-shrink: 0; }
+.settings-close {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--t2); font-size: 0.70rem; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 160ms ease;
+}
+.settings-close:hover { background: var(--coral-dim); border-color: var(--coral); color: var(--coral); transform: rotate(90deg); }
+
+.settings-body {
+    overflow-y: auto; padding: 20px 22px;
+    display: flex; flex-direction: column; gap: 28px;
+}
+.settings-body::-webkit-scrollbar { width: 3px; }
+.settings-body::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 2px; }
+
+.settings-section { display: flex; flex-direction: column; gap: 10px; }
+.settings-section-label {
+    font-size: 0.78rem; font-weight: 700;
+    letter-spacing: 0.10em; text-transform: uppercase;
+    color: var(--t0);
+}
+.settings-section-sub {
+    font-size: 0.74rem; color: var(--t2);
+    margin-top: -4px; line-height: 1.4;
+}
+
+/* ── Quality options ── */
+.quality-options {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px; margin-top: 4px;
+}
+.quality-btn {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 4px; padding: 14px 10px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; cursor: pointer;
+    transition: all 180ms ease;
+}
+.quality-btn:hover { border-color: var(--border-hi); background: var(--lift); }
+.quality-btn.active {
+    border-color: rgba(245,166,35,0.50);
+    background: var(--amber-dim);
+    box-shadow: 0 0 14px rgba(245,166,35,0.08);
+}
+.quality-icon {
+    width: 20px; height: 20px;
+    flex-shrink: 0;
+    color: var(--t2);
+    transition: color 180ms ease;
+}
+.quality-btn.active .quality-icon { color: var(--amber); }
+.quality-btn[data-q="low"]    .quality-icon { color: var(--teal); }
+.quality-btn[data-q="medium"] .quality-icon { color: var(--lav); }
+.quality-btn[data-q="high"]   .quality-icon { color: var(--coral); }
+.quality-name {
+    font-size: 0.80rem; font-weight: 700;
+    color: var(--t0); letter-spacing: 0.05em;
+}
+.quality-btn.active .quality-name { color: var(--amber-hi); }
+.quality-desc { font-size: 0.66rem; color: var(--t2); text-align: center; }
+
+/* ── Cursor upload items ── */
+.cursor-uploads { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+
+.cursor-upload-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    transition: border-color 160ms ease;
+}
+.cursor-upload-item:hover { border-color: var(--border-hi); }
+
+.cursor-upload-preview {
+    width: 44px; height: 44px; border-radius: 10px;
+    background: var(--bg); border: 1px solid var(--border-hi);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; overflow: hidden;
+    color: var(--t2);
+}
+.cursor-upload-preview svg { width: 18px; height: 18px; }
+.cursor-upload-preview img {
+    width: 100%; height: 100%; object-fit: contain;
+    image-rendering: pixelated;
+}
+
+.cursor-upload-info {
+    flex: 1; display: flex; flex-direction: column; gap: 2px;
+}
+.cursor-upload-label {
+    font-size: 0.82rem; font-weight: 700; color: var(--t0);
+}
+.cursor-upload-hint {
+    font-size: 0.70rem; color: var(--t2);
+}
+
+.cursor-upload-btn {
+    padding: 7px 14px; border-radius: 10px;
+    background: var(--amber-dim); border: 1px solid rgba(245,166,35,0.30);
+    color: var(--amber-hi); font-family: var(--f-display);
+    font-size: 0.74rem; font-weight: 700; cursor: pointer;
+    transition: all 160ms ease; white-space: nowrap;
+    flex-shrink: 0;
+}
+.cursor-upload-btn:hover { background: rgba(245,166,35,0.20); border-color: var(--amber); }
+
+.cursor-reset-btn {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: transparent; border: 1px solid var(--border);
+    color: var(--t3); font-size: 0.65rem; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 150ms ease; flex-shrink: 0;
+}
+.cursor-reset-btn:hover { background: var(--coral-dim); border-color: var(--coral); color: var(--coral); }
+
+/* ── Quality CSS classes applied to <html> ── */
+
+/* LOW — remove purely decorative animations, keep all UI functional */
+html.q-low .orb                           { display: none !important; }
+html.q-low .topnav::after                 { display: none !important; }
+html.q-low .brand-orb::after              { display: none !important; }
+html.q-low .brand-orb                     { animation: none !important; }
+html.q-low .channel-bar-hash              { animation: none !important; }
+html.q-low .feed-empty-icon               { animation: none !important; }
+html.q-low .feed-empty-icon::before,
+html.q-low .feed-empty-icon::after        { display: none !important; }
+html.q-low .uptime-dot                    { animation: none !important; }
+html.q-low .composer-send                 { animation: none !important; }
+html.q-low .channel-item.active::after    { animation: none !important; }
+html.q-low .channel-item                  { animation: none !important; opacity: 1 !important; }
+html.q-low .message                       { animation: none !important; filter: none !important; }
+/* Only remove backdrop-filter from pure decorative overlays, NOT interactive elements */
+html.q-low .topnav,
+html.q-low .composer                      { backdrop-filter: none !important; }
+
+/* MEDIUM — keep animations, reduce blur intensity */
+html.q-medium .orb                        { filter: blur(55px) !important; }
+html.q-medium .topnav,
+html.q-medium .composer                   { backdrop-filter: blur(8px) !important; }
+
+/* HIGH = default — no overrides needed */
+
+/* ── SVG icon fixes ── */
+.del-modal-icon {
+    width: 52px; height: 52px;
+    border-radius: 50%;
+    background: var(--coral-dim);
+    border: 1px solid rgba(255,107,107,0.20);
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 2px;
+}
+.del-modal-icon svg { width: 24px; height: 24px; }
+
+.msg-action-btn svg { pointer-events: none; }
+
+/* Quality btn icon color when active */
+.quality-btn.active[data-q="low"]    .quality-icon { color: var(--teal); }
+.quality-btn.active[data-q="medium"] .quality-icon { color: var(--lav); }
+.quality-btn.active[data-q="high"]   .quality-icon { color: var(--coral); }
+
+/* ════════════════════════════════════════════════════════
+   RESPONSIVE — Mobile / Tablet / Small Screen
+   Breakpoints:
+     ≤ 600px  → Mobile phones (portrait & landscape)
+     ≤ 900px  → Tablets / iPad (portrait)
+     ≤ 1100px → iPad landscape / small laptops
+   ════════════════════════════════════════════════════════ */
+
+/* ── Shared tablet + mobile ── */
+@media (max-width: 900px) {
+
+    /* Disable mouse-only cursor system on touch devices */
+    * { cursor: auto !important; }
+    #custom-cursor { display: none !important; }
+
+    /* Nav: tighter */
+    .topnav {
+        padding: 8px 14px;
+        gap: 8px;
+        height: auto;
+        min-height: 54px;
+    }
+
+    .topnav-brand { gap: 8px; padding-right: 10px; }
+    .brand-name   { font-size: 0.85rem; }
+    .brand-orb    { width: 30px; height: 30px; }
+    .brand-orb-kanji { font-size: 0.80rem; }
+
+    /* Channel bar: simpler */
+    .channel-bar { padding: 7px 14px; }
+    .channel-bar-sub { display: none; }
+
+    /* Right sidebar: hidden — channels accessed via bottom sheet */
+    .right-sidebar { display: none; }
+
+    /* Body row: full width */
+    .body-row { flex-direction: column; }
+    .chat-col  { flex: 1; min-height: 0; }
+
+    /* Messages: full width */
+    .message { max-width: 92%; padding: 10px 12px 8px; }
+    .message.msg-me { margin-left: auto; }
+
+    /* Composer: full width, taller touch target */
+    .composer { padding: 10px 12px 12px; }
+    .composer-inner { border-radius: 20px; padding: 4px 4px 4px 16px; }
+    .composer-send  { width: 44px; height: 44px; }
+    .composer-input { font-size: 1rem; padding: 8px 0; }
+
+    /* Modals: full-width bottom sheets */
+    .modal-overlay { align-items: flex-end; padding: 0; }
+    .modal-card {
+        width: 100%;
+        max-width: 100%;
+        border-radius: 22px 22px 0 0;
+        max-height: 92vh;
+        transform: scale(1) translateY(100%);
+    }
+    .modal-card::before { border-radius: 22px 22px 0 0; }
+    .modal-overlay.active .modal-card { transform: translateY(0); }
+    .modal-body { grid-template-columns: 1fr; gap: 12px; padding: 16px 18px; }
+    .modal-hdr  { padding: 18px 18px 14px; }
+
+    /* Stats modal: full-width */
+    .stats-overlay { align-items: flex-end; padding: 0; }
+    .stats-card {
+        width: 100%; max-width: 100%;
+        border-radius: 22px 22px 0 0;
+    }
+    .stats-card::before { border-radius: 22px 22px 0 0; }
+
+    /* Settings: full-width bottom sheet */
+    .settings-overlay { align-items: flex-end; padding: 0; }
+    .settings-card {
+        width: 100%; max-width: 100%;
+        border-radius: 22px 22px 0 0;
+        max-height: 90vh;
+        transform: scale(1) translateY(100%);
+    }
+    .settings-card::before { border-radius: 22px 22px 0 0; }
+    .settings-overlay.active .settings-card { transform: translateY(0); }
+    .settings-body { padding: 16px 18px; }
+    .quality-options { grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+
+    /* Uptime chip: hide label, keep dot+time */
+    .uptime-chip { padding: 4px 8px; }
+
+    /* Metrics pill: icon only on small */
+    .metrics-pill span:last-child { display: none; }
+    .metrics-pill { padding: 8px; border-radius: 50%; width: 34px; height: 34px; justify-content: center; }
+    .metrics-pill-icon { margin: 0; }
+
+    /* AC box: full width bottom */
+    #ac-box {
+        min-width: 0;
+        width: calc(100vw - 24px) !important;
+        left: 12px !important;
+        bottom: 74px !important;
+        max-height: 220px;
+    }
+
+    /* Emoji picker: wider */
+    #emoji-picker { width: calc(100vw - 24px); left: 12px !important; }
+}
+
+/* ── Phone portrait ── */
+@media (max-width: 600px) {
+
+    /* Nav: brand + actions only, no channel pills visible */
+    .topnav { padding: 8px 12px; }
+    .brand-name { display: none; }   /* Save space — orb alone identifies app */
+    .brand-orb  { width: 34px; height: 34px; }
+
+    /* Channel bar: show a channel drawer button instead */
+    .channel-bar { padding: 6px 12px; }
+    .channel-bar-name { font-size: 0.82rem; }
+
+    /* Feed padding */
+    .feed { padding: 10px 10px 4px; }
+
+    /* Messages: nearly full width */
+    .message { max-width: 96%; padding: 9px 11px 7px; }
+    .msg-author { font-size: 0.72rem; }
+    .msg-content { font-size: 0.90rem; line-height: 1.6; }
+    .msg-time { font-size: 0.56rem; }
+
+    /* Composer */
+    .composer { padding: 8px 10px 10px; }
+    .composer-send { width: 42px; height: 42px; }
+
+    /* Settings quality: stack to 2 cols */
+    .quality-options { grid-template-columns: 1fr 1fr; }
+    .quality-btn[data-q="high"] { grid-column: 1 / -1; }
+
+    /* Delete confirm modal: tighter */
+    .del-modal-card { padding: 22px 18px 18px; max-width: 100%; border-radius: 22px 22px 0 0; }
+    #delete-modal { align-items: flex-end; }
+    #delete-modal .del-modal-backdrop { border-radius: 0; }
+
+    /* Toast: bottom center, full width */
+    .blz-toast { width: calc(100vw - 32px); text-align: center; bottom: 90px; font-size: 0.80rem; }
+
+    /* Action buttons: slightly bigger touch target */
+    .msg-action-btn { width: 30px; height: 28px; }
+
+    /* Uptime: hide on tiny screens */
+    .uptime-chip { display: none; }
+
+    /* Settings close spin */
+    .settings-close:hover { transform: rotate(90deg); }
+}
+
+/* ── iPad landscape / small laptop ── */
+@media (min-width: 901px) and (max-width: 1100px) {
+
+    .right-sidebar { width: 190px; }
+    .ch-name { font-size: 0.72rem; }
+    .channel-item::before { min-width: 36px; font-size: 0.72rem; }
+
+    .topnav { padding: 8px 18px; }
+    .brand-name { font-size: 0.90rem; }
+
+    .message { max-width: 82%; }
+
+    /* Modals slightly narrower */
+    .modal-card { width: 680px; }
+    .settings-card { width: 440px; }
+}
+
+/* ── Touch device: increase all tap targets ── */
+@media (hover: none) and (pointer: coarse) {
+    * { cursor: auto !important; }
+    #custom-cursor { display: none !important; }
+
+    .channel-item  { height: 48px; }
+    .msg-action-btn { width: 32px; height: 30px; }
+    .emoji-btn     { width: 40px; height: 40px; font-size: 1.3rem; }
+    .quality-btn   { padding: 16px 10px; }
+    .del-btn       { padding: 14px; }
+    .composer-send { width: 48px; height: 48px; }
+    .stats-btn     { padding: 16px; }
+    .mg-field input { padding: 10px 12px; font-size: 1rem; }
+    .cursor-upload-btn { padding: 10px 16px; }
+    .cursor-reset-btn  { width: 32px; height: 32px; }
+
+    /* Disable hover-only animations on touch */
+    .message:hover { background: transparent; }
+    .channel-item:hover .ch-name { color: var(--t2); }
+    .channel-item.active .ch-name { color: var(--amber-hi); }
+
+    /* Show action buttons always on touch (no hover) */
+    .msg-actions {
+        opacity: 0.75 !important;
+        pointer-events: auto !important;
+    }
+
+    /* Composer taller */
+    .composer-inner { min-height: 48px; }
+    .composer-input { font-size: 1rem; padding: 10px 0; }
+}
+
+/* ── Mobile channel drawer ── */
+/* A bottom-sheet channel list triggered by tapping channel name */
+.channel-drawer {
+    position: fixed;
+    inset: 0;
+    z-index: 350;
+    pointer-events: none;
+}
+.channel-drawer.open { pointer-events: auto; }
+
+.channel-drawer-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(10,9,18,0.75);
+    backdrop-filter: blur(6px);
+    opacity: 0;
+    transition: opacity 250ms ease;
+}
+.channel-drawer.open .channel-drawer-backdrop { opacity: 1; }
+
+.channel-drawer-sheet {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: var(--bg2);
+    border-radius: 22px 22px 0 0;
+    border-top: 3px solid var(--amber);
+    padding-bottom: env(safe-area-inset-bottom, 12px);
+    transform: translateY(100%);
+    transition: transform 300ms cubic-bezier(0.34, 1.3, 0.64, 1);
+    max-height: 75vh;
+    display: flex;
+    flex-direction: column;
+}
+.channel-drawer.open .channel-drawer-sheet { transform: translateY(0); }
+
+.channel-drawer-handle {
+    width: 36px; height: 4px;
+    border-radius: 2px;
+    background: var(--border-hi);
+    margin: 12px auto 0;
+    flex-shrink: 0;
+}
+
+.channel-drawer-title {
+    padding: 12px 20px 10px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--t2);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.channel-drawer-list {
+    overflow-y: auto;
+    flex: 1;
+    padding: 8px 0 16px;
+}
+.channel-drawer-list::-webkit-scrollbar { display: none; }
+
+/* Channel items inside drawer */
+.channel-drawer-list .channel-item {
+    height: 52px;
+    border-radius: 0;
+    border-left: 3px solid transparent;
+    padding: 0;
+    animation: none !important;
+    opacity: 1 !important;
+}
+.channel-drawer-list .channel-item::before { min-width: 52px; font-size: 0.85rem; }
+.channel-drawer-list .ch-name { font-size: 0.88rem; }
+.channel-drawer-list .channel-item.active {
+    border-left-color: var(--amber);
+    background: var(--amber-dim);
+}
+
+/* ── Channel bar name button (tap to open drawer on mobile) ── */
+.channel-bar-name--btn {
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
+@media (max-width: 900px) {
+    .channel-bar-name--btn::after {
+        content: '';
+        display: inline-block;
+        width: 0; height: 0;
+        border-left: 4px solid transparent;
+        border-right: 4px solid transparent;
+        border-top: 5px solid var(--amber);
+        opacity: 0.7;
+        margin-left: 2px;
+    }
+}
+
+@media (min-width: 901px) {
+    .channel-bar-name--btn { pointer-events: none; }
+    .channel-bar-name--btn::after { display: none; }
+}

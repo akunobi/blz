@@ -95,6 +95,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
             const secs = (seconds % 60).toString().padStart(2, '0');
             chatUptime.innerText = `${mins}:${secs}`;
+            // Color shift: green → amber → coral based on session length
+            if (seconds < 300)       chatUptime.style.color = 'var(--teal)';
+            else if (seconds < 900)  chatUptime.style.color = 'var(--amber)';
+            else                     chatUptime.style.color = 'var(--coral)';
         }, 1000);
     }
 
@@ -227,6 +231,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         decorateMessage(message);
                         chatFeed.appendChild(message);
                         chatFeed.scrollTop = chatFeed.scrollHeight;
+                        // Subtle flash on the new message
+                        requestAnimationFrame(() => {
+                            message.style.setProperty('--flash', '1');
+                            setTimeout(() => message.style.removeProperty('--flash'), 600);
+                        });
 
                         if (msg.message_id) { const prev = lastMessageId[currentChannelId] || '0'; lastMessageId[currentChannelId] = BigInt(String(msg.message_id)) > BigInt(prev) ? String(msg.message_id) : prev; }
                     });
@@ -690,7 +699,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } else {
                 const j = await r.json();
-                if (reactBtn) reactBtn.textContent = '😊';
+                if (reactBtn) reactBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>';
                 showToast(j.error || 'Error al reaccionar', 'error');
             }
         } catch(e) {
@@ -776,7 +785,11 @@ document.addEventListener('DOMContentLoaded', () => {
             _deleteModal.innerHTML = `
                 <div class="del-modal-backdrop"></div>
                 <div class="del-modal-card">
-                    <div class="del-modal-icon">🗑️</div>
+                    <div class="del-modal-icon">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--coral)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                    </svg>
+                </div>
                     <div class="del-modal-title">Borrar mensaje</div>
                     <div class="del-modal-body">Esta acción es permanente y no se puede deshacer.</div>
                     <div class="del-modal-actions">
@@ -816,7 +829,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const reactBtn = document.createElement('button');
         reactBtn.className = 'msg-action-btn';
         reactBtn.title     = 'Reaccionar';
-        reactBtn.innerHTML = '😊';
+        reactBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>';
         reactBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             openEmojiPicker(msgEl.dataset.msgId, currentChannelId, reactBtn);
@@ -827,14 +840,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const editBtn = document.createElement('button');
             editBtn.className = 'msg-action-btn';
             editBtn.title     = 'Editar';
-            editBtn.innerHTML = '✏️';
+            editBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
             editBtn.addEventListener('click', (e) => { e.stopPropagation(); openEdit(msgEl); });
             actions.appendChild(editBtn);
 
             const delBtn = document.createElement('button');
             delBtn.className = 'msg-action-btn del';
             delBtn.title     = 'Borrar';
-            delBtn.innerHTML = '🗑️';
+            delBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
             delBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 showDeleteConfirm(msgEl.dataset.msgId, currentChannelId, msgEl);
@@ -881,6 +894,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (acBox) return acBox;
         acBox = document.createElement('div');
         acBox.id = 'ac-box';
+        acBox.setAttribute('role', 'listbox');
+        // Prevent ANY mousedown inside the box from stealing focus from input
+        acBox.addEventListener('mousedown', (e) => e.preventDefault());
         document.body.appendChild(acBox);
         return acBox;
     }
@@ -946,16 +962,27 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             el.addEventListener('mouseenter', () => setAcIdx(i));
-            el.addEventListener('mousedown', (e) => { e.preventDefault(); applyAc(i); });
+            // Use both mousedown (prevents focus steal) AND click (reliable selection)
+            el.addEventListener('mousedown', (e) => {
+                e.preventDefault();  // MUST be first — stops blur before it fires
+                e.stopPropagation();
+            });
+            el.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                applyAc(i);
+            });
             box.appendChild(el);
         });
 
         box.classList.add('ac-open');
 
-        // Position above the composer input
+        // Position above the composer — full width of composer
         const inputRect = msgInput.getBoundingClientRect();
-        box.style.bottom  = (window.innerHeight - inputRect.top + 8) + 'px';
-        box.style.left    = (inputRect.left + 60) + 'px';
+        const boxW = Math.min(460, inputRect.width - 20);
+        box.style.width   = boxW + 'px';
+        box.style.bottom  = (window.innerHeight - inputRect.top + 10) + 'px';
+        box.style.left    = inputRect.left + 'px';
         box.style.top     = 'auto';
     }
 
@@ -1052,12 +1079,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Blur: only hide if focus went somewhere unrelated
     msgInput.addEventListener('blur', () => {
-        // Delay so mousedown on ac item fires first
-        setTimeout(hideAc, 150);
+        // Do nothing here — close is handled by pointerdown outside or Escape
     });
 
-    window.addEventListener('scroll', hideAc, true);
+    // NOTE: scroll listener removed — was closing popup on chat feed auto-scroll
+
+    // Close autocomplete on pointerdown outside the box and input
+    // pointerdown fires BEFORE blur, so this is safe
+    document.addEventListener('pointerdown', (e) => {
+        if (!acBox || !acBox.classList.contains('ac-open')) return;
+        if (acBox.contains(e.target)) return;   // inside box: mousedown preventDefault handles it
+        if (msgInput.contains(e.target)) return; // inside input: keep open
+        hideAc();                                 // clicked truly outside: close
+    });
 
     window.sendMessage = async () => {
         const content = msgInput.value.trim();
@@ -1387,3 +1423,329 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
+/* ════════════════════════════════════
+   CUSTOM CURSOR — follows system cursor state
+   ════════════════════════════════════ */
+(function () {
+    const cur = document.createElement('div');
+    cur.id = 'custom-cursor';
+    document.body.appendChild(cur);
+
+    // Determine cursor type by inspecting the element itself,
+    // NOT via getComputedStyle — that returns 'none' because we override it.
+    function getCursorType(el) {
+        if (!el) return 'default';
+
+        // Walk up the DOM tree to find the meaningful element
+        let node = el;
+        while (node && node !== document.body) {
+            const tag = node.tagName;
+
+            // Text inputs
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || node.isContentEditable) {
+                return 'text';
+            }
+
+            // Disabled
+            if (node.disabled || node.hasAttribute('disabled')) {
+                return 'not-allowed';
+            }
+
+            // Clickable
+            if (
+                tag === 'BUTTON' || tag === 'A' || tag === 'LABEL' ||
+                node.getAttribute('role') === 'button' ||
+                node.getAttribute('tabindex') !== null && node.getAttribute('tabindex') >= 0 ||
+                node.classList.contains('channel-item') ||
+                node.classList.contains('metrics-pill') ||
+                node.classList.contains('comp-btn') ||
+                node.classList.contains('emoji-btn') ||
+                node.classList.contains('ac-item') ||
+                node.classList.contains('stats-btn') ||
+                node.classList.contains('del-btn') ||
+                node.classList.contains('modal-submit') ||
+                node.classList.contains('brand-orb') ||
+                node.classList.contains('msg-action-btn') ||
+                node.classList.contains('modal-close') ||
+                node.classList.contains('stats-close') ||
+                node.classList.contains('mp-close') ||
+                node.classList.contains('composer-send') ||
+                node.classList.contains('settings-btn') ||
+                node.classList.contains('cursor-upload-btn') ||
+                node.classList.contains('cursor-reset-btn') ||
+                node.classList.contains('quality-btn') ||
+                node.classList.contains('settings-close')
+            ) {
+                return 'pointer';
+            }
+
+            node = node.parentElement;
+        }
+        return 'default';
+    }
+
+    document.addEventListener('mousemove', (e) => {
+        cur.style.left = e.clientX + 'px';
+        cur.style.top  = e.clientY + 'px';
+
+        const el   = document.elementFromPoint(e.clientX, e.clientY);
+        const type = getCursorType(el);
+
+        cur.classList.remove('is-pointer', 'is-text', 'is-notallowed');
+        if (type === 'pointer')     cur.classList.add('is-pointer');
+        else if (type === 'text')        cur.classList.add('is-text');
+        else if (type === 'not-allowed') cur.classList.add('is-notallowed');
+    });
+
+    document.addEventListener('mouseleave', () => { cur.style.opacity = '0'; });
+    document.addEventListener('mouseenter', () => { cur.style.opacity = '1'; });
+})();
+
+/* ════════════════════════════════════
+   SETTINGS PANEL — quality + cursors
+   ════════════════════════════════════ */
+(function () {
+
+    const STORAGE_KEY = 'blzt_settings';
+
+    // ── Load saved settings ──
+    function loadSettings() {
+        try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
+        catch(e) { return {}; }
+    }
+    function saveSettings(data) {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+        catch(e) {}
+    }
+
+    // ── Apply quality ──
+    function applyQuality(q) {
+        document.documentElement.classList.remove('q-low', 'q-medium', 'q-high');
+        document.documentElement.classList.add('q-' + q);
+        document.querySelectorAll('.quality-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.q === q);
+        });
+    }
+
+    // ── Apply cursor from dataURL ──
+    const CURSOR_TYPES = { normal: 'default', pointer: 'pointer', text: 'text' };
+
+    function applyCursors(cursors) {
+        // Build a <style> block with the custom cursors
+        let css = '';
+        if (cursors.normal) {
+            css += `* { cursor: url('${cursors.normal}') 0 0, auto !important; }\n`;
+        }
+        if (cursors.pointer) {
+            css += `button:not([disabled]), a, label, [role="button"],
+                .channel-item, .metrics-pill, .comp-btn:not([disabled]),
+                .emoji-btn, .ac-item, .stats-btn, .del-btn, .del-btn--cancel,
+                .del-btn--confirm, .modal-submit, .brand-orb, .msg-action-btn,
+                .modal-close, .stats-close, .mp-close, .composer-send,
+                .settings-btn, .cursor-upload-btn, .cursor-reset-btn, .quality-btn {
+                    cursor: url('${cursors.pointer}') 0 0, pointer !important;
+                }\n`;
+        }
+        if (cursors.text) {
+            // Use high-specificity selector to beat * { cursor: none !important }
+            css += `html body input, html body textarea, html body [contenteditable] {
+                cursor: url('${cursors.text}') 0 0, text !important;
+            }\n`;
+        }
+        if (cursors.pointer || cursors.normal) {
+            // Update the #custom-cursor dot to be invisible when custom images are set
+            css += `#custom-cursor { display: none !important; }\n`;
+        }
+
+        let styleEl = document.getElementById('blzt-cursor-style');
+        if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = 'blzt-cursor-style';
+            document.head.appendChild(styleEl);
+        }
+        styleEl.textContent = css;
+    }
+
+    function updatePreview(type, dataUrl) {
+        const prev = document.getElementById('prev-' + type);
+        if (!prev) return;
+        prev.innerHTML = dataUrl
+            ? `<img src="${dataUrl}" alt="cursor">`
+            : `<span class="cursor-upload-placeholder">${type === 'normal' ? '↖' : type === 'pointer' ? '☝' : 'I'}</span>`;
+    }
+
+    // ── Convert any image format to PNG via canvas ──
+    // Browsers render ICO/CUR poorly — normalizing to PNG fixes color + size
+    function normalizeImageToPng(file, size) {
+        return new Promise((resolve, reject) => {
+            const url = URL.createObjectURL(file);
+            const img = new Image();
+
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width  = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d');
+
+                // Draw image scaled to desired size, preserving aspect ratio centered
+                const scale = Math.min(size / img.naturalWidth, size / img.naturalHeight);
+                const w = img.naturalWidth  * scale;
+                const h = img.naturalHeight * scale;
+                const x = (size - w) / 2;
+                const y = (size - h) / 2;
+
+                ctx.clearRect(0, 0, size, size);
+                ctx.drawImage(img, x, y, w, h);
+
+                URL.revokeObjectURL(url);
+                resolve(canvas.toDataURL('image/png'));
+            };
+
+            img.onerror = () => {
+                URL.revokeObjectURL(url);
+                reject(new Error('Image load failed'));
+            };
+
+            img.src = url;
+        });
+    }
+
+    // ── Init on DOM ready ──
+    function init() {
+        const s = loadSettings();
+
+        // Apply quality (default: high)
+        applyQuality(s.quality || 'high');
+
+        // Apply saved cursors
+        if (s.cursors && Object.keys(s.cursors).length) {
+            applyCursors(s.cursors);
+            Object.entries(s.cursors).forEach(([type, url]) => updatePreview(type, url));
+        }
+
+        // Quality buttons
+        document.querySelectorAll('.quality-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const q = btn.dataset.q;
+                applyQuality(q);
+                const s = loadSettings();
+                s.quality = q;
+                saveSettings(s);
+            });
+        });
+
+        // Cursor file inputs
+        ['normal', 'pointer', 'text'].forEach(type => {
+            const input = document.getElementById('cursor-' + type);
+            if (!input) return;
+            input.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                // Convert any format (ICO, CUR, PNG, SVG) to PNG via canvas
+                // This ensures consistent color and size across all browsers
+                normalizeImageToPng(file, 64).then(pngDataUrl => {
+                    const s = loadSettings();
+                    s.cursors = s.cursors || {};
+                    s.cursors[type] = pngDataUrl;
+                    saveSettings(s);
+                    applyCursors(s.cursors);
+                    updatePreview(type, pngDataUrl);
+                }).catch(err => {
+                    console.warn('Cursor conversion failed:', err);
+                    showToast('Could not read cursor file', 'error');
+                });
+
+                input.value = '';
+            });
+        });
+
+        // Reset buttons
+        document.querySelectorAll('.cursor-reset-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const type = btn.dataset.type;
+                const s = loadSettings();
+                s.cursors = s.cursors || {};
+                delete s.cursors[type];
+                saveSettings(s);
+                applyCursors(s.cursors);
+                updatePreview(type, null);
+            });
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    // Toggle function
+    window.toggleSettings = function() {
+        document.getElementById('settings-panel').classList.toggle('active');
+    };
+
+    // Close on Escape
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            document.getElementById('settings-panel')?.classList.remove('active');
+        }
+    });
+
+})();
+
+/* ════════════════════════════════════
+   MOBILE CHANNEL DRAWER
+   ════════════════════════════════════ */
+(function () {
+    const drawer     = document.getElementById('channel-drawer');
+    const drawerList = document.getElementById('channel-drawer-list');
+    if (!drawer || !drawerList) return;
+
+    window.toggleChannelDrawer = function () {
+        drawer.classList.toggle('open');
+    };
+
+    // Sync drawer list whenever the main channel list changes
+    const mainList = document.getElementById('channel-list');
+    if (!mainList) return;
+
+    // Use MutationObserver to keep drawer in sync with main list
+    const obs = new MutationObserver(() => syncDrawer());
+    obs.observe(mainList, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+
+    function syncDrawer() {
+        drawerList.innerHTML = '';
+        const items = mainList.querySelectorAll('.channel-item');
+        items.forEach(item => {
+            const clone = item.cloneNode(true);
+            // Remove animation delays from cloned items
+            clone.style.animationDelay = '0ms';
+            clone.style.animation = 'none';
+            clone.style.opacity = '1';
+
+            // Remap click: close drawer then trigger original item click
+            clone.addEventListener('click', () => {
+                drawer.classList.remove('open');
+                item.click();
+            });
+            drawerList.appendChild(clone);
+        });
+    }
+
+    // Close on swipe down
+    let startY = 0;
+    const sheet = drawer.querySelector('.channel-drawer-sheet');
+    sheet.addEventListener('touchstart', e => { startY = e.touches[0].clientY; }, { passive: true });
+    sheet.addEventListener('touchend', e => {
+        if (e.changedTouches[0].clientY - startY > 60) {
+            drawer.classList.remove('open');
+        }
+    }, { passive: true });
+
+    // Close on Escape
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') drawer.classList.remove('open');
+    });
+})();
