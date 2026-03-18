@@ -95,6 +95,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
             const secs = (seconds % 60).toString().padStart(2, '0');
             chatUptime.innerText = `${mins}:${secs}`;
+            // Color shift: green → amber → coral based on session length
+            if (seconds < 300)       chatUptime.style.color = 'var(--teal)';
+            else if (seconds < 900)  chatUptime.style.color = 'var(--amber)';
+            else                     chatUptime.style.color = 'var(--coral)';
         }, 1000);
     }
 
@@ -227,6 +231,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         decorateMessage(message);
                         chatFeed.appendChild(message);
                         chatFeed.scrollTop = chatFeed.scrollHeight;
+                        // Subtle flash on the new message
+                        requestAnimationFrame(() => {
+                            message.style.setProperty('--flash', '1');
+                            setTimeout(() => message.style.removeProperty('--flash'), 600);
+                        });
 
                         if (msg.message_id) { const prev = lastMessageId[currentChannelId] || '0'; lastMessageId[currentChannelId] = BigInt(String(msg.message_id)) > BigInt(prev) ? String(msg.message_id) : prev; }
                     });
