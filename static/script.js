@@ -881,7 +881,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (acBox) return acBox;
         acBox = document.createElement('div');
         acBox.id = 'ac-box';
-        // CRITICAL: prevent focus from leaving the input when clicking inside popup
+        acBox.setAttribute('role', 'listbox');
+        // Prevent ANY mousedown inside the box from stealing focus from input
         acBox.addEventListener('mousedown', (e) => e.preventDefault());
         document.body.appendChild(acBox);
         return acBox;
@@ -948,7 +949,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             el.addEventListener('mouseenter', () => setAcIdx(i));
-            el.addEventListener('mousedown', (e) => { e.preventDefault(); applyAc(i); });
+            // Use both mousedown (prevents focus steal) AND click (reliable selection)
+            el.addEventListener('mousedown', (e) => {
+                e.preventDefault();  // MUST be first — stops blur before it fires
+                e.stopPropagation();
+            });
+            el.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                applyAc(i);
+            });
             box.appendChild(el);
         });
 
@@ -1056,22 +1066,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Never close on blur — only close on: Escape, click outside, or successful selection
-    // (blur fires before mousedown/click on the popup, so it would always close too early)
+    // Blur: only hide if focus went somewhere unrelated
     msgInput.addEventListener('blur', () => {
-        // Do nothing — hideAc is called explicitly where needed
+        // Do nothing here — close is handled by pointerdown outside or Escape
     });
 
     window.addEventListener('scroll', hideAc, true);
 
-    // Close autocomplete when focus moves away from both input and ac-box
-    document.addEventListener('focusout', (e) => {
+    // Close autocomplete on pointerdown outside the box and input
+    // pointerdown fires BEFORE blur, so this is safe
+    document.addEventListener('pointerdown', (e) => {
         if (!acBox || !acBox.classList.contains('ac-open')) return;
-        // relatedTarget = element receiving focus next
-        const next = e.relatedTarget;
-        if (!next) { hideAc(); return; }
-        if (next === msgInput || acBox.contains(next)) return;
-        hideAc();
+        if (acBox.contains(e.target)) return;   // inside box: mousedown preventDefault handles it
+        if (msgInput.contains(e.target)) return; // inside input: keep open
+        hideAc();                                 // clicked truly outside: close
     });
 
     window.sendMessage = async () => {
