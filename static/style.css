@@ -1225,43 +1225,50 @@ body {
     background: var(--bg2);
     border: 1px solid var(--border-hi);
     border-top: 3px solid var(--amber);
-    border-radius: 14px;
-    min-width: 300px;
-    max-width: 380px;
-    max-height: 280px;
+    border-radius: 16px;
+    /* width set by JS to match composer */
+    min-width: 320px;
+    max-height: 360px;
     overflow-y: auto;
     display: none;
     flex-direction: column;
-    box-shadow: 0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04);
-    scrollbar-width: none;
-    padding: 6px;
+    box-shadow: 0 16px 50px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.05);
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-hi) transparent;
+    padding: 8px;
+    gap: 2px;
 }
-#ac-box::-webkit-scrollbar { display: none; }
+#ac-box::-webkit-scrollbar { width: 4px; }
+#ac-box::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 4px; }
 #ac-box.ac-open { display: flex; }
 
 .ac-item {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 9px 12px;
-    border-radius: 10px;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: 12px;
     cursor: pointer;
-    transition: background 120ms ease;
+    transition: background 100ms ease;
     min-width: 0;
+    user-select: none;
 }
 .ac-item:hover,
-.ac-item--active { background: var(--amber-dim); }
+.ac-item--active {
+    background: var(--amber-dim);
+    outline: 1px solid rgba(245,166,35,0.18);
+}
 
 /* User avatar */
 .ac-avatar {
-    width: 34px; height: 34px;
+    width: 38px; height: 38px;
     border-radius: 50%;
     background: var(--surface);
     border: 1px solid var(--border-hi);
     flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     font-family: var(--f-display);
-    font-size: 0.90rem;
+    font-size: 1.0rem;
     font-weight: 800;
     color: var(--teal);
     overflow: hidden;
@@ -1269,34 +1276,34 @@ body {
 .ac-avatar-img { width: 100%; height: 100%; object-fit: cover; }
 
 .ac-info {
-    display: flex; flex-direction: column; gap: 2px;
-    min-width: 0;
+    display: flex; flex-direction: column; gap: 3px;
+    min-width: 0; flex: 1;
 }
 .ac-name {
-    font-size: 0.84rem; font-weight: 700;
+    font-size: 0.92rem; font-weight: 700;
     color: var(--t0);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .ac-handle {
-    font-family: var(--f-mono); font-size: 0.68rem;
+    font-family: var(--f-mono); font-size: 0.72rem;
     color: var(--t2);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
 /* Role item */
 .ac-role-dot {
-    width: 11px; height: 11px;
+    width: 14px; height: 14px;
     border-radius: 50%; flex-shrink: 0;
 }
 .ac-role-name {
-    font-size: 0.84rem; font-weight: 700; flex: 1; min-width: 0;
+    font-size: 0.92rem; font-weight: 700; flex: 1; min-width: 0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .ac-role-tag {
-    font-family: var(--f-mono); font-size: 0.62rem;
+    font-family: var(--f-mono); font-size: 0.64rem;
     color: var(--t3); flex-shrink: 0;
     background: var(--surface); border-radius: 6px;
-    padding: 2px 6px; letter-spacing: 0.08em;
+    padding: 2px 8px; letter-spacing: 0.08em;
 }
 
 /* ════════════════════════════════════
