@@ -881,6 +881,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (acBox) return acBox;
         acBox = document.createElement('div');
         acBox.id = 'ac-box';
+        // CRITICAL: prevent focus from leaving the input when clicking inside popup
+        acBox.addEventListener('mousedown', (e) => e.preventDefault());
         document.body.appendChild(acBox);
         return acBox;
     }
@@ -1062,14 +1064,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.addEventListener('scroll', hideAc, true);
 
-    // Close autocomplete when clicking anywhere outside the box and input
-    document.addEventListener('pointerdown', (e) => {
-        if (!acBox) return;
-        if (!acBox.classList.contains('ac-open')) return;
-        if (acBox.contains(e.target)) return;      // click inside box → keep open
-        if (e.target === msgInput) return;          // click on input → keep open
+    // Close autocomplete when focus moves away from both input and ac-box
+    document.addEventListener('focusout', (e) => {
+        if (!acBox || !acBox.classList.contains('ac-open')) return;
+        // relatedTarget = element receiving focus next
+        const next = e.relatedTarget;
+        if (!next) { hideAc(); return; }
+        if (next === msgInput || acBox.contains(next)) return;
         hideAc();
-    }, true);
+    });
 
     window.sendMessage = async () => {
         const content = msgInput.value.trim();
