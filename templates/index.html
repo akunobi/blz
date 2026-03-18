@@ -33,6 +33,12 @@
                     <span class="metrics-pill-icon">◈</span>
                     <span>Metrics</span>
                 </button>
+                <button class="settings-btn" onclick="toggleSettings()" title="Settings">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                </button>
             </div>
         </nav>
 
@@ -153,6 +159,101 @@
             <div class="stats-actions">
                 <button id="copy-stats-btn" class="stats-btn">Copy Image</button>
                 <button id="copy-rank-btn" class="stats-btn stats-btn--accent">Copy Rank</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ SETTINGS PANEL ═══ -->
+    <div class="settings-overlay" id="settings-panel">
+        <div class="settings-backdrop" onclick="toggleSettings()"></div>
+        <div class="settings-card">
+
+            <div class="settings-hdr">
+                <div class="settings-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    Settings
+                </div>
+                <button class="settings-close" onclick="toggleSettings()">✕</button>
+            </div>
+
+            <div class="settings-body">
+
+                <!-- GRAPHICS QUALITY -->
+                <div class="settings-section">
+                    <div class="settings-section-label">Graphics Quality</div>
+                    <div class="settings-section-sub">Controls animations, blur effects and orbs</div>
+                    <div class="quality-options" id="quality-options">
+                        <button class="quality-btn" data-q="low">
+                            <span class="quality-icon">🔋</span>
+                            <span class="quality-name">Low</span>
+                            <span class="quality-desc">No animations</span>
+                        </button>
+                        <button class="quality-btn" data-q="medium">
+                            <span class="quality-icon">⚡</span>
+                            <span class="quality-name">Medium</span>
+                            <span class="quality-desc">Reduced effects</span>
+                        </button>
+                        <button class="quality-btn active" data-q="high">
+                            <span class="quality-icon">🔥</span>
+                            <span class="quality-name">High</span>
+                            <span class="quality-desc">Full experience</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- CUSTOM CURSOR -->
+                <div class="settings-section">
+                    <div class="settings-section-label">Custom Cursor</div>
+                    <div class="settings-section-sub">Upload PNG/SVG/CUR — recommended 32×32px</div>
+
+                    <div class="cursor-uploads">
+                        <div class="cursor-upload-item">
+                            <div class="cursor-upload-preview" id="prev-normal">
+                                <span class="cursor-upload-placeholder">↖</span>
+                            </div>
+                            <div class="cursor-upload-info">
+                                <span class="cursor-upload-label">Default</span>
+                                <span class="cursor-upload-hint">Normal state</span>
+                            </div>
+                            <label class="cursor-upload-btn">
+                                Upload
+                                <input type="file" accept="image/*,.cur,.ani" id="cursor-normal" style="display:none">
+                            </label>
+                            <button class="cursor-reset-btn" data-type="normal" title="Reset">✕</button>
+                        </div>
+
+                        <div class="cursor-upload-item">
+                            <div class="cursor-upload-preview" id="prev-pointer">
+                                <span class="cursor-upload-placeholder">☝</span>
+                            </div>
+                            <div class="cursor-upload-info">
+                                <span class="cursor-upload-label">Pointer</span>
+                                <span class="cursor-upload-hint">Links &amp; buttons</span>
+                            </div>
+                            <label class="cursor-upload-btn">
+                                Upload
+                                <input type="file" accept="image/*,.cur,.ani" id="cursor-pointer" style="display:none">
+                            </label>
+                            <button class="cursor-reset-btn" data-type="pointer" title="Reset">✕</button>
+                        </div>
+
+                        <div class="cursor-upload-item">
+                            <div class="cursor-upload-preview" id="prev-text">
+                                <span class="cursor-upload-placeholder">I</span>
+                            </div>
+                            <div class="cursor-upload-info">
+                                <span class="cursor-upload-label">Beam</span>
+                                <span class="cursor-upload-hint">Text inputs</span>
+                            </div>
+                            <label class="cursor-upload-btn">
+                                Upload
+                                <input type="file" accept="image/*,.cur,.ani" id="cursor-text" style="display:none">
+                            </label>
+                            <button class="cursor-reset-btn" data-type="text" title="Reset">✕</button>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
