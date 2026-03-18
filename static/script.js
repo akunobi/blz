@@ -1452,3 +1452,155 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('mouseleave', () => { cur.style.opacity = '0'; });
     document.addEventListener('mouseenter', () => { cur.style.opacity = '1'; });
 })();
+
+/* ════════════════════════════════════
+   SETTINGS PANEL — quality + cursors
+   ════════════════════════════════════ */
+(function () {
+
+    const STORAGE_KEY = 'blzt_settings';
+
+    // ── Load saved settings ──
+    function loadSettings() {
+        try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
+        catch(e) { return {}; }
+    }
+    function saveSettings(data) {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+        catch(e) {}
+    }
+
+    // ── Apply quality ──
+    function applyQuality(q) {
+        document.documentElement.classList.remove('q-low', 'q-medium', 'q-high');
+        document.documentElement.classList.add('q-' + q);
+        document.querySelectorAll('.quality-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.q === q);
+        });
+    }
+
+    // ── Apply cursor from dataURL ──
+    const CURSOR_TYPES = { normal: 'default', pointer: 'pointer', text: 'text' };
+
+    function applyCursors(cursors) {
+        // Build a <style> block with the custom cursors
+        let css = '';
+        if (cursors.normal) {
+            css += `* { cursor: url('${cursors.normal}') 0 0, auto !important; }\n`;
+        }
+        if (cursors.pointer) {
+            css += `button:not([disabled]), a, label, [role="button"],
+                .channel-item, .metrics-pill, .comp-btn:not([disabled]),
+                .emoji-btn, .ac-item, .stats-btn, .del-btn, .del-btn--cancel,
+                .del-btn--confirm, .modal-submit, .brand-orb, .msg-action-btn,
+                .modal-close, .stats-close, .mp-close, .composer-send,
+                .settings-btn, .cursor-upload-btn, .cursor-reset-btn, .quality-btn {
+                    cursor: url('${cursors.pointer}') 0 0, pointer !important;
+                }\n`;
+        }
+        if (cursors.text) {
+            css += `input, textarea, [contenteditable] {
+                cursor: url('${cursors.text}') 0 0, text !important;
+            }\n`;
+        }
+        if (cursors.pointer || cursors.normal) {
+            // Update the #custom-cursor dot to be invisible when custom images are set
+            css += `#custom-cursor { display: none !important; }\n`;
+        }
+
+        let styleEl = document.getElementById('blzt-cursor-style');
+        if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = 'blzt-cursor-style';
+            document.head.appendChild(styleEl);
+        }
+        styleEl.textContent = css;
+    }
+
+    function updatePreview(type, dataUrl) {
+        const prev = document.getElementById('prev-' + type);
+        if (!prev) return;
+        prev.innerHTML = dataUrl
+            ? `<img src="${dataUrl}" alt="cursor">`
+            : `<span class="cursor-upload-placeholder">${type === 'normal' ? '↖' : type === 'pointer' ? '☝' : 'I'}</span>`;
+    }
+
+    // ── Init on DOM ready ──
+    function init() {
+        const s = loadSettings();
+
+        // Apply quality (default: high)
+        applyQuality(s.quality || 'high');
+
+        // Apply saved cursors
+        if (s.cursors && Object.keys(s.cursors).length) {
+            applyCursors(s.cursors);
+            Object.entries(s.cursors).forEach(([type, url]) => updatePreview(type, url));
+        }
+
+        // Quality buttons
+        document.querySelectorAll('.quality-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const q = btn.dataset.q;
+                applyQuality(q);
+                const s = loadSettings();
+                s.quality = q;
+                saveSettings(s);
+            });
+        });
+
+        // Cursor file inputs
+        ['normal', 'pointer', 'text'].forEach(type => {
+            const input = document.getElementById('cursor-' + type);
+            if (!input) return;
+            input.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    const dataUrl = ev.target.result;
+                    const s = loadSettings();
+                    s.cursors = s.cursors || {};
+                    s.cursors[type] = dataUrl;
+                    saveSettings(s);
+                    applyCursors(s.cursors);
+                    updatePreview(type, dataUrl);
+                };
+                reader.readAsDataURL(file);
+                input.value = ''; // reset so same file can be re-uploaded
+            });
+        });
+
+        // Reset buttons
+        document.querySelectorAll('.cursor-reset-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const type = btn.dataset.type;
+                const s = loadSettings();
+                s.cursors = s.cursors || {};
+                delete s.cursors[type];
+                saveSettings(s);
+                applyCursors(s.cursors);
+                updatePreview(type, null);
+            });
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    // Toggle function
+    window.toggleSettings = function() {
+        document.getElementById('settings-panel').classList.toggle('active');
+    };
+
+    // Close on Escape
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            document.getElementById('settings-panel')?.classList.remove('active');
+        }
+    });
+
+})();
