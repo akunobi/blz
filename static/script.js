@@ -1694,61 +1694,53 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
 })();
-<<<<<<< HEAD
 
 /* ════════════════════════════════════
    MOBILE CHANNEL DRAWER
    ════════════════════════════════════ */
-(function () {
-    const drawer     = document.getElementById('channel-drawer');
-    const drawerList = document.getElementById('channel-drawer-list');
-    if (!drawer || !drawerList) return;
+window.toggleChannelDrawer = function () {
+    const drawer = document.getElementById('channel-drawer');
+    if (!drawer) return;
+    const isOpen = drawer.classList.toggle('open');
 
-    window.toggleChannelDrawer = function () {
-        drawer.classList.toggle('open');
-    };
+    // When opening, populate the drawer list from the main list
+    if (isOpen) {
+        const drawerList = document.getElementById('channel-drawer-list');
+        const mainList   = document.getElementById('channel-list');
+        if (!drawerList || !mainList) return;
 
-    // Sync drawer list whenever the main channel list changes
-    const mainList = document.getElementById('channel-list');
-    if (!mainList) return;
-
-    // Use MutationObserver to keep drawer in sync with main list
-    const obs = new MutationObserver(() => syncDrawer());
-    obs.observe(mainList, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
-
-    function syncDrawer() {
         drawerList.innerHTML = '';
-        const items = mainList.querySelectorAll('.channel-item');
-        items.forEach(item => {
-            const clone = item.cloneNode(true);
-            // Remove animation delays from cloned items
-            clone.style.animationDelay = '0ms';
-            clone.style.animation = 'none';
-            clone.style.opacity = '1';
+        mainList.querySelectorAll('.channel-item').forEach(item => {
+            const el = document.createElement('div');
+            el.className = 'channel-item' + (item.classList.contains('active') ? ' active' : '');
+            el.setAttribute('data-index', item.getAttribute('data-index') || '');
 
-            // Remap click: close drawer then trigger original item click
-            clone.addEventListener('click', () => {
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'ch-name';
+            nameSpan.textContent = item.querySelector('.ch-name')?.textContent || '';
+            el.appendChild(nameSpan);
+
+            el.addEventListener('click', () => {
                 drawer.classList.remove('open');
-                item.click();
+                item.click();   // trigger original logic
             });
-            drawerList.appendChild(clone);
+            drawerList.appendChild(el);
         });
     }
+};
 
-    // Close on swipe down
+// Swipe down to close drawer
+(function() {
     let startY = 0;
-    const sheet = drawer.querySelector('.channel-drawer-sheet');
-    sheet.addEventListener('touchstart', e => { startY = e.touches[0].clientY; }, { passive: true });
-    sheet.addEventListener('touchend', e => {
-        if (e.changedTouches[0].clientY - startY > 60) {
-            drawer.classList.remove('open');
-        }
+    document.addEventListener('touchstart', e => {
+        const sheet = document.querySelector('.channel-drawer-sheet');
+        if (sheet && sheet.contains(e.target)) startY = e.touches[0].clientY;
     }, { passive: true });
-
-    // Close on Escape
-    document.addEventListener('keydown', e => {
-        if (e.key === 'Escape') drawer.classList.remove('open');
-    });
+    document.addEventListener('touchend', e => {
+        if (!startY) return;
+        if (e.changedTouches[0].clientY - startY > 60) {
+            document.getElementById('channel-drawer')?.classList.remove('open');
+        }
+        startY = 0;
+    }, { passive: true });
 })();
-=======
->>>>>>> 69c40637ad3a65c7cee0553486dbefdac2e04a6b

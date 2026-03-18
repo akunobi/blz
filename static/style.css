@@ -2002,7 +2002,6 @@ body {
     background: var(--amber-dim);
     box-shadow: 0 0 14px rgba(245,166,35,0.08);
 }
-<<<<<<< HEAD
 .quality-icon {
     width: 20px; height: 20px;
     flex-shrink: 0;
@@ -2013,9 +2012,6 @@ body {
 .quality-btn[data-q="low"]    .quality-icon { color: var(--teal); }
 .quality-btn[data-q="medium"] .quality-icon { color: var(--lav); }
 .quality-btn[data-q="high"]   .quality-icon { color: var(--coral); }
-=======
-.quality-icon { font-size: 1.3rem; }
->>>>>>> 69c40637ad3a65c7cee0553486dbefdac2e04a6b
 .quality-name {
     font-size: 0.80rem; font-weight: 700;
     color: var(--t0); letter-spacing: 0.05em;
@@ -2041,14 +2037,9 @@ body {
     background: var(--bg); border: 1px solid var(--border-hi);
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0; overflow: hidden;
-<<<<<<< HEAD
     color: var(--t2);
 }
 .cursor-upload-preview svg { width: 18px; height: 18px; }
-=======
-    font-size: 1.2rem; color: var(--t2);
-}
->>>>>>> 69c40637ad3a65c7cee0553486dbefdac2e04a6b
 .cursor-upload-preview img {
     width: 100%; height: 100%; object-fit: contain;
     image-rendering: pixelated;
@@ -2084,7 +2075,6 @@ body {
 .cursor-reset-btn:hover { background: var(--coral-dim); border-color: var(--coral); color: var(--coral); }
 
 /* ── Quality CSS classes applied to <html> ── */
-<<<<<<< HEAD
 
 /* LOW — remove purely decorative animations, keep all UI functional */
 html.q-low .orb                           { display: none !important; }
@@ -2406,54 +2396,30 @@ html.q-medium .composer                   { backdrop-filter: blur(8px) !importan
     background: var(--amber-dim);
 }
 
-/* ── Channel bar name button (tap to open drawer on mobile) ── */
-.channel-bar-name--btn {
+/* ── Channel drawer trigger — invisible tap area on mobile ── */
+.channel-drawer-trigger {
+    display: none;
     background: none;
     border: none;
-    color: inherit;
-    font: inherit;
-    letter-spacing: inherit;
-    text-transform: inherit;
     padding: 0;
-    display: flex;
-    align-items: center;
-    gap: 6px;
+    margin: 0;
     cursor: pointer;
+    width: 20px;
+    height: 20px;
+    align-items: center;
+    justify-content: center;
+    color: var(--amber);
+    opacity: 0.7;
+}
+.channel-drawer-trigger::before {
+    content: '';
+    display: block;
+    width: 0; height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid currentColor;
 }
 
 @media (max-width: 900px) {
-    .channel-bar-name--btn::after {
-        content: '';
-        display: inline-block;
-        width: 0; height: 0;
-        border-left: 4px solid transparent;
-        border-right: 4px solid transparent;
-        border-top: 5px solid var(--amber);
-        opacity: 0.7;
-        margin-left: 2px;
-    }
+    .channel-drawer-trigger { display: flex; }
 }
-
-@media (min-width: 901px) {
-    .channel-bar-name--btn { pointer-events: none; }
-    .channel-bar-name--btn::after { display: none; }
-}
-=======
-html.q-low  .orb,
-html.q-low  [class*="animation"],
-html.q-low  .brand-orb::after { animation: none !important; transition: none !important; }
-
-html.q-low  .orb                { display: none; }
-html.q-low  .topnav::after      { display: none; }
-html.q-low  .channel-item       { animation: none; opacity: 1; }
-html.q-low  .message            { animation: none; filter: none; }
-html.q-low  .feed-empty-icon::before,
-html.q-low  .feed-empty-icon::after { display: none; }
-html.q-low  .brand-orb          { animation: none; box-shadow: none; }
-html.q-low  *                   { backdrop-filter: none !important; }
-
-html.q-medium .orb              { filter: blur(60px); }
-html.q-medium *                 { backdrop-filter: blur(4px) !important; }
-
-/* q-high = default, no overrides needed */
->>>>>>> 69c40637ad3a65c7cee0553486dbefdac2e04a6b
