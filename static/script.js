@@ -881,13 +881,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (acBox) return acBox;
         acBox = document.createElement('div');
         acBox.id = 'ac-box';
-        // When pointer enters/leaves ac-box, set flag so blur doesn't close it
-        acBox.addEventListener('mousedown', () => { _acInteracting = true; });
-        acBox.addEventListener('mouseup',   () => {
-            _acInteracting = false;
-            msgInput.focus();
-        });
-        acBox.addEventListener('mouseleave', () => { _acInteracting = false; });
         document.body.appendChild(acBox);
         return acBox;
     }
@@ -1061,17 +1054,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Flag: set true while pointer is inside ac-box so blur doesn't close it
-    let _acInteracting = false;
-
+    // Never close on blur — only close on: Escape, click outside, or successful selection
+    // (blur fires before mousedown/click on the popup, so it would always close too early)
     msgInput.addEventListener('blur', () => {
-        if (_acInteracting) return;   // user is clicking an ac item — don't close
-        setTimeout(() => {
-            if (!_acInteracting) hideAc();
-        }, 200);
+        // Do nothing — hideAc is called explicitly where needed
     });
 
     window.addEventListener('scroll', hideAc, true);
+
+    // Close autocomplete when clicking anywhere outside the box and input
+    document.addEventListener('pointerdown', (e) => {
+        if (!acBox) return;
+        if (!acBox.classList.contains('ac-open')) return;
+        if (acBox.contains(e.target)) return;      // click inside box → keep open
+        if (e.target === msgInput) return;          // click on input → keep open
+        hideAc();
+    }, true);
 
     window.sendMessage = async () => {
         const content = msgInput.value.trim();
