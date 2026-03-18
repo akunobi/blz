@@ -1419,3 +1419,36 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
+/* ════════════════════════════════════
+   CUSTOM CURSOR — follows system cursor state
+   ════════════════════════════════════ */
+(function () {
+    const cur = document.createElement('div');
+    cur.id = 'custom-cursor';
+    document.body.appendChild(cur);
+
+    let cx = -100, cy = -100;
+
+    document.addEventListener('mousemove', (e) => {
+        cx = e.clientX;
+        cy = e.clientY;
+        cur.style.left = cx + 'px';
+        cur.style.top  = cy + 'px';
+
+        // Read what the browser thinks the cursor should be for this element
+        const el = document.elementFromPoint(cx, cy);
+        const computed = el ? getComputedStyle(el).cursor : 'auto';
+
+        cur.classList.remove('is-pointer', 'is-text', 'is-notallowed');
+
+        if (computed === 'pointer')     cur.classList.add('is-pointer');
+        else if (computed === 'text' ||
+                 computed === 'vertical-text') cur.classList.add('is-text');
+        else if (computed === 'not-allowed' ||
+                 computed === 'no-drop')       cur.classList.add('is-notallowed');
+    });
+
+    document.addEventListener('mouseleave', () => { cur.style.opacity = '0'; });
+    document.addEventListener('mouseenter', () => { cur.style.opacity = '1'; });
+})();
