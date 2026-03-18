@@ -699,7 +699,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } else {
                 const j = await r.json();
-                if (reactBtn) reactBtn.textContent = '😊';
+                if (reactBtn) reactBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>';
                 showToast(j.error || 'Error al reaccionar', 'error');
             }
         } catch(e) {
@@ -785,7 +785,11 @@ document.addEventListener('DOMContentLoaded', () => {
             _deleteModal.innerHTML = `
                 <div class="del-modal-backdrop"></div>
                 <div class="del-modal-card">
-                    <div class="del-modal-icon">🗑️</div>
+                    <div class="del-modal-icon">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--coral)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                    </svg>
+                </div>
                     <div class="del-modal-title">Borrar mensaje</div>
                     <div class="del-modal-body">Esta acción es permanente y no se puede deshacer.</div>
                     <div class="del-modal-actions">
@@ -825,7 +829,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const reactBtn = document.createElement('button');
         reactBtn.className = 'msg-action-btn';
         reactBtn.title     = 'Reaccionar';
-        reactBtn.innerHTML = '😊';
+        reactBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>';
         reactBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             openEmojiPicker(msgEl.dataset.msgId, currentChannelId, reactBtn);
@@ -836,14 +840,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const editBtn = document.createElement('button');
             editBtn.className = 'msg-action-btn';
             editBtn.title     = 'Editar';
-            editBtn.innerHTML = '✏️';
+            editBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
             editBtn.addEventListener('click', (e) => { e.stopPropagation(); openEdit(msgEl); });
             actions.appendChild(editBtn);
 
             const delBtn = document.createElement('button');
             delBtn.className = 'msg-action-btn del';
             delBtn.title     = 'Borrar';
-            delBtn.innerHTML = '🗑️';
+            delBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
             delBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 showDeleteConfirm(msgEl.dataset.msgId, currentChannelId, msgEl);
