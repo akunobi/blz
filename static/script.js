@@ -881,6 +881,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (acBox) return acBox;
         acBox = document.createElement('div');
         acBox.id = 'ac-box';
+        // When pointer enters/leaves ac-box, set flag so blur doesn't close it
+        acBox.addEventListener('mousedown', () => { _acInteracting = true; });
+        acBox.addEventListener('mouseup',   () => {
+            _acInteracting = false;
+            msgInput.focus();
+        });
+        acBox.addEventListener('mouseleave', () => { _acInteracting = false; });
         document.body.appendChild(acBox);
         return acBox;
     }
@@ -952,10 +959,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         box.classList.add('ac-open');
 
-        // Position above the composer input
+        // Position above the composer — full width of composer
         const inputRect = msgInput.getBoundingClientRect();
-        box.style.bottom  = (window.innerHeight - inputRect.top + 8) + 'px';
-        box.style.left    = (inputRect.left + 60) + 'px';
+        const boxW = Math.min(460, inputRect.width - 20);
+        box.style.width   = boxW + 'px';
+        box.style.bottom  = (window.innerHeight - inputRect.top + 10) + 'px';
+        box.style.left    = inputRect.left + 'px';
         box.style.top     = 'auto';
     }
 
@@ -1052,9 +1061,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Flag: set true while pointer is inside ac-box so blur doesn't close it
+    let _acInteracting = false;
+
     msgInput.addEventListener('blur', () => {
-        // Delay so mousedown on ac item fires first
-        setTimeout(hideAc, 150);
+        if (_acInteracting) return;   // user is clicking an ac item — don't close
+        setTimeout(() => {
+            if (!_acInteracting) hideAc();
+        }, 200);
     });
 
     window.addEventListener('scroll', hideAc, true);
