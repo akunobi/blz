@@ -1694,6 +1694,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
 })();
+<<<<<<< HEAD
 
 /* ════════════════════════════════════
    MOBILE CHANNEL DRAWER
@@ -1749,3 +1750,5 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Escape') drawer.classList.remove('open');
     });
 })();
+=======
+>>>>>>> 69c40637ad3a65c7cee0553486dbefdac2e04a6b
