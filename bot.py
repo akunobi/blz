@@ -143,23 +143,112 @@ async def on_ready():
 _deadline_tasks = {}
 
 # ── Moderation: bad word list ──
-BAD_WORDS = {
-    # Slurs
-    'nigger','nigga','niga','n1gger','n1gga',
-    'faggot','fag','f4g','f4ggot',
-    'retard','retarded',
-    'chink','spic','wetback','kike','gook','coon','jigaboo',
-    'tranny','dyke',
+# ── Bad words: canonical forms (the algorithm handles variants) ──
+BAD_WORDS = [
+    # Racial slurs
+    'nigger','nigga','niga','negger',
+    'faggot','fagot','faget',
+    'retard',
+    'chink','spic','wetback','kike','gook','coon','jigaboo','beaner',
+    'tranny','dyke','trany',
     # Sexual
-    'porn','porno','xxx','cum','cumshot','blowjob','handjob',
-    'pussy','cunt','cock','dick','penis','vagina','boobs','tits',
-    # Violence
-    'kys','kill yourself','kys','go die',
+    'porn','cumshot','blowjob','handjob',
+    'pussy','cunt',
+    # Violence / self-harm
+    'kys','kill yourself','go die','hang yourself',
     # Hate
-    'nazi','heil','white power','kkk',
-    # Profanity (light - add as desired)
-    'bitch','asshole','motherfucker','mf','wtf',
-}
+    'nazi','white power','kkk','heil hitler',
+    # Profanity
+    'bitch','asshole','motherfucker','cuck',
+    # Added per request
+    'gay',
+]
+
+# Leet-speak / typo normalization map
+_LEET = str.maketrans({
+    '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's',
+    '6': 'g', '7': 't', '8': 'b', '9': 'g',
+    '@': 'a', '$': 's', '!': 'i', '+': 't',
+})
+
+import re as _re_mod
+import unicodedata as _ud
+
+def _normalize(text: str) -> str:
+    """
+    Full normalization pipeline:
+    1. Unicode → ASCII (accented chars, lookalike unicode)
+    2. Lowercase
+    3. Leet-speak substitution
+    4. Strip all non-alphanumeric (keep spaces)
+    5. Collapse repeated characters (niggger → niger, so we catch nigger too)
+    """
+    # Step 1: unicode normalize + strip accents
+    text = _ud.normalize('NFKD', text)
+    text = ''.join(c for c in text if not _ud.combining(c))
+    # Step 2: lowercase
+    text = text.lower()
+    # Step 3: leet substitution
+    text = text.translate(_LEET)
+    # Step 4: strip non-alphanumeric → space
+    text = _re_mod.sub(r'[^a-z0-9]', ' ', text)
+    # Step 5: collapse runs of 3+ same chars to 2 (niggger→nigger, fuuuck→fuuck)
+    # This lets us still match doubled letters that are legit (e.g. "gg" in words)
+    # but catches extended spam like "niiiigger"
+    text = _re_mod.sub(r'(.)\1{2,}', r'\1\1', text)
+    return text
+
+def _normalize_word(word: str) -> str:
+    """Same pipeline but also collapse all repeated chars to single (niigger→niger)."""
+    text = _normalize(word)
+    # Additionally collapse ANY repeated char to single for fuzzy matching
+    text = _re_mod.sub(r'(.)\1+', r'\1', text)
+    return text
+
+def _levenshtein(a: str, b: str) -> int:
+    """Compute edit distance between two strings."""
+    if len(a) > len(b):
+        a, b = b, a
+    row = list(range(len(a) + 1))
+    for cb in b:
+        new_row = [row[0] + 1]
+        for i, ca in enumerate(a):
+            new_row.append(min(row[i] + (ca != cb), new_row[-1] + 1, row[i + 1] + 1))
+        row = new_row
+    return row[-1]
+
+
+def contains_bad_word(text: str):
+    """
+    Multi-pass bad word detector:
+      Pass 1: substring match on fully normalized text (leet, unicode, punctuation)
+      Pass 2: collapsed-repeat match (niiiigger → niger)
+      Pass 3: edit-distance per token (catches niegger, niggar, faget, etc.)
+    Returns the matched canonical word string, or None.
+    """
+    norm     = _normalize(text)
+    norm_col = _normalize_word(text)
+    tokens   = norm.split() + norm_col.split()
+
+    for word in BAD_WORDS:
+        w_norm = _normalize(word)
+        w_col  = _normalize_word(word)
+
+        # Pass 1 & 2: substring
+        if w_norm in norm or w_norm in norm_col:
+            return word
+        if w_col in norm or w_col in norm_col:
+            return word
+
+        # Pass 3: edit-distance on individual tokens
+        # Allow 1 edit per 4 chars (minimum 1)
+        threshold = max(1, len(w_col) // 4)
+        for token in tokens:
+            if abs(len(token) - len(w_col)) <= threshold:
+                if _levenshtein(token, w_col) <= threshold:
+                    return word
+
+    return None
 
 # _spam_cache[guild_id][user_id] = deque of (content_hash, timestamp)
 import collections, hashlib, time as _time
@@ -410,13 +499,8 @@ async def on_message(message):
     # ── AutoMod: bad word detection (all guild channels) ──
     guild = getattr(message.channel, 'guild', None)
     if guild and message.content:
-        import re as _re
-        # Flatten text: lowercase, strip non-alphanumeric so @n1gger → n1gger
-        content_lower = message.content.lower()
-        clean = _re.sub(r'[^a-z0-9]', ' ', content_lower)  # replace ALL non-alnum with space
-        # Match as substring (catches plurals, leet-speak variants)
-        found_word = next((w for w in BAD_WORDS if w in clean), None)
-        print(f'>>> [AUTOMOD CHECK] "{content_lower}" | clean="{clean}" | found={found_word}')
+        found_word = contains_bad_word(message.content)
+        print(f'>>> [AUTOMOD] msg="{message.content!r}" | found={found_word!r}')
         if found_word:
             try:
                 await message.delete()
@@ -1321,26 +1405,24 @@ def mod_users():
     """All users with at least 1 warning, with warn count and latest action."""
     conn = get_db_connection()
     rows = conn.execute('''
-        SELECT user_id, user_name, guild_id, COUNT(*) as warn_count,
-               MAX(timestamp) as last_warn
+        SELECT user_id, MAX(user_name) as user_name, guild_id,
+               COUNT(*) as warn_count, MAX(timestamp) as last_warn
         FROM warnings
-        GROUP BY user_id, guild_id
+        GROUP BY user_id
         ORDER BY warn_count DESC, last_warn DESC
     ''').fetchall()
 
     users = []
     for row in rows:
         uid  = row['user_id']
-        gid  = row['guild_id']
-        # Get full warning list
+        gid  = row['guild_id'] or ''
         warns = conn.execute(
-            'SELECT reason, timestamp, moderator_name FROM warnings WHERE user_id=? AND guild_id=? ORDER BY timestamp DESC',
-            (uid, gid)
+            'SELECT reason, timestamp, moderator_name FROM warnings WHERE user_id=? ORDER BY timestamp DESC',
+            (uid,)
         ).fetchall()
-        # Get latest mod action
         action = conn.execute(
-            'SELECT action, timestamp, reason FROM mod_actions WHERE user_id=? AND guild_id=? ORDER BY timestamp DESC LIMIT 1',
-            (uid, gid)
+            'SELECT action, timestamp, reason FROM mod_actions WHERE user_id=? ORDER BY timestamp DESC LIMIT 1',
+            (uid,)
         ).fetchone()
         users.append({
             'user_id':    uid,
