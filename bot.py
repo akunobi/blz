@@ -1063,4 +1063,4 @@ def interact_message(message_id):
             return jsonify({'status': 'clicked'})
         return jsonify({'error': result['error']}), 400
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e)}),
