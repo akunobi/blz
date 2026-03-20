@@ -65,6 +65,32 @@ def init_db():
                 components TEXT DEFAULT NULL
             )
         ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS warnings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                user_name TEXT,
+                guild_id TEXT,
+                reason TEXT,
+                moderator_id TEXT,
+                moderator_name TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS mod_actions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                user_name TEXT,
+                guild_id TEXT,
+                action TEXT NOT NULL,
+                reason TEXT,
+                duration_seconds INTEGER,
+                moderator_id TEXT,
+                moderator_name TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
         conn.commit()
         conn.close()
     except Exception as e:
@@ -115,6 +141,112 @@ async def on_ready():
 
 # ── Active deadline tasks: msg_id -> asyncio.Task ──
 _deadline_tasks = {}
+
+# ── Moderation: bad word list ──
+BAD_WORDS = {
+    # Slurs
+    'nigger','nigga','niga','n1gger','n1gga',
+    'faggot','fag','f4g','f4ggot',
+    'retard','retarded',
+    'chink','spic','wetback','kike','gook','coon','jigaboo',
+    'tranny','dyke',
+    # Sexual
+    'porn','porno','xxx','cum','cumshot','blowjob','handjob',
+    'pussy','cunt','cock','dick','penis','vagina','boobs','tits',
+    # Violence
+    'kys','kill yourself','kys','go die',
+    # Hate
+    'nazi','heil','white power','kkk',
+    # Profanity (light - add as desired)
+    'bitch','asshole','motherfucker','mf','wtf',
+}
+
+# _spam_cache[guild_id][user_id] = deque of (content_hash, timestamp)
+import collections, hashlib, time as _time
+_spam_cache = collections.defaultdict(lambda: collections.defaultdict(collections.deque))
+SPAM_WINDOW   = 10   # seconds
+SPAM_MAX_SAME = 3    # max identical messages in window
+
+# Auto-escalation thresholds
+WARN_TIMEOUT_AT  = 3   # warns before 1-day timeout
+WARN_BAN_3D_AT   = 1   # warns after returning from timeout → 3-day ban
+WARN_PERMA_AT    = 1   # warns after returning from 3d ban → permanent ban
+
+
+def add_warning(user_id, user_name, guild_id, reason, mod_id='BOT', mod_name='AutoMod'):
+    """Insert a warning and return new total warn count for this user."""
+    conn = get_db_connection()
+    conn.execute(
+        'INSERT INTO warnings (user_id, user_name, guild_id, reason, moderator_id, moderator_name) VALUES (?,?,?,?,?,?)',
+        (str(user_id), user_name, str(guild_id), reason, str(mod_id), mod_name)
+    )
+    conn.commit()
+    count = conn.execute('SELECT COUNT(*) FROM warnings WHERE user_id=? AND guild_id=?',
+                         (str(user_id), str(guild_id))).fetchone()[0]
+    conn.close()
+    return count
+
+
+def log_mod_action(user_id, user_name, guild_id, action, reason, duration=None, mod_id='BOT', mod_name='AutoMod'):
+    conn = get_db_connection()
+    conn.execute(
+        'INSERT INTO mod_actions (user_id, user_name, guild_id, action, reason, duration_seconds, moderator_id, moderator_name) VALUES (?,?,?,?,?,?,?,?)',
+        (str(user_id), user_name, str(guild_id), action, reason, duration, str(mod_id), mod_name)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_recent_mod_action(user_id, guild_id, action):
+    """Return the most recent mod_action of given type for a user, or None."""
+    conn = get_db_connection()
+    row = conn.execute(
+        'SELECT * FROM mod_actions WHERE user_id=? AND guild_id=? AND action=? ORDER BY timestamp DESC LIMIT 1',
+        (str(user_id), str(guild_id), action)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+async def escalate_user(member, guild, warn_count, reason):
+    """Apply timeout or ban based on warn count and history."""
+    import datetime
+    uid  = str(member.id)
+    gid  = str(guild.id)
+    name = member.name
+
+    had_timeout = get_recent_mod_action(uid, gid, 'timeout')
+    had_ban3d   = get_recent_mod_action(uid, gid, 'ban_3d')
+
+    try:
+        if had_ban3d:
+            # Permanent ban
+            await member.ban(reason=f'AutoMod: permanent ban (repeated violations after ban) | {reason}', delete_message_days=0)
+            log_mod_action(uid, name, gid, 'ban_permanent', reason)
+            print(f'>>> [AUTOMOD] PERMANENT BAN: {name}')
+        elif had_timeout:
+            # 3-day ban
+            await member.ban(reason=f'AutoMod: 3-day ban (repeated violations after timeout) | {reason}', delete_message_days=0)
+            log_mod_action(uid, name, gid, 'ban_3d', reason, duration=259200)
+            print(f'>>> [AUTOMOD] 3D BAN: {name}')
+            # Schedule unban
+            async def unban_later():
+                import asyncio
+                await asyncio.sleep(259200)
+                try:
+                    await guild.unban(member, reason='AutoMod: 3-day ban expired')
+                except Exception:
+                    pass
+            import asyncio
+            asyncio.create_task(unban_later())
+        elif warn_count >= WARN_TIMEOUT_AT:
+            # 1-day timeout
+            until = datetime.datetime.utcnow() + datetime.timedelta(days=1)
+            await member.timeout(until, reason=f'AutoMod: {warn_count} warnings | {reason}')
+            log_mod_action(uid, name, gid, 'timeout', reason, duration=86400)
+            print(f'>>> [AUTOMOD] TIMEOUT 1D: {name}')
+    except Exception as e:
+        print(f'!!! [ESCALATE ERROR] {name}: {e}')
 
 
 async def handle_deadline(message, username_raw):
@@ -251,6 +383,109 @@ async def handle_deadline(message, username_raw):
 @client.event
 async def on_message(message):
     # NOTA: Eliminamos la restricción de 'client.user' para ver mensajes de la web
+
+    # ── Skip bot messages for automod ──
+    if message.author.bot:
+        # Still process deadline command if bot sends it
+        if message.content and message.content.strip().startswith('!deadline'):
+            pass  # fall through to deadline handler below
+        else:
+            # Save to DB and return
+            if hasattr(message.channel, 'category') and message.channel.category:
+                if message.channel.category.id == TARGET_CATEGORY_ID:
+                    try:
+                        conn = get_db_connection()
+                        conn.execute(
+                            'INSERT OR IGNORE INTO messages (channel_id, channel_name, author_name, author_avatar, content, author_id, message_id) VALUES (?,?,?,?,?,?,?)',
+                            (message.channel.id, message.channel.name, message.author.name,
+                             str(message.author.avatar.url) if message.author.avatar else '',
+                             message.content, getattr(message.author,'id',None), message.id)
+                        )
+                        conn.commit()
+                        conn.close()
+                    except Exception:
+                        pass
+            return
+
+    # ── AutoMod: bad word detection ──
+    guild = getattr(message.channel, 'guild', None)
+    if guild and message.content:
+        content_lower = message.content.lower()
+        # Strip punctuation for matching
+        import re as _re
+        clean = _re.sub(r'[^a-z0-9\s]', '', content_lower)
+        found_word = next((w for w in BAD_WORDS if w in clean.split() or w in content_lower), None)
+        if found_word:
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            warn_count = add_warning(
+                message.author.id, message.author.name, guild.id,
+                reason=f'Bad word: {found_word}'
+            )
+            try:
+                warn_msg = await message.channel.send(
+                    f'⚠️ {message.author.mention} Your message was removed for violating community rules. '
+                    f'**Warning {warn_count}**.',
+                    delete_after=8
+                )
+            except Exception:
+                pass
+            if message.guild.get_member(message.author.id):
+                await escalate_user(message.author, guild, warn_count, f'Bad word: {found_word}')
+            return
+
+    # ── AutoMod: spam detection ──
+    if guild and message.content is not None:
+        import hashlib as _hs, time as _t
+        now = _t.time()
+        gid = str(guild.id)
+        uid = str(message.author.id)
+        # Hash content (normalise whitespace + lowercase)
+        import re as _re2
+        norm = _re2.sub(r'\s+', ' ', message.content.lower().strip())
+        h    = _hs.md5(norm.encode()).hexdigest()
+
+        dq = _spam_cache[gid][uid]
+        # Remove old entries outside window
+        while dq and now - dq[0][1] > SPAM_WINDOW:
+            dq.popleft()
+        dq.append((h, now))
+
+        # Count how many recent messages share this hash
+        same_count = sum(1 for hh, _ in dq if hh == h)
+        if same_count >= SPAM_MAX_SAME:
+            # Delete all spam messages in this channel from this user
+            spam_deleted = 0
+            try:
+                async for msg in message.channel.history(limit=20):
+                    if msg.author.id == message.author.id:
+                        m_norm = _re2.sub(r'\s+', ' ', (msg.content or '').lower().strip())
+                        m_h    = _hs.md5(m_norm.encode()).hexdigest()
+                        if m_h == h:
+                            try:
+                                await msg.delete()
+                                spam_deleted += 1
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+            dq.clear()  # reset spam cache for user
+            warn_count = add_warning(
+                message.author.id, message.author.name, guild.id,
+                reason=f'Spam: {same_count} identical messages'
+            )
+            try:
+                await message.channel.send(
+                    f'⚠️ {message.author.mention} Spam detected and removed. **Warning {warn_count}**.',
+                    delete_after=8
+                )
+            except Exception:
+                pass
+            if message.guild.get_member(message.author.id):
+                await escalate_user(message.author, guild, warn_count, 'Spam')
+            return
 
     # ── !deadline command ──
     if message.content and message.content.strip().startswith('!deadline'):
@@ -1063,4 +1298,176 @@ def interact_message(message_id):
             return jsonify({'status': 'clicked'})
         return jsonify({'error': result['error']}), 400
     except Exception as e:
-        return jsonify({'error': str(e)}),
+        return jsonify({'error': str(e)}), 500
+
+
+# ═══════════════════════════════════════════
+# MOD PANEL API ENDPOINTS
+# ═══════════════════════════════════════════
+
+@app.route('/api/mod/users')
+def mod_users():
+    """All users with at least 1 warning, with warn count and latest action."""
+    conn = get_db_connection()
+    rows = conn.execute('''
+        SELECT user_id, user_name, guild_id, COUNT(*) as warn_count,
+               MAX(timestamp) as last_warn
+        FROM warnings
+        GROUP BY user_id, guild_id
+        ORDER BY warn_count DESC, last_warn DESC
+    ''').fetchall()
+
+    users = []
+    for row in rows:
+        uid  = row['user_id']
+        gid  = row['guild_id']
+        # Get full warning list
+        warns = conn.execute(
+            'SELECT reason, timestamp, moderator_name FROM warnings WHERE user_id=? AND guild_id=? ORDER BY timestamp DESC',
+            (uid, gid)
+        ).fetchall()
+        # Get latest mod action
+        action = conn.execute(
+            'SELECT action, timestamp, reason FROM mod_actions WHERE user_id=? AND guild_id=? ORDER BY timestamp DESC LIMIT 1',
+            (uid, gid)
+        ).fetchone()
+        users.append({
+            'user_id':    uid,
+            'user_name':  row['user_name'],
+            'guild_id':   gid,
+            'warn_count': row['warn_count'],
+            'last_warn':  row['last_warn'],
+            'warnings':   [dict(w) for w in warns],
+            'last_action': dict(action) if action else None,
+        })
+    conn.close()
+    return jsonify(users)
+
+
+@app.route('/api/mod/warn', methods=['POST'])
+def mod_warn():
+    """Manually add a warning to a user."""
+    data   = request.json or {}
+    uid    = data.get('user_id')
+    uname  = data.get('user_name', 'Unknown')
+    gid    = data.get('guild_id')
+    reason = data.get('reason', 'Manual warn')
+    if not uid or not gid:
+        return jsonify({'error': 'user_id and guild_id required'}), 400
+    count = add_warning(uid, uname, gid, reason, mod_id='WEB', mod_name='WebMod')
+    return jsonify({'status': 'warned', 'warn_count': count})
+
+
+@app.route('/api/mod/timeout', methods=['POST'])
+def mod_timeout():
+    """Apply a timeout to a user."""
+    data     = request.json or {}
+    uid      = data.get('user_id')
+    gid      = data.get('guild_id')
+    duration = int(data.get('duration_seconds', 3600))
+    reason   = data.get('reason', 'Manual timeout')
+    if not uid or not gid:
+        return jsonify({'error': 'user_id and guild_id required'}), 400
+    if not bot_loop or not bot_ready_event.is_set():
+        return jsonify({'error': 'Bot desconectado'}), 503
+
+    async def _do():
+        import datetime
+        try:
+            guild  = await client.fetch_guild(int(gid))
+            member = guild.get_member(int(uid)) or await guild.fetch_member(int(uid))
+            until  = datetime.datetime.utcnow() + datetime.timedelta(seconds=duration)
+            await member.timeout(until, reason=reason)
+            log_mod_action(uid, member.name, gid, 'timeout', reason, duration, 'WEB', 'WebMod')
+            return {'success': True}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    try:
+        r = asyncio.run_coroutine_threadsafe(_do(), bot_loop).result(timeout=10)
+        return jsonify(r) if r['success'] else jsonify({'error': r['error']}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mod/kick', methods=['POST'])
+def mod_kick():
+    """Kick a user from the guild."""
+    data   = request.json or {}
+    uid    = data.get('user_id')
+    gid    = data.get('guild_id')
+    reason = data.get('reason', 'Manual kick')
+    if not uid or not gid:
+        return jsonify({'error': 'user_id and guild_id required'}), 400
+    if not bot_loop or not bot_ready_event.is_set():
+        return jsonify({'error': 'Bot desconectado'}), 503
+
+    async def _do():
+        try:
+            guild  = await client.fetch_guild(int(gid))
+            member = guild.get_member(int(uid)) or await guild.fetch_member(int(uid))
+            await member.kick(reason=reason)
+            log_mod_action(uid, member.name, gid, 'kick', reason, None, 'WEB', 'WebMod')
+            return {'success': True}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    try:
+        r = asyncio.run_coroutine_threadsafe(_do(), bot_loop).result(timeout=10)
+        return jsonify(r) if r['success'] else jsonify({'error': r['error']}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mod/ban', methods=['POST'])
+def mod_ban():
+    """Ban a user."""
+    data   = request.json or {}
+    uid    = data.get('user_id')
+    gid    = data.get('guild_id')
+    reason = data.get('reason', 'Manual ban')
+    days   = int(data.get('delete_days', 0))
+    if not uid or not gid:
+        return jsonify({'error': 'user_id and guild_id required'}), 400
+    if not bot_loop or not bot_ready_event.is_set():
+        return jsonify({'error': 'Bot desconectado'}), 503
+
+    async def _do():
+        try:
+            guild  = await client.fetch_guild(int(gid))
+            member = guild.get_member(int(uid)) or await guild.fetch_member(int(uid))
+            await member.ban(reason=reason, delete_message_days=days)
+            log_mod_action(uid, member.name, gid, 'ban', reason, None, 'WEB', 'WebMod')
+            return {'success': True}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    try:
+        r = asyncio.run_coroutine_threadsafe(_do(), bot_loop).result(timeout=10)
+        return jsonify(r) if r['success'] else jsonify({'error': r['error']}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mod/clear_warns', methods=['POST'])
+def mod_clear_warns():
+    """Clear all warnings for a user."""
+    data = request.json or {}
+    uid  = data.get('user_id')
+    gid  = data.get('guild_id')
+    if not uid or not gid:
+        return jsonify({'error': 'user_id and guild_id required'}), 400
+    conn = get_db_connection()
+    conn.execute('DELETE FROM warnings WHERE user_id=? AND guild_id=?', (uid, gid))
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'cleared'})
+
+@app.route('/api/mod/action_log')
+def mod_action_log():
+    conn = get_db_connection()
+    rows = conn.execute(
+        'SELECT * FROM mod_actions ORDER BY timestamp DESC LIMIT 200'
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])

@@ -1877,3 +1877,270 @@ window.toggleChannelDrawer = function () {
         startY = 0;
     }, { passive: true });
 })();
+
+
+
+// ════════════════════════════════════
+// LOGIN + MOD PANEL
+// ════════════════════════════════════
+(function () {
+
+    // ── Credentials (will be set via env or config later) ──
+    // For now stored as hashed in localStorage after first login
+    // Temporary hardcoded — replace with real auth later
+    const MOD_CREDENTIALS = [
+        { user: 'admin', pass: 'blzt2024' }  // CHANGE THIS
+    ];
+
+    let modGuildId = null;
+
+    // ── Login ──
+    window.toggleLogin = function () {
+        const modal = document.getElementById('login-modal');
+        if (!modal) return;
+        const isLoggedIn = localStorage.getItem('blzt_mod') === '1';
+        if (isLoggedIn) {
+            // Logout
+            localStorage.removeItem('blzt_mod');
+            applyLoginState(false);
+        } else {
+            modal.classList.toggle('active');
+        }
+    };
+
+    window.doLogin = function () {
+        const user  = document.getElementById('login-user')?.value.trim();
+        const pass  = document.getElementById('login-pass')?.value;
+        const errEl = document.getElementById('login-error');
+        const ok    = MOD_CREDENTIALS.some(c => c.user === user && c.pass === pass);
+        if (ok) {
+            localStorage.setItem('blzt_mod', '1');
+            document.getElementById('login-modal')?.classList.remove('active');
+            if (errEl) errEl.textContent = '';
+            applyLoginState(true);
+        } else {
+            if (errEl) errEl.textContent = 'Invalid credentials';
+            document.getElementById('login-pass').value = '';
+        }
+    };
+
+    document.getElementById('login-pass')?.addEventListener('keydown', e => {
+        if (e.key === 'Enter') window.doLogin();
+    });
+
+    function applyLoginState(loggedIn) {
+        const btn  = document.getElementById('login-btn');
+        const lbl  = document.getElementById('login-btn-label');
+        const modB = document.getElementById('mod-btn');
+        if (btn)  btn.classList.toggle('logged-in', loggedIn);
+        if (lbl)  lbl.textContent = loggedIn ? 'Logout' : 'Login';
+        if (modB) modB.style.display = loggedIn ? 'flex' : 'none';
+        if (!loggedIn) document.getElementById('mod-panel')?.classList.remove('active');
+    }
+
+    // Apply on load
+    applyLoginState(localStorage.getItem('blzt_mod') === '1');
+
+    // ── Mod Panel ──
+    window.toggleMod = function () {
+        const panel = document.getElementById('mod-panel');
+        if (!panel) return;
+        const opening = !panel.classList.contains('active');
+        panel.classList.toggle('active');
+        if (opening) loadModPanel();
+    };
+
+    window.switchModTab = function (tab) {
+        document.querySelectorAll('.mod-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+        loadModPanel(tab);
+    };
+
+    async function loadModPanel(tab = 'warned') {
+        const body = document.getElementById('mod-body');
+        if (!body) return;
+        body.innerHTML = '<div class="mod-loading">Loading...</div>';
+
+        try {
+            if (tab === 'warned') {
+                const res  = await fetch('/api/mod/users');
+                const data = await res.json();
+                renderWarnedUsers(data, body);
+            } else {
+                const res  = await fetch('/api/mod/action_log');
+                const data = await res.json();
+                renderActionLog(data, body);
+            }
+        } catch(e) {
+            body.innerHTML = '<div class="mod-empty">Error loading data</div>';
+        }
+    }
+
+    function renderWarnedUsers(users, container) {
+        if (!users.length) {
+            container.innerHTML = '<div class="mod-empty">No warned users</div>';
+            return;
+        }
+        container.innerHTML = '';
+        users.forEach(u => {
+            const card = document.createElement('div');
+            card.className = 'mod-user-card';
+
+            const initial = (u.user_name || '?')[0].toUpperCase();
+            const lastAction = u.last_action ? u.last_action.action.toUpperCase() : null;
+
+            card.innerHTML = `
+                <div class="mod-user-avatar">${initial}</div>
+                <div class="mod-user-info">
+                    <div class="mod-user-name">${escHtml(u.user_name || 'Unknown')}</div>
+                    <div class="mod-user-meta">${escHtml(u.user_id)}</div>
+                    <div class="warn-badges">
+                        <span class="warn-badge warn-badge-count">⚠ ${u.warn_count} warn${u.warn_count !== 1 ? 's' : ''}</span>
+                        ${lastAction ? `<span class="warn-badge warn-badge-action">${lastAction}</span>` : ''}
+                    </div>
+                </div>
+                <div class="mod-user-actions">
+                    <button class="mod-action-btn warn"    onclick="modAction('warn','${u.user_id}','${escHtml(u.user_name)}','${u.guild_id}',this)">Warn</button>
+                    <button class="mod-action-btn timeout" onclick="modAction('timeout','${u.user_id}','${escHtml(u.user_name)}','${u.guild_id}',this)">Timeout</button>
+                    <button class="mod-action-btn kick"    onclick="modAction('kick','${u.user_id}','${escHtml(u.user_name)}','${u.guild_id}',this)">Kick</button>
+                    <button class="mod-action-btn ban"     onclick="modAction('ban','${u.user_id}','${escHtml(u.user_name)}','${u.guild_id}',this)">Ban</button>
+                    <button class="mod-action-btn clear"   onclick="modAction('clear','${u.user_id}','${escHtml(u.user_name)}','${u.guild_id}',this)">Clear Warns</button>
+                </div>
+                <div class="timeout-picker" id="tp-${u.user_id}">
+                    <div class="timeout-presets">
+                        <button class="timeout-preset" data-s="3600">1h</button>
+                        <button class="timeout-preset" data-s="21600">6h</button>
+                        <button class="timeout-preset" data-s="86400">1d</button>
+                        <button class="timeout-preset" data-s="259200">3d</button>
+                        <button class="timeout-preset" data-s="604800">7d</button>
+                    </div>
+                    <div class="timeout-custom-row">
+                        <input type="number" class="timeout-custom-input" placeholder="min" min="1" id="tc-${u.user_id}"/>
+                        <button class="timeout-confirm-btn" onclick="applyTimeout('${u.user_id}','${u.guild_id}')">Apply</button>
+                    </div>
+                </div>
+            `;
+
+            // Preset click
+            card.querySelectorAll('.timeout-preset').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    card.querySelectorAll('.timeout-preset').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    const inp = document.getElementById('tc-' + u.user_id);
+                    if (inp) inp.value = Math.round(parseInt(btn.dataset.s) / 60);
+                });
+            });
+
+            container.appendChild(card);
+        });
+    }
+
+    function renderActionLog(actions, container) {
+        if (!actions || !actions.length) {
+            container.innerHTML = '<div class="mod-empty">No actions yet</div>';
+            return;
+        }
+        const table = document.createElement('table');
+        table.className = 'mod-log-table';
+        table.innerHTML = `
+            <thead><tr>
+                <th>User</th><th>Action</th><th>Reason</th><th>Moderator</th><th>Date</th>
+            </tr></thead>
+            <tbody>
+            ${actions.map(a => `
+                <tr>
+                    <td>${escHtml(a.user_name || a.user_id)}</td>
+                    <td><span class="log-action-badge ${a.action}">${a.action.toUpperCase()}</span></td>
+                    <td>${escHtml(a.reason || '—')}</td>
+                    <td>${escHtml(a.moderator_name || '—')}</td>
+                    <td style="font-family:var(--f-mono);font-size:0.68rem">${a.timestamp ? a.timestamp.slice(0,16) : '—'}</td>
+                </tr>`).join('')}
+            </tbody>`;
+        container.innerHTML = '';
+        container.appendChild(table);
+    }
+
+    function escHtml(s) {
+        return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    window.modAction = async function (action, uid, uname, gid, btn) {
+        if (action === 'timeout') {
+            // Toggle the timeout picker
+            const picker = document.getElementById('tp-' + uid);
+            if (picker) picker.classList.toggle('open');
+            return;
+        }
+
+        const confirmMsg = {
+            warn:  `Add a warning to ${uname}?`,
+            kick:  `Kick ${uname} from the server?`,
+            ban:   `Ban ${uname} permanently?`,
+            clear: `Clear all warnings for ${uname}?`,
+        }[action];
+
+        if (!confirm(confirmMsg)) return;
+
+        const endpoints = {
+            warn:  '/api/mod/warn',
+            kick:  '/api/mod/kick',
+            ban:   '/api/mod/ban',
+            clear: '/api/mod/clear_warns',
+        };
+
+        try {
+            btn.disabled = true;
+            const r = await fetch(endpoints[action], {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: uid, user_name: uname, guild_id: gid, reason: 'Web mod action' })
+            });
+            const d = await r.json();
+            if (r.ok) {
+                showToast(action === 'clear' ? 'Warnings cleared' : action + ' applied', 'success');
+                loadModPanel('warned');
+            } else {
+                showToast(d.error || 'Error', 'error');
+            }
+        } catch(e) {
+            showToast('Network error', 'error');
+        } finally {
+            btn.disabled = false;
+        }
+    };
+
+    window.applyTimeout = async function (uid, gid) {
+        const inp = document.getElementById('tc-' + uid);
+        const minutes = parseInt(inp?.value || '0');
+        if (!minutes || minutes < 1) { showToast('Enter duration in minutes', 'error'); return; }
+        const seconds = minutes * 60;
+        try {
+            const r = await fetch('/api/mod/timeout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: uid, guild_id: gid, duration_seconds: seconds, reason: 'Web timeout' })
+            });
+            const d = await r.json();
+            if (r.ok) {
+                showToast(`Timeout applied (${minutes}min)`, 'success');
+                document.getElementById('tp-' + uid)?.classList.remove('open');
+                loadModPanel('warned');
+            } else {
+                showToast(d.error || 'Error', 'error');
+            }
+        } catch(e) {
+            showToast('Network error', 'error');
+        }
+    };
+
+    // Close on Escape
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+            document.getElementById('mod-panel')?.classList.remove('active');
+            document.getElementById('login-modal')?.classList.remove('active');
+        }
+    });
+
+    // Refresh mod panel on channel switch
+    document.getElementById('mod-panel')?.addEventListener('click', () => {});
+
+})();
