@@ -32,6 +32,7 @@ intents.message_content = True
 intents.members = True
 intents.guilds = True
 intents.guild_messages = True
+intents.reactions = True   # needed for wait_for reaction_add
 client = discord.Client(intents=intents)
 
 bot_loop = None
@@ -112,147 +113,139 @@ async def on_ready():
         print(f"!!! [HISTORY ERROR ON READY]: {e}")
 
 
+# ── Active deadline tasks: msg_id -> asyncio.Task ──
+_deadline_tasks = {}
+
+
 async def handle_deadline(message, username_raw):
-    """Handle !deadline <user> command."""
-    import json as _json
+    """Handle !deadline <user>: send 24h confirmation embed, auto-close if no reaction."""
+    import datetime, asyncio
 
     channel = message.channel
     guild   = getattr(channel, 'guild', None)
     if not guild:
+        print('!!! [DEADLINE] No guild found')
         return
 
-    # Delete the command message
+    # Delete the command message silently
     try:
         await message.delete()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f'!!! [DEADLINE] Could not delete command: {e}')
 
-    # Resolve user — try mention id, then display name, then username
+    # ── Resolve target user ──
     target_user = None
     username_clean = username_raw.lstrip('@').strip()
 
     import re
-    mention_match = re.match(r'<@!?(\d+)>', username_raw)
-    if mention_match:
-        uid = int(mention_match.group(1))
+    m_id = re.match(r'<@!?(\d+)>', username_raw)
+    if m_id:
+        uid = int(m_id.group(1))
         try:
             target_user = guild.get_member(uid) or await guild.fetch_member(uid)
         except Exception:
             pass
     else:
-        # Ensure member list is populated
         if not guild.chunked:
             try:
                 await guild.chunk()
             except Exception:
                 pass
-
         q = username_clean.lower()
-        # Exact match first
-        for m in guild.members:
-            if m.display_name.lower() == q or m.name.lower() == q:
-                target_user = m
+        for mem in guild.members:
+            if mem.display_name.lower() == q or mem.name.lower() == q:
+                target_user = mem
                 break
-        # Partial match
         if not target_user:
-            for m in guild.members:
-                if q in m.display_name.lower() or q in m.name.lower():
-                    target_user = m
+            for mem in guild.members:
+                if q in mem.display_name.lower() or q in mem.name.lower():
+                    target_user = mem
                     break
-        # Fallback: fetch by username via API
         if not target_user:
             try:
-                results = await guild.query_members(query=username_clean, limit=5)
+                results = await guild.query_members(query=username_clean, limit=3)
                 if results:
                     target_user = results[0]
             except Exception:
                 pass
 
-    mention_str = target_user.mention if target_user else f'@{username_clean}'
-    display_name = target_user.display_name if target_user else username_clean
+    print(f'>>> [DEADLINE] Target resolved: {target_user}')
 
-    # Build deadline embed
-    import datetime
-    deadline_time = datetime.datetime.utcnow() + datetime.timedelta(hours=24)
-    unix_ts = int(deadline_time.timestamp())
+    mention_str  = target_user.mention if target_user else f'@{username_clean}'
+    target_id    = target_user.id if target_user else None
 
-    desc = (
-        mention_str + ', debes confirmar tu disponibilidad en las próximas **24 horas**.'
-        + '\n\nPresiona el botón de abajo para confirmar.'
-        + '\nPlazo: <t:' + str(unix_ts) + ':R>'
-    )
+    # ── Build and send the deadline embed ──
+    deadline_dt = datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+    unix_ts     = int(deadline_dt.timestamp())
+
     embed = discord.Embed(
         title='Deadline — Confirmacion requerida',
-        description=desc,
+        description=(
+            mention_str + ' debes confirmar tu disponibilidad en las proximas **24 horas**.'
+            + '\n\nReacciona a este mensaje con ✅ para confirmar.'
+            + '\nPlazo: <t:' + str(unix_ts) + ':R>'
+        ),
         color=0xF5A623
     )
-    embed.set_footer(text='Si no confirmas antes del plazo, el ticket sera cerrado automaticamente.')
+    embed.set_footer(text='Si no confirmas en 24h, el ticket sera marcado como listo para cerrar.')
 
-    # Button view
-    class DeadlineView(discord.ui.View):
-        def __init__(self, target_id, channel, embed_msg_ref):
-            super().__init__(timeout=86400)  # 24h
-            self.target_id   = target_id
-            self.channel     = channel
-            self.confirmed   = False
-            self.embed_msg   = None  # set after send
+    try:
+        sent = await channel.send(embed=embed)
+        await sent.add_reaction('✅')
+        print(f'>>> [DEADLINE] Embed sent, id={sent.id}')
+    except Exception as e:
+        print(f'!!! [DEADLINE SEND ERROR]: {e}')
+        return
 
-        @discord.ui.button(label='Confirmar disponibilidad', style=discord.ButtonStyle.success)
-        async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-            if self.target_id and interaction.user.id != self.target_id:
-                await interaction.response.send_message(
-                    '❌ Solo el usuario mencionado puede confirmar.', ephemeral=True
+    # ── Watch for ✅ reaction from the target user for 24h ──
+    async def watch_reaction():
+        try:
+            def check(reaction, user):
+                return (
+                    str(reaction.emoji) == '✅'
+                    and reaction.message.id == sent.id
+                    and (target_id is None or user.id == target_id)
+                    and not user.bot
                 )
-                return
-            self.confirmed = True
-            button.label = 'Confirmado'
-            button.disabled = True
-            await interaction.response.edit_message(view=self)
-            # Update embed
+            await client.wait_for('reaction_add', check=check, timeout=86400)
+            # Confirmed!
             confirmed_embed = discord.Embed(
                 title='Confirmado',
-                description=f'{interaction.user.mention} ha confirmado su disponibilidad.',
+                description=mention_str + ' ha confirmado su disponibilidad.',
                 color=0x26C9B8
             )
-            await interaction.message.edit(embed=confirmed_embed, view=self)
-            self.stop()
-
-        async def on_timeout(self):
-            if self.confirmed:
-                return
-            # Send close embed
+            try:
+                await sent.edit(embed=confirmed_embed)
+                await sent.clear_reactions()
+            except Exception:
+                pass
+            print(f'>>> [DEADLINE] Confirmed by {mention_str}')
+        except asyncio.TimeoutError:
+            # 24h passed without confirmation
             close_embed = discord.Embed(
                 title='Ticket listo para cerrar',
-                description=mention_str + ' no ha confirmado en 24 horas.\nEl ticket esta listo para ser cerrado.',
+                description=mention_str + ' no confirmo en 24 horas. El ticket esta listo para ser cerrado.',
                 color=0xFF6B6B
             )
             try:
-                await self.channel.send(embed=close_embed)
-                if self.embed_msg:
-                    # Disable the button on expired message
-                    for child in self.children:
-                        child.disabled = True
-                    expired_embed = discord.Embed(
-                        title='Plazo expirado',
-                        description=mention_str + ' no respondio en 24 horas.',
-                        color=0xAAAAAA
-                    )
-                    await self.embed_msg.edit(embed=expired_embed, view=self)
+                await channel.send(embed=close_embed)
+                expired_embed = discord.Embed(
+                    title='Plazo expirado',
+                    description=mention_str + ' no respondio en 24 horas.',
+                    color=0x888888
+                )
+                await sent.edit(embed=expired_embed)
+                await sent.clear_reactions()
             except Exception as e:
-                print(f'!!! [DEADLINE TIMEOUT]: {e}')
+                print(f'!!! [DEADLINE TIMEOUT ERROR]: {e}')
+        except Exception as e:
+            print(f'!!! [DEADLINE WATCH ERROR]: {e}')
+        finally:
+            _deadline_tasks.pop(sent.id, None)
 
-    view = DeadlineView(
-        target_id   = target_user.id if target_user else None,
-        channel     = channel,
-        embed_msg_ref = None
-    )
+    task = asyncio.create_task(watch_reaction())
+    _deadline_tasks[sent.id] = task
 
-    try:
-        sent = await channel.send(embed=embed, view=view)
-        view.embed_msg = sent
-        print(f'>>> [DEADLINE] Sent for {display_name} in #{channel.name}')
-    except Exception as e:
-        print(f'!!! [DEADLINE SEND ERROR]: {e}')
 
 
 @client.event
