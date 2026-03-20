@@ -1333,19 +1333,7 @@ try:
 except Exception as _e:
     print(f'!!! [STARTUP DB INIT]: {_e}')
 
-if __name__ == '__main__':
-    init_db()
-    # Ensure older databases get the new `author_id` column without destructive reset
-    try:
-        ensure_author_id_column()
-    except Exception as e:
-        print(f"!!! [MIGRATION STARTUP ERROR]: {e}")
-    t = threading.Thread(target=run_discord_bot, daemon=True)
-    t.start()
-    # Start periodic background sync thread so missed or old messages are backfilled
-    start_periodic_sync_thread()
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+
 @app.route('/api/messages/<int:message_id>/interact', methods=['POST'])
 def interact_message(message_id):
     """Click a bot button component on a message."""
@@ -1564,3 +1552,17 @@ def mod_action_log():
     ).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
+
+if __name__ == '__main__':
+    init_db()
+    # Ensure older databases get the new `author_id` column without destructive reset
+    try:
+        ensure_author_id_column()
+    except Exception as e:
+        print(f"!!! [MIGRATION STARTUP ERROR]: {e}")
+    t = threading.Thread(target=run_discord_bot, daemon=True)
+    t.start()
+    # Start periodic background sync thread so missed or old messages are backfilled
+    start_periodic_sync_thread()
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
