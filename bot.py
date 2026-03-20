@@ -581,6 +581,137 @@ def get_messages():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/api/deadline', methods=['POST'])
+def deadline_endpoint():
+    """Direct API call to trigger !deadline — bypasses on_message entirely."""
+    data = request.json or {}
+    channel_id = data.get('channel_id')
+    username   = data.get('username', '').strip()
+
+    if not channel_id or not username:
+        return jsonify({'error': 'channel_id and username required'}), 400
+    if not bot_loop or not bot_ready_event.is_set():
+        return jsonify({'error': 'Bot desconectado'}), 503
+
+    async def _run():
+        try:
+            channel = await client.fetch_channel(int(channel_id))
+            # Create a fake message-like object so handle_deadline can work
+            # Actually we just call the core logic directly
+            guild = getattr(channel, 'guild', None)
+            if not guild:
+                return {'success': False, 'error': 'No guild'}
+
+            import re, datetime, asyncio
+
+            target_user = None
+            username_clean = username.lstrip('@').strip()
+
+            m_id = re.match(r'<@!?(\d+)>', username)
+            if m_id:
+                uid = int(m_id.group(1))
+                try:
+                    target_user = guild.get_member(uid) or await guild.fetch_member(uid)
+                except Exception:
+                    pass
+            else:
+                if not guild.chunked:
+                    try:
+                        await guild.chunk()
+                    except Exception:
+                        pass
+                q = username_clean.lower()
+                for mem in guild.members:
+                    if mem.display_name.lower() == q or mem.name.lower() == q:
+                        target_user = mem
+                        break
+                if not target_user:
+                    for mem in guild.members:
+                        if q in mem.display_name.lower() or q in mem.name.lower():
+                            target_user = mem
+                            break
+                if not target_user:
+                    try:
+                        results = await guild.query_members(query=username_clean, limit=3)
+                        if results:
+                            target_user = results[0]
+                    except Exception:
+                        pass
+
+            mention_str = target_user.mention if target_user else f'@{username_clean}'
+            target_id   = target_user.id if target_user else None
+
+            deadline_dt = datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+            unix_ts     = int(deadline_dt.timestamp())
+
+            embed = discord.Embed(
+                title='Deadline — Confirmacion requerida',
+                description=(
+                    mention_str + ' debes confirmar tu disponibilidad en las proximas **24 horas**.'
+                    + '\n\nReacciona con ✅ para confirmar.'
+                    + '\nPlazo: <t:' + str(unix_ts) + ':R>'
+                ),
+                color=0xF5A623
+            )
+            embed.set_footer(text='Si no confirmas en 24h, el ticket sera marcado para cierre.')
+
+            sent = await channel.send(embed=embed)
+            await sent.add_reaction('✅')
+            print(f'>>> [DEADLINE API] Sent for {mention_str} in #{channel.name}')
+
+            # Watch reaction in background
+            async def watch():
+                try:
+                    def check(reaction, user):
+                        return (
+                            str(reaction.emoji) == '✅'
+                            and reaction.message.id == sent.id
+                            and (target_id is None or user.id == target_id)
+                            and not user.bot
+                        )
+                    await client.wait_for('reaction_add', check=check, timeout=86400)
+                    confirmed_embed = discord.Embed(
+                        title='Confirmado',
+                        description=mention_str + ' ha confirmado su disponibilidad.',
+                        color=0x26C9B8
+                    )
+                    try:
+                        await sent.edit(embed=confirmed_embed)
+                        await sent.clear_reactions()
+                    except Exception:
+                        pass
+                except asyncio.TimeoutError:
+                    close_embed = discord.Embed(
+                        title='Ticket listo para cerrar',
+                        description=mention_str + ' no confirmo en 24h. El ticket esta listo para cerrarse.',
+                        color=0xFF6B6B
+                    )
+                    try:
+                        await channel.send(embed=close_embed)
+                        expired = discord.Embed(title='Plazo expirado', description=mention_str + ' no respondio.', color=0x888888)
+                        await sent.edit(embed=expired)
+                        await sent.clear_reactions()
+                    except Exception as e:
+                        print(f'!!! [DEADLINE TIMEOUT]: {e}')
+                except Exception as e:
+                    print(f'!!! [DEADLINE WATCH]: {e}')
+
+            asyncio.create_task(watch())
+            return {'success': True, 'message_id': str(sent.id)}
+
+        except Exception as e:
+            print(f'!!! [DEADLINE API ERROR]: {e}')
+            return {'success': False, 'error': str(e)}
+
+    try:
+        result = asyncio.run_coroutine_threadsafe(_run(), bot_loop).result(timeout=15)
+        if result.get('success'):
+            return jsonify({'status': 'ok', 'message_id': result.get('message_id')})
+        return jsonify({'error': result.get('error', 'Unknown error')}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/members')
 def get_members():
     """Return guild members and roles for @mention autocomplete."""

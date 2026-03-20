@@ -1533,14 +1533,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (btn) btn.disabled = true;
 
         try {
-            const res = await fetch('/api/send', {
+            const res = await fetch('/api/deadline', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ channel_id: currentChannelId, content: '!deadline ' + username })
+                body: JSON.stringify({ channel_id: currentChannelId, username: username })
             });
             const data = await res.json();
             if (res.ok) {
-                showToast('Comando enviado', 'success');
+                showToast('Deadline enviado', 'success');
                 document.getElementById('commands-panel')?.classList.remove('active');
                 if (deadlineInput) deadlineInput.value = '';
                 deadlineUser = null;
