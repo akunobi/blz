@@ -407,36 +407,40 @@ async def on_message(message):
                         pass
             return
 
-    # ── AutoMod: bad word detection ──
+    # ── AutoMod: bad word detection (all guild channels) ──
     guild = getattr(message.channel, 'guild', None)
     if guild and message.content:
-        content_lower = message.content.lower()
-        # Strip punctuation for matching
         import re as _re
-        clean = _re.sub(r'[^a-z0-9\s]', '', content_lower)
-        found_word = next((w for w in BAD_WORDS if w in clean.split() or w in content_lower), None)
+        # Flatten text: lowercase, strip non-alphanumeric so @n1gger → n1gger
+        content_lower = message.content.lower()
+        clean = _re.sub(r'[^a-z0-9]', ' ', content_lower)  # replace ALL non-alnum with space
+        # Match as substring (catches plurals, leet-speak variants)
+        found_word = next((w for w in BAD_WORDS if w in clean), None)
+        print(f'>>> [AUTOMOD CHECK] "{content_lower}" | clean="{clean}" | found={found_word}')
         if found_word:
             try:
                 await message.delete()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f'!!! [AUTOMOD DELETE ERROR]: {e}')
             warn_count = add_warning(
                 message.author.id, message.author.name, guild.id,
                 reason=f'Bad word: {found_word}'
             )
             try:
-                warn_msg = await message.channel.send(
+                await message.channel.send(
                     f'⚠️ {message.author.mention} Your message was removed for violating community rules. '
                     f'**Warning {warn_count}**.',
                     delete_after=8
                 )
-            except Exception:
-                pass
-            if message.guild.get_member(message.author.id):
-                await escalate_user(message.author, guild, warn_count, f'Bad word: {found_word}')
-            return
+            except Exception as e:
+                print(f'!!! [AUTOMOD WARN MSG ERROR]: {e}')
+            member = message.guild.get_member(message.author.id)
+            if member:
+                await escalate_user(member, guild, warn_count, f'Bad word: {found_word}')
+            # Still save the message to DB (content already deleted on Discord)
+            # Fall through to DB save below (don't return early)
 
-    # ── AutoMod: spam detection ──
+    # ── AutoMod: spam detection (all guild channels) ──
     if guild and message.content is not None:
         import hashlib as _hs, time as _t
         now = _t.time()
