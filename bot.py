@@ -1238,6 +1238,13 @@ def start_periodic_sync_thread():
     t = threading.Thread(target=_runner, daemon=True)
     t.start()
 
+# Run DB init at module level so Render/gunicorn workers get the tables too
+try:
+    init_db()
+    ensure_author_id_column()
+except Exception as _e:
+    print(f'!!! [STARTUP DB INIT]: {_e}')
+
 if __name__ == '__main__':
     init_db()
     # Ensure older databases get the new `author_id` column without destructive reset
