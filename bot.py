@@ -298,42 +298,49 @@ def get_recent_mod_action(user_id, guild_id, action):
 
 
 async def escalate_user(member, guild, warn_count, reason):
-    """Apply timeout or ban based on warn count and history."""
+    """Apply timeout or ban based on warn count and prior action history."""
     import datetime
     uid  = str(member.id)
     gid  = str(guild.id)
     name = member.name
 
-    had_timeout = get_recent_mod_action(uid, gid, 'timeout')
-    had_ban3d   = get_recent_mod_action(uid, gid, 'ban_3d')
+    print(f'>>> [ESCALATE] {name} | warn_count={warn_count} | WARN_TIMEOUT_AT={WARN_TIMEOUT_AT}')
+
+    had_timeout  = get_recent_mod_action(uid, gid, 'timeout')
+    had_ban3d    = get_recent_mod_action(uid, gid, 'ban_3d')
 
     try:
         if had_ban3d:
-            # Permanent ban
-            await member.ban(reason=f'AutoMod: permanent ban (repeated violations after ban) | {reason}', delete_message_days=0)
+            # Permanent ban — already had a 3d ban before
+            await member.ban(reason=f'AutoMod: permanent ban after 3d ban | {reason}', delete_message_days=0)
             log_mod_action(uid, name, gid, 'ban_permanent', reason)
             print(f'>>> [AUTOMOD] PERMANENT BAN: {name}')
-        elif had_timeout:
-            # 3-day ban
-            await member.ban(reason=f'AutoMod: 3-day ban (repeated violations after timeout) | {reason}', delete_message_days=0)
+
+        elif had_timeout and warn_count >= 1:
+            # 3-day ban — already had a timeout before
+            await member.ban(reason=f'AutoMod: 3-day ban after timeout | {reason}', delete_message_days=0)
             log_mod_action(uid, name, gid, 'ban_3d', reason, duration=259200)
             print(f'>>> [AUTOMOD] 3D BAN: {name}')
-            # Schedule unban
-            async def unban_later():
-                import asyncio
+            async def _unban():
                 await asyncio.sleep(259200)
                 try:
-                    await guild.unban(member, reason='AutoMod: 3-day ban expired')
-                except Exception:
-                    pass
-            import asyncio
-            asyncio.create_task(unban_later())
+                    user = await client.fetch_user(int(uid))
+                    await guild.unban(user, reason='AutoMod: 3d ban expired')
+                except Exception as e:
+                    print(f'!!! [UNBAN ERROR]: {e}')
+            asyncio.create_task(_unban())
+
         elif warn_count >= WARN_TIMEOUT_AT:
             # 1-day timeout
             until = datetime.datetime.utcnow() + datetime.timedelta(days=1)
             await member.timeout(until, reason=f'AutoMod: {warn_count} warnings | {reason}')
             log_mod_action(uid, name, gid, 'timeout', reason, duration=86400)
-            print(f'>>> [AUTOMOD] TIMEOUT 1D: {name}')
+            print(f'>>> [AUTOMOD] TIMEOUT 1D: {name} (warn_count={warn_count})')
+        else:
+            print(f'>>> [ESCALATE] No action yet for {name} (need {WARN_TIMEOUT_AT} warns, have {warn_count})')
+
+    except discord.Forbidden:
+        print(f'!!! [ESCALATE] Missing permissions to act on {name}')
     except Exception as e:
         print(f'!!! [ESCALATE ERROR] {name}: {e}')
 
@@ -502,14 +509,21 @@ async def on_message(message):
         found_word = contains_bad_word(message.content)
         print(f'>>> [AUTOMOD] msg="{message.content!r}" | found={found_word!r}')
         if found_word:
+            # Delete message first — needs Manage Messages permission
+            deleted = False
             try:
                 await message.delete()
+                deleted = True
+            except discord.Forbidden:
+                print(f'!!! [AUTOMOD] Missing Manage Messages permission in #{message.channel.name}')
             except Exception as e:
                 print(f'!!! [AUTOMOD DELETE ERROR]: {e}')
+
             warn_count = add_warning(
                 message.author.id, message.author.name, guild.id,
                 reason=f'Bad word: {found_word}'
             )
+            print(f'>>> [AUTOMOD] {message.author.name} warned ({warn_count} total) | deleted={deleted}')
             try:
                 await message.channel.send(
                     f'⚠️ {message.author.mention} Your message was removed for violating community rules. '
@@ -518,11 +532,10 @@ async def on_message(message):
                 )
             except Exception as e:
                 print(f'!!! [AUTOMOD WARN MSG ERROR]: {e}')
-            member = message.guild.get_member(message.author.id)
+            member = guild.get_member(message.author.id)
             if member:
                 await escalate_user(member, guild, warn_count, f'Bad word: {found_word}')
-            # Still save the message to DB (content already deleted on Discord)
-            # Fall through to DB save below (don't return early)
+            return  # stop processing — don't fall through to spam or DB save
 
     # ── AutoMod: spam detection (all guild channels) ──
     if guild and message.content is not None:
@@ -544,26 +557,22 @@ async def on_message(message):
         # Count how many recent messages share this hash
         same_count = sum(1 for hh, _ in dq if hh == h)
         if same_count >= SPAM_MAX_SAME:
-            # Delete all spam messages in this channel from this user
-            spam_deleted = 0
+            dq.clear()  # reset cache immediately
+
+            # Delete triggering message right away (no API round-trip first)
             try:
-                async for msg in message.channel.history(limit=20):
-                    if msg.author.id == message.author.id:
-                        m_norm = _re2.sub(r'\s+', ' ', (msg.content or '').lower().strip())
-                        m_h    = _hs.md5(m_norm.encode()).hexdigest()
-                        if m_h == h:
-                            try:
-                                await msg.delete()
-                                spam_deleted += 1
-                            except Exception:
-                                pass
+                await message.delete()
             except Exception:
                 pass
-            dq.clear()  # reset spam cache for user
+
             warn_count = add_warning(
                 message.author.id, message.author.name, guild.id,
                 reason=f'Spam: {same_count} identical messages'
             )
+            print(f'>>> [AUTOMOD SPAM] {message.author.name} warned ({warn_count}) | same={same_count}')
+
+            member = guild.get_member(message.author.id)
+
             try:
                 await message.channel.send(
                     f'⚠️ {message.author.mention} Spam detected and removed. **Warning {warn_count}**.',
@@ -571,8 +580,27 @@ async def on_message(message):
                 )
             except Exception:
                 pass
-            if message.guild.get_member(message.author.id):
-                await escalate_user(message.author, guild, warn_count, 'Spam')
+
+            if member:
+                await escalate_user(member, guild, warn_count, 'Spam')
+
+            # Bulk delete older duplicates in background (non-blocking)
+            async def _bulk_delete():
+                try:
+                    to_delete = []
+                    async for msg in message.channel.history(limit=30):
+                        if msg.author.id == message.author.id:
+                            m_norm = _re2.sub(r'\s+', ' ', (msg.content or '').lower().strip())
+                            if _hs.md5(m_norm.encode()).hexdigest() == h:
+                                to_delete.append(msg)
+                    for m in to_delete:
+                        try:
+                            await m.delete()
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+            asyncio.create_task(_bulk_delete())
             return
 
     # ── !deadline command ──
