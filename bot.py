@@ -34,6 +34,8 @@ client = discord.Client(intents=intents)
 
 bot_loop = None
 bot_ready_event = threading.Event()
+# deadline_tasks: {message_id: asyncio.Task}
+deadline_tasks = {}
 
 # --- BASE DE DATOS ---
 def get_db_connection():
@@ -90,6 +92,12 @@ async def on_ready():
     print(f'>>> [DISCORD]: Conectado como {client.user}')
     print(f'>>> [DISCORD]: ID Categoría: {TARGET_CATEGORY_ID}')
     bot_ready_event.set()
+    # Register persistent views if discord.ui is available
+    try:
+        import discord.ui as _ui
+        print('>>> [DISCORD]: discord.ui available — deadline views enabled')
+    except ImportError:
+        print('!!! [DISCORD]: discord.ui not available — upgrade to discord.py 2.0+')
     # Backfill recent history from the target category so the web UI
     # can display past messages without waiting for new messages.
     try:
@@ -101,10 +109,148 @@ async def on_ready():
     except Exception as e:
         print(f"!!! [HISTORY ERROR ON READY]: {e}")
 
+
+async def handle_deadline(message, username_raw):
+    """Handle !deadline <user> command."""
+    import json as _json
+
+    channel = message.channel
+    guild   = getattr(channel, 'guild', None)
+    if not guild:
+        return
+
+    # Delete the command message
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    # Resolve user — try mention id, then display name, then username
+    target_user = None
+    username_clean = username_raw.lstrip('@')
+
+    # Check if it's a raw mention like <@123>
+    import re
+    mention_match = re.match(r'<@!?(\d+)>', username_raw)
+    if mention_match:
+        uid = int(mention_match.group(1))
+        try:
+            target_user = guild.get_member(uid) or await guild.fetch_member(uid)
+        except Exception:
+            pass
+    else:
+        # Search by display name or username
+        for m in guild.members:
+            if (m.display_name.lower() == username_clean.lower() or
+                    m.name.lower() == username_clean.lower()):
+                target_user = m
+                break
+        if not target_user:
+            # Partial match fallback
+            for m in guild.members:
+                if (username_clean.lower() in m.display_name.lower() or
+                        username_clean.lower() in m.name.lower()):
+                    target_user = m
+                    break
+
+    mention_str = target_user.mention if target_user else f'@{username_clean}'
+    display_name = target_user.display_name if target_user else username_clean
+
+    # Build deadline embed
+    import datetime
+    deadline_time = datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+    unix_ts = int(deadline_time.timestamp())
+
+    desc = (
+        mention_str + ', debes confirmar tu disponibilidad en las próximas **24 horas**.'
+        + '\n\nPresiona el botón de abajo para confirmar.'
+        + '\nPlazo: <t:' + str(unix_ts) + ':R>'
+    )
+    embed = discord.Embed(
+        title='Deadline — Confirmacion requerida',
+        description=desc,
+        color=0xF5A623
+    )
+    embed.set_footer(text='Si no confirmas antes del plazo, el ticket sera cerrado automaticamente.')
+
+    # Button view
+    class DeadlineView(discord.ui.View):
+        def __init__(self, target_id, channel, embed_msg_ref):
+            super().__init__(timeout=86400)  # 24h
+            self.target_id   = target_id
+            self.channel     = channel
+            self.confirmed   = False
+            self.embed_msg   = None  # set after send
+
+        @discord.ui.button(label='Confirmar disponibilidad', style=discord.ButtonStyle.success, custom_id='deadline_confirm')
+        async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+            if self.target_id and interaction.user.id != self.target_id:
+                await interaction.response.send_message(
+                    '❌ Solo el usuario mencionado puede confirmar.', ephemeral=True
+                )
+                return
+            self.confirmed = True
+            button.label = 'Confirmado'
+            button.disabled = True
+            await interaction.response.edit_message(view=self)
+            # Update embed
+            confirmed_embed = discord.Embed(
+                title='Confirmado',
+                description=f'{interaction.user.mention} ha confirmado su disponibilidad.',
+                color=0x26C9B8
+            )
+            await interaction.message.edit(embed=confirmed_embed, view=self)
+            self.stop()
+
+        async def on_timeout(self):
+            if self.confirmed:
+                return
+            # Send close embed
+            close_embed = discord.Embed(
+                title='Ticket listo para cerrar',
+                description=mention_str + ' no ha confirmado en 24 horas.\nEl ticket esta listo para ser cerrado.',
+                color=0xFF6B6B
+            )
+            try:
+                await self.channel.send(embed=close_embed)
+                if self.embed_msg:
+                    # Disable the button on expired message
+                    for child in self.children:
+                        child.disabled = True
+                    expired_embed = discord.Embed(
+                        title='Plazo expirado',
+                        description=mention_str + ' no respondio en 24 horas.',
+                        color=0xAAAAAA
+                    )
+                    await self.embed_msg.edit(embed=expired_embed, view=self)
+            except Exception as e:
+                print(f'!!! [DEADLINE TIMEOUT]: {e}')
+
+    view = DeadlineView(
+        target_id   = target_user.id if target_user else None,
+        channel     = channel,
+        embed_msg_ref = None
+    )
+
+    try:
+        sent = await channel.send(embed=embed, view=view)
+        view.embed_msg = sent
+        print(f'>>> [DEADLINE] Sent for {display_name} in #{channel.name}')
+    except Exception as e:
+        print(f'!!! [DEADLINE SEND ERROR]: {e}')
+
+
 @client.event
 async def on_message(message):
     # NOTA: Eliminamos la restricción de 'client.user' para ver mensajes de la web
-    
+
+    # ── !deadline command ──
+    if message.content and message.content.strip().startswith('!deadline'):
+        parts = message.content.strip().split()
+        if len(parts) >= 2:
+            await handle_deadline(message, parts[1])
+            return  # Don't save the command message to DB
+
     if hasattr(message.channel, 'category') and message.channel.category:
         if message.channel.category.id == TARGET_CATEGORY_ID:
             try:
