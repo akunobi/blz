@@ -179,15 +179,15 @@ async def handle_deadline(message, username_raw):
     unix_ts     = int(deadline_dt.timestamp())
 
     embed = discord.Embed(
-        title='Deadline — Confirmacion requerida',
+        title='Deadline — Confirmation Required',
         description=(
-            mention_str + ' debes confirmar tu disponibilidad en las proximas **24 horas**.'
-            + '\n\nReacciona a este mensaje con ✅ para confirmar.'
-            + '\nPlazo: <t:' + str(unix_ts) + ':R>'
+            mention_str + ' you must confirm your availability within the next **24 hours**.'
+            + '\n\nReact with ✅ to confirm.'
+            + '\nDeadline: <t:' + str(unix_ts) + ':R>'
         ),
         color=0xF5A623
     )
-    embed.set_footer(text='Si no confirmas en 24h, el ticket sera marcado como listo para cerrar.')
+    embed.set_footer(text='If you do not confirm within 24h, the ticket will be marked as ready to close.')
 
     try:
         sent = await channel.send(embed=embed)
@@ -210,8 +210,8 @@ async def handle_deadline(message, username_raw):
             await client.wait_for('reaction_add', check=check, timeout=86400)
             # Confirmed!
             confirmed_embed = discord.Embed(
-                title='Confirmado',
-                description=mention_str + ' ha confirmado su disponibilidad.',
+                title='Confirmed',
+                description=mention_str + ' has confirmed their availability.',
                 color=0x26C9B8
             )
             try:
@@ -223,15 +223,15 @@ async def handle_deadline(message, username_raw):
         except asyncio.TimeoutError:
             # 24h passed without confirmation
             close_embed = discord.Embed(
-                title='Ticket listo para cerrar',
-                description=mention_str + ' no confirmo en 24 horas. El ticket esta listo para ser cerrado.',
+                title='Ticket Ready to Close',
+                description=mention_str + ' did not confirm within 24 hours. The ticket is ready to be closed.',
                 color=0xFF6B6B
             )
             try:
                 await channel.send(embed=close_embed)
                 expired_embed = discord.Embed(
-                    title='Plazo expirado',
-                    description=mention_str + ' no respondio en 24 horas.',
+                    title='Deadline Expired',
+                    description=mention_str + ' did not respond within 24 hours.',
                     color=0x888888
                 )
                 await sent.edit(embed=expired_embed)
@@ -265,12 +265,12 @@ async def on_message(message):
                 await handle_deadline(message, parts[1].strip())
             else:
                 try:
-                    await message.reply('No tienes permisos para usar este comando.', delete_after=5)
+                    await message.reply('You do not have permission to use this command.', delete_after=5)
                 except Exception:
                     pass
         else:
             try:
-                await message.reply('Uso: `!deadline <usuario>`', delete_after=5)
+                await message.reply('Usage: `!deadline <user>`', delete_after=5)
             except Exception:
                 pass
         return
@@ -645,15 +645,15 @@ def deadline_endpoint():
             unix_ts     = int(deadline_dt.timestamp())
 
             embed = discord.Embed(
-                title='Deadline — Confirmacion requerida',
+                title='Deadline — Confirmation Required',
                 description=(
-                    mention_str + ' debes confirmar tu disponibilidad en las proximas **24 horas**.'
-                    + '\n\nReacciona con ✅ para confirmar.'
-                    + '\nPlazo: <t:' + str(unix_ts) + ':R>'
+                    mention_str + ' you must confirm your availability within the next **24 hours**.'
+                    + '\n\nReact with ✅ to confirm.'
+                    + '\nDeadline: <t:' + str(unix_ts) + ':R>'
                 ),
                 color=0xF5A623
             )
-            embed.set_footer(text='Si no confirmas en 24h, el ticket sera marcado para cierre.')
+            embed.set_footer(text='If you do not confirm within 24h, the ticket will be marked as ready to close.')
 
             sent = await channel.send(embed=embed)
             await sent.add_reaction('✅')
@@ -671,8 +671,8 @@ def deadline_endpoint():
                         )
                     await client.wait_for('reaction_add', check=check, timeout=86400)
                     confirmed_embed = discord.Embed(
-                        title='Confirmado',
-                        description=mention_str + ' ha confirmado su disponibilidad.',
+                        title='Confirmed',
+                        description=mention_str + ' has confirmed their availability.',
                         color=0x26C9B8
                     )
                     try:
@@ -682,13 +682,13 @@ def deadline_endpoint():
                         pass
                 except asyncio.TimeoutError:
                     close_embed = discord.Embed(
-                        title='Ticket listo para cerrar',
-                        description=mention_str + ' no confirmo en 24h. El ticket esta listo para cerrarse.',
+                        title='Ticket Ready to Close',
+                        description=mention_str + ' did not confirm within 24h. The ticket is ready to be closed.',
                         color=0xFF6B6B
                     )
                     try:
                         await channel.send(embed=close_embed)
-                        expired = discord.Embed(title='Plazo expirado', description=mention_str + ' no respondio.', color=0x888888)
+                        expired = discord.Embed(title='Deadline Expired', description=mention_str + ' did not respond.', color=0x888888)
                         await sent.edit(embed=expired)
                         await sent.clear_reactions()
                     except Exception as e:
