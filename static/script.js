@@ -12,7 +12,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatUptime = document.getElementById('chat-uptime');
     let timerInterval;
 
-    let currentChannelId = null;
+    window._currentChannelId = null;
+    // Expose via window so other scripts can read it
+    Object.defineProperty(window, 'currentChannelId', { get: () => window._currentChannelId, set: v => { window._currentChannelId = v; } });
     let isFetching = false;
     let botName = null;
     let channelMap = {};
@@ -67,6 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 link.onclick = () => {
                     currentChannelId = cId;
+                    window._currentChannelId = cId;
                     document.querySelectorAll('.channel-item').forEach(b => b.classList.remove('active'));
                     link.classList.add('active');
 
@@ -1428,6 +1431,130 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
+
+    // ════════════════════════════════════
+    // COMMANDS PANEL — inside DOMContentLoaded
+    // (needs access to ensureAcData, acMembers, showToast, currentChannelId)
+    // ════════════════════════════════════
+
+    window.toggleCommands = function () {
+        document.getElementById('commands-panel')?.classList.toggle('active');
+    };
+
+    let deadlineUser = null;
+    const deadlineInput   = document.getElementById('deadline-user');
+    const deadlineAc      = document.getElementById('deadline-ac');
+    const deadlinePreview = document.getElementById('deadline-preview');
+
+    function updateDeadlinePreview() {
+        if (!deadlinePreview) return;
+        const name = deadlineUser
+            ? (deadlineUser.display || deadlineUser.username || deadlineUser.name)
+            : '...';
+        deadlinePreview.innerHTML = '<code>!deadline <span class="cmd-preview-user">' + name + '</span></code>';
+    }
+
+    function buildCmdAcItem(item) {
+        const el = document.createElement('div');
+        el.className = 'ac-item';
+        if (item.type === 'user') {
+            const av = document.createElement('div');
+            av.className = 'ac-avatar';
+            if (item.avatar) {
+                const img = document.createElement('img');
+                img.src = item.avatar; img.className = 'ac-avatar-img';
+                av.appendChild(img);
+            } else {
+                av.textContent = (item.display || item.username || '?')[0].toUpperCase();
+            }
+            const info = document.createElement('div');
+            info.className = 'ac-info';
+            const n = document.createElement('span'); n.className = 'ac-name'; n.textContent = item.display;
+            const h = document.createElement('span'); h.className = 'ac-handle'; h.textContent = '@' + item.username;
+            info.appendChild(n); info.appendChild(h);
+            el.appendChild(av); el.appendChild(info);
+        }
+        return el;
+    }
+
+    if (deadlineInput && deadlineAc) {
+        deadlineAc.addEventListener('mousedown', e => e.preventDefault());
+
+        deadlineInput.addEventListener('input', async () => {
+            const q = deadlineInput.value.trim().toLowerCase();
+            deadlineUser = null;
+            updateDeadlinePreview();
+
+            if (!q) { deadlineAc.classList.remove('open'); deadlineAc.innerHTML = ''; return; }
+
+            await ensureAcData();
+            const matches = acMembers
+                .filter(m => m.display.toLowerCase().includes(q) || m.username.toLowerCase().includes(q))
+                .slice(0, 8)
+                .map(m => ({ ...m, type: 'user' }));
+
+            deadlineAc.innerHTML = '';
+            if (!matches.length) { deadlineAc.classList.remove('open'); return; }
+
+            matches.forEach(item => {
+                const el = buildCmdAcItem(item);
+                el.addEventListener('mousedown', e => e.preventDefault());
+                el.addEventListener('click', () => {
+                    deadlineUser = item;
+                    deadlineInput.value = item.display || item.username;
+                    deadlineAc.classList.remove('open');
+                    deadlineAc.innerHTML = '';
+                    updateDeadlinePreview();
+                    deadlineInput.focus();
+                });
+                deadlineAc.appendChild(el);
+            });
+            deadlineAc.classList.add('open');
+        });
+
+        deadlineInput.addEventListener('blur', () => {
+            setTimeout(() => deadlineAc.classList.remove('open'), 180);
+        });
+    }
+
+    window.sendDeadlineCommand = async function () {
+        if (!currentChannelId) {
+            showToast('Selecciona un canal primero', 'error'); return;
+        }
+        const username = deadlineUser
+            ? (deadlineUser.username || deadlineUser.display)
+            : (deadlineInput?.value?.trim());
+
+        if (!username) {
+            showToast('Selecciona un usuario', 'error'); return;
+        }
+
+        const btn = document.getElementById('deadline-send');
+        if (btn) btn.disabled = true;
+
+        try {
+            const res = await fetch('/api/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ channel_id: currentChannelId, content: '!deadline ' + username })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                showToast('Comando enviado', 'success');
+                document.getElementById('commands-panel')?.classList.remove('active');
+                if (deadlineInput) deadlineInput.value = '';
+                deadlineUser = null;
+                updateDeadlinePreview();
+            } else {
+                showToast(data.error || 'Error al enviar', 'error');
+            }
+        } catch(e) {
+            showToast('Error de red', 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    };
+
 });
 
 /* ════════════════════════════════════
@@ -1749,151 +1876,4 @@ window.toggleChannelDrawer = function () {
         }
         startY = 0;
     }, { passive: true });
-})();
-
-/* ════════════════════════════════════
-   COMMANDS PANEL
-   ════════════════════════════════════ */
-(function () {
-
-    window.toggleCommands = function () {
-        document.getElementById('commands-panel').classList.toggle('active');
-    };
-
-    document.addEventListener('keydown', e => {
-        if (e.key === 'Escape') document.getElementById('commands-panel')?.classList.remove('active');
-    });
-
-    // ── Deadline command form ──
-    let deadlineUser = null; // { id, display, username, type }
-
-    const deadlineInput = document.getElementById('deadline-user');
-    const deadlineAc    = document.getElementById('deadline-ac');
-    const deadlinePreview = document.getElementById('deadline-preview');
-
-    function buildAcItem(item) {
-        const el = document.createElement('div');
-        el.className = 'ac-item';
-        if (item.type === 'user') {
-            const av = document.createElement('div');
-            av.className = 'ac-avatar';
-            if (item.avatar) {
-                const img = document.createElement('img');
-                img.src = item.avatar; img.className = 'ac-avatar-img';
-                av.appendChild(img);
-            } else {
-                av.textContent = (item.display || item.username || '?')[0].toUpperCase();
-            }
-            const info = document.createElement('div');
-            info.className = 'ac-info';
-            const name = document.createElement('span');
-            name.className = 'ac-name'; name.textContent = item.display;
-            const handle = document.createElement('span');
-            handle.className = 'ac-handle'; handle.textContent = '@' + item.username;
-            info.appendChild(name); info.appendChild(handle);
-            el.appendChild(av); el.appendChild(info);
-        } else {
-            const dot = document.createElement('span');
-            dot.className = 'ac-role-dot';
-            dot.style.background = item.color;
-            const lbl = document.createElement('span');
-            lbl.className = 'ac-role-name'; lbl.style.color = item.color;
-            lbl.textContent = '@' + item.name;
-            const tag = document.createElement('span');
-            tag.className = 'ac-role-tag'; tag.textContent = 'ROLE';
-            el.appendChild(dot); el.appendChild(lbl); el.appendChild(tag);
-        }
-        return el;
-    }
-
-    function updateDeadlinePreview() {
-        if (!deadlinePreview) return;
-        const name = deadlineUser ? deadlineUser.display || deadlineUser.username || deadlineUser.name : '...';
-        deadlinePreview.innerHTML = `<code>!deadline <span class="cmd-preview-user">${name}</span></code>`;
-    }
-
-    if (deadlineInput) {
-        // Prevent blur from closing AC
-        if (deadlineAc) {
-            deadlineAc.addEventListener('mousedown', e => e.preventDefault());
-        }
-
-        deadlineInput.addEventListener('input', async () => {
-            const q = deadlineInput.value.trim().toLowerCase();
-            deadlineUser = null;
-            updateDeadlinePreview();
-            if (!deadlineAc) return;
-
-            if (!q) { deadlineAc.classList.remove('open'); deadlineAc.innerHTML = ''; return; }
-
-            await ensureAcData();
-            const matches = [
-                ...acMembers.filter(m =>
-                    m.display.toLowerCase().includes(q) || m.username.toLowerCase().includes(q)
-                ).slice(0, 6).map(m => ({ ...m, type: 'user' }))
-            ];
-
-            deadlineAc.innerHTML = '';
-            if (!matches.length) { deadlineAc.classList.remove('open'); return; }
-
-            matches.forEach(item => {
-                const el = buildAcItem(item);
-                el.addEventListener('click', () => {
-                    deadlineUser = item;
-                    deadlineInput.value = item.display || item.username || item.name;
-                    deadlineAc.classList.remove('open');
-                    deadlineAc.innerHTML = '';
-                    updateDeadlinePreview();
-                });
-                deadlineAc.appendChild(el);
-            });
-            deadlineAc.classList.add('open');
-        });
-
-        deadlineInput.addEventListener('blur', () => {
-            setTimeout(() => { if (deadlineAc) deadlineAc.classList.remove('open'); }, 200);
-        });
-    }
-
-    window.sendDeadlineCommand = async function () {
-        if (!currentChannelId) {
-            showToast('Select a channel first', 'error'); return;
-        }
-        const username = deadlineUser
-            ? (deadlineUser.username || deadlineUser.display || deadlineUser.name)
-            : (deadlineInput?.value?.trim());
-
-        if (!username) {
-            showToast('Select a user first', 'error'); return;
-        }
-
-        const btn = document.getElementById('deadline-send');
-        if (btn) { btn.disabled = true; }
-
-        try {
-            const res = await fetch('/api/send', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    channel_id: currentChannelId,
-                    content: `!deadline ${username}`
-                })
-            });
-            const data = await res.json();
-            if (res.ok) {
-                showToast('Deadline command sent!', 'success');
-                document.getElementById('commands-panel')?.classList.remove('active');
-                if (deadlineInput) deadlineInput.value = '';
-                deadlineUser = null;
-                updateDeadlinePreview();
-            } else {
-                showToast(data.error || 'Send failed', 'error');
-            }
-        } catch(e) {
-            showToast('Network error', 'error');
-        } finally {
-            if (btn) btn.disabled = false;
-        }
-    };
-
 })();

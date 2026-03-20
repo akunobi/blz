@@ -29,7 +29,9 @@ except ValueError:
 # --- SETUP DISCORD ---
 intents = discord.Intents.default()
 intents.message_content = True
-intents.members = True   # Required for member list autocomplete
+intents.members = True
+intents.guilds = True
+intents.guild_messages = True
 client = discord.Client(intents=intents)
 
 bot_loop = None
@@ -127,9 +129,8 @@ async def handle_deadline(message, username_raw):
 
     # Resolve user — try mention id, then display name, then username
     target_user = None
-    username_clean = username_raw.lstrip('@')
+    username_clean = username_raw.lstrip('@').strip()
 
-    # Check if it's a raw mention like <@123>
     import re
     mention_match = re.match(r'<@!?(\d+)>', username_raw)
     if mention_match:
@@ -139,19 +140,33 @@ async def handle_deadline(message, username_raw):
         except Exception:
             pass
     else:
-        # Search by display name or username
+        # Ensure member list is populated
+        if not guild.chunked:
+            try:
+                await guild.chunk()
+            except Exception:
+                pass
+
+        q = username_clean.lower()
+        # Exact match first
         for m in guild.members:
-            if (m.display_name.lower() == username_clean.lower() or
-                    m.name.lower() == username_clean.lower()):
+            if m.display_name.lower() == q or m.name.lower() == q:
                 target_user = m
                 break
+        # Partial match
         if not target_user:
-            # Partial match fallback
             for m in guild.members:
-                if (username_clean.lower() in m.display_name.lower() or
-                        username_clean.lower() in m.name.lower()):
+                if q in m.display_name.lower() or q in m.name.lower():
                     target_user = m
                     break
+        # Fallback: fetch by username via API
+        if not target_user:
+            try:
+                results = await guild.query_members(query=username_clean, limit=5)
+                if results:
+                    target_user = results[0]
+            except Exception:
+                pass
 
     mention_str = target_user.mention if target_user else f'@{username_clean}'
     display_name = target_user.display_name if target_user else username_clean
@@ -182,7 +197,7 @@ async def handle_deadline(message, username_raw):
             self.confirmed   = False
             self.embed_msg   = None  # set after send
 
-        @discord.ui.button(label='Confirmar disponibilidad', style=discord.ButtonStyle.success, custom_id='deadline_confirm')
+        @discord.ui.button(label='Confirmar disponibilidad', style=discord.ButtonStyle.success)
         async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
             if self.target_id and interaction.user.id != self.target_id:
                 await interaction.response.send_message(
@@ -246,10 +261,26 @@ async def on_message(message):
 
     # ── !deadline command ──
     if message.content and message.content.strip().startswith('!deadline'):
-        parts = message.content.strip().split()
+        print(f'>>> [DEADLINE] Triggered by {message.author} | content: {message.content!r}')
+        parts = message.content.strip().split(None, 1)
         if len(parts) >= 2:
-            await handle_deadline(message, parts[1])
-            return  # Don't save the command message to DB
+            ALLOWED_ROLE_IDS = {1355062394547736675, 1355062394547736673, 1483349943962964068}
+            author_role_ids  = {r.id for r in getattr(message.author, 'roles', [])}
+            is_bot_self      = (client.user and message.author.id == client.user.id)
+            print(f'>>> [DEADLINE] is_bot_self={is_bot_self} | role_ids={author_role_ids} | allowed={ALLOWED_ROLE_IDS}')
+            if is_bot_self or (author_role_ids & ALLOWED_ROLE_IDS):
+                await handle_deadline(message, parts[1].strip())
+            else:
+                try:
+                    await message.reply('No tienes permisos para usar este comando.', delete_after=5)
+                except Exception:
+                    pass
+        else:
+            try:
+                await message.reply('Uso: `!deadline <usuario>`', delete_after=5)
+            except Exception:
+                pass
+        return
 
     if hasattr(message.channel, 'category') and message.channel.category:
         if message.channel.category.id == TARGET_CATEGORY_ID:
