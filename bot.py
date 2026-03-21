@@ -3,6 +3,10 @@ import sqlite3
 import threading
 import os
 import asyncio
+try:
+    import aiohttp as _aiohttp
+except ImportError:
+    _aiohttp = None
 from flask import Flask, render_template, jsonify, request
 from dotenv import load_dotenv
 
@@ -12,7 +16,8 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
-TOKEN = os.getenv("DISCORD_TOKEN") 
+TOKEN = os.getenv("DISCORD_TOKEN")
+OPENAI_MODERATION_KEY = os.getenv("OPENAI_API_KEY", "")  # opcional 
 
 # Configuración de Categoría
 try:
@@ -573,6 +578,100 @@ async def handle_deadline(message, username_raw):
 
 
 
+# ─────────────────────────────────────────────────────
+# OpenAI Moderation API — segunda capa de detección
+# ─────────────────────────────────────────────────────
+_MODERATION_URL = "https://api.openai.com/v1/moderations"
+_MOD_CATEGORIES = frozenset({
+    "hate", "hate/threatening",
+    "harassment", "harassment/threatening",
+    "self-harm", "self-harm/intent", "self-harm/instructions",
+})
+_MOD_LABELS = {
+    "hate":                   "discurso de odio",
+    "hate/threatening":       "amenaza con odio",
+    "harassment":             "acoso",
+    "harassment/threatening": "acoso con amenaza",
+    "self-harm":              "daño a uno mismo",
+    "self-harm/intent":       "intención de autolesión",
+    "self-harm/instructions": "instrucciones de autolesión",
+}
+
+async def _openai_moderate(message):
+    if not OPENAI_MODERATION_KEY or not _aiohttp:
+        return
+    text = (message.content or "").strip()
+    if not text:
+        return
+    guild = getattr(message.channel, "guild", None)
+    if not guild:
+        return
+    try:
+        async with _aiohttp.ClientSession() as session:
+            async with session.post(
+                _MODERATION_URL,
+                headers={"Authorization": f"Bearer {OPENAI_MODERATION_KEY}",
+                         "Content-Type": "application/json"},
+                json={"input": text},
+                timeout=_aiohttp.ClientTimeout(total=5),
+            ) as resp:
+                if resp.status != 200:
+                    print(f">>> [MODERATION API] HTTP {resp.status}")
+                    return
+                data = await resp.json()
+    except asyncio.TimeoutError:
+        print(">>> [MODERATION API] Timeout")
+        return
+    except Exception as exc:
+        print(f">>> [MODERATION API] Error: {exc}")
+        return
+
+    result = data.get("results", [{}])[0]
+    if not result.get("flagged", False):
+        return
+
+    cats    = result.get("categories", {})
+    scores  = result.get("category_scores", {})
+    flagged = [c for c in _MOD_CATEGORIES if cats.get(c, False)]
+    if not flagged:
+        return
+
+    top_cat   = max(flagged, key=lambda c: scores.get(c, 0))
+    top_score = scores.get(top_cat, 0)
+    print(f">>> [MODERATION API] FLAGGED {message.author} | {top_cat} ({top_score:.2f})")
+
+    deleted = False
+    try:
+        await message.delete()
+        deleted = True
+    except discord.NotFound:
+        pass
+    except discord.Forbidden:
+        print(f"!!! [MODERATION API] Sin permiso en #{message.channel.name}")
+    except Exception as exc:
+        print(f"!!! [MODERATION API] Delete error: {exc}")
+
+    warn_count = add_warning(
+        message.author.id, message.author.name, guild.id,
+        reason=f"AI moderation: {top_cat} ({top_score:.0%})"
+    )
+    print(f">>> [MODERATION API] {message.author.name} warned ({warn_count}) | deleted={deleted}")
+
+    try:
+        label = _MOD_LABELS.get(top_cat, top_cat)
+        await message.channel.send(
+            f"\u26a0\ufe0f {message.author.mention} Tu mensaje fue eliminado: **{label}**. "
+            f"Advertencia **{warn_count}**.",
+            delete_after=8,
+        )
+    except Exception as exc:
+        print(f"!!! [MODERATION API] Warn msg error: {exc}")
+
+    member = guild.get_member(message.author.id)
+    if member:
+        await escalate_user(member, guild, warn_count, f"AI moderation: {top_cat}")
+
+
 @client.event
 async def on_message(message):
     # NOTA: Eliminamos la restricción de 'client.user' para ver mensajes de la web
@@ -699,6 +798,10 @@ async def on_message(message):
                     pass
             asyncio.create_task(_bulk_delete())
             return
+
+    # ── Segunda capa: OpenAI Moderation (background, no bloqueante) ──
+    if guild and message.content and OPENAI_MODERATION_KEY:
+        asyncio.create_task(_openai_moderate(message))
 
     # ── !deadline command ──
     if message.content and message.content.strip().startswith('!deadline'):
