@@ -73,8 +73,8 @@ body {
 
 .orb-1 {
     width: 500px; height: 500px;
-    background: radial-gradient(circle, rgba(245,166,35,0.12), transparent 70%);
-    top: -120px; left: -80px;
+    background: radial-gradient(circle, rgba(245,166,35,0.09), transparent 70%);
+    top: -280px; left: -80px;
     animation-delay: 0s;
 }
 
@@ -2900,10 +2900,86 @@ html.q-medium .composer                   { backdrop-filter: blur(8px) !importan
 .log-action-badge.warn     { background: var(--amber-dim); color: var(--amber); }
 .log-action-badge.timeout  { background: var(--lav-dim); color: var(--lav); }
 .log-action-badge.kick     { background: var(--amber-dim); color: var(--amber); }
-.log-action-badge.ban      { background: var(--coral-dim); color: var(--coral); }
+.log-action-badge.ban          { background: var(--coral-dim); color: var(--coral); }
+.log-action-badge.ai_automod   { background: rgba(99,102,241,0.15); color: #a5b4fc; border-color: rgba(99,102,241,0.35); }
+.log-action-badge.ai_flagged_log { background: rgba(99,102,241,0.08); color: #818cf8; border-color: rgba(99,102,241,0.20); }
 
 @media (max-width: 900px) {
     .mod-card { max-height: 95vh; }
     .mod-user-actions { justify-content: flex-start; }
     .mod-user-card { flex-wrap: wrap; }
 }
+
+/* ════════════════════════════════════
+   MOD CONFIRM MODAL
+   ════════════════════════════════════ */
+#mod-confirm-modal {
+    position: fixed; inset: 0; z-index: 900;
+    display: none; align-items: center; justify-content: center; padding: 20px;
+}
+#mod-confirm-modal.mc-open { display: flex; }
+
+.mod-confirm-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(10,9,18,0.80); backdrop-filter: blur(8px);
+    opacity: 0; transition: opacity 220ms;
+}
+#mod-confirm-modal.mc-visible .mod-confirm-backdrop { opacity: 1; }
+
+.mod-confirm-card {
+    position: relative; z-index: 1;
+    width: 340px; max-width: 94vw;
+    background: var(--bg2);
+    border: 1px solid var(--border-hi); border-radius: 22px;
+    padding: 28px 26px 22px;
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    text-align: center;
+    opacity: 0; transform: scale(0.88) translateY(18px);
+    transition: opacity 220ms, transform 280ms cubic-bezier(0.34,1.4,0.64,1);
+    box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+}
+#mod-confirm-modal.mc-visible .mod-confirm-card { opacity: 1; transform: scale(1) translateY(0); }
+
+.mod-confirm-icon {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--surface); border: 1px solid var(--border-hi);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.6rem; margin-bottom: 2px;
+}
+
+.mod-confirm-msg {
+    font-size: 0.88rem; color: var(--t1); line-height: 1.55;
+}
+.mod-confirm-msg strong { color: var(--t0); font-weight: 700; }
+.mod-confirm-msg small  { font-size: 0.75rem; color: var(--t2); display: block; margin-top: 4px; }
+
+.mod-confirm-actions {
+    display: flex; gap: 10px; width: 100%; margin-top: 4px;
+}
+
+.mod-confirm-btn {
+    flex: 1; padding: 11px; border-radius: 12px;
+    font-family: var(--f-display); font-size: 0.82rem; font-weight: 700;
+    letter-spacing: 0.05em; cursor: pointer; transition: all 180ms ease;
+    border: 1px solid transparent;
+}
+
+.mod-confirm-cancel {
+    background: var(--surface); border-color: var(--border-hi); color: var(--t1);
+}
+.mod-confirm-cancel:hover { background: var(--lift); color: var(--t0); }
+
+/* Action-specific confirm button colors */
+.mod-confirm-ok { background: var(--surface); border-color: var(--border-hi); color: var(--t0); }
+
+.mod-confirm-warn  { background: var(--amber-dim); border-color: rgba(245,166,35,0.45); color: var(--amber-hi); }
+.mod-confirm-warn:hover  { background: rgba(245,166,35,0.20); box-shadow: 0 0 14px var(--amber-glow); }
+
+.mod-confirm-kick  { background: var(--amber-dim); border-color: rgba(245,166,35,0.35); color: var(--amber); }
+.mod-confirm-kick:hover  { background: rgba(245,166,35,0.18); }
+
+.mod-confirm-ban   { background: var(--coral-dim); border-color: rgba(255,107,107,0.45); color: var(--coral-hi); }
+.mod-confirm-ban:hover   { background: rgba(255,107,107,0.20); box-shadow: 0 0 14px rgba(255,107,107,0.25); }
+
+.mod-confirm-clear { background: var(--teal-dim); border-color: rgba(38,201,184,0.40); color: var(--teal-hi); }
+.mod-confirm-clear:hover { background: rgba(38,201,184,0.18); box-shadow: 0 0 14px var(--teal-glow); }

@@ -2049,7 +2049,11 @@ window.toggleChannelDrawer = function () {
             ${actions.map(a => `
                 <tr>
                     <td>${escHtml(a.user_name || a.user_id)}</td>
-                    <td><span class="log-action-badge ${a.action}">${a.action.toUpperCase()}</span></td>
+                    <td><span class="log-action-badge ${a.action}">${{
+                        warn:'⚠ WARN', kick:'👢 KICK', ban:'🔨 BAN',
+                        timeout:'⏱ TIMEOUT', clear_warns:'🧹 CLEAR',
+                        ai_automod:'🤖 IA', ai_flagged_log:'🔍 IA LOG',
+                    }[a.action] || a.action.toUpperCase()}</span></td>
                     <td>${escHtml(a.reason || '—')}</td>
                     <td>${escHtml(a.moderator_name || '—')}</td>
                     <td style="font-family:var(--f-mono);font-size:0.68rem">${a.timestamp ? a.timestamp.slice(0,16) : '—'}</td>
@@ -2063,6 +2067,49 @@ window.toggleChannelDrawer = function () {
         return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
+    // ── Mod confirm modal ──
+    let _modConfirmModal = null;
+
+    function showModConfirm({ icon, message, confirmLabel, confirmClass, onConfirm }) {
+        if (!_modConfirmModal) {
+            _modConfirmModal = document.createElement('div');
+            _modConfirmModal.id = 'mod-confirm-modal';
+            _modConfirmModal.innerHTML = `
+                <div class="mod-confirm-backdrop"></div>
+                <div class="mod-confirm-card">
+                    <div class="mod-confirm-icon" id="mc-icon"></div>
+                    <div class="mod-confirm-msg" id="mc-msg"></div>
+                    <div class="mod-confirm-actions">
+                        <button class="mod-confirm-btn mod-confirm-cancel" id="mc-cancel">Cancel</button>
+                        <button class="mod-confirm-btn mod-confirm-ok" id="mc-ok"></button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(_modConfirmModal);
+            _modConfirmModal.querySelector('.mod-confirm-backdrop').addEventListener('click', hideModConfirm);
+            _modConfirmModal.querySelector('#mc-cancel').addEventListener('click', hideModConfirm);
+            document.addEventListener('keydown', e => {
+                if (e.key === 'Escape') hideModConfirm();
+            });
+        }
+
+        _modConfirmModal.querySelector('#mc-icon').textContent = icon;
+        _modConfirmModal.querySelector('#mc-msg').innerHTML    = message;
+        const okBtn = _modConfirmModal.querySelector('#mc-ok');
+        okBtn.textContent = confirmLabel;
+        okBtn.className   = 'mod-confirm-btn mod-confirm-ok ' + (confirmClass || '');
+        okBtn.onclick     = () => { hideModConfirm(); onConfirm(); };
+
+        _modConfirmModal.classList.add('mc-open');
+        requestAnimationFrame(() => _modConfirmModal.classList.add('mc-visible'));
+    }
+
+    function hideModConfirm() {
+        if (!_modConfirmModal) return;
+        _modConfirmModal.classList.remove('mc-visible');
+        setTimeout(() => _modConfirmModal?.classList.remove('mc-open'), 220);
+    }
+
     window.modAction = async function (action, uid, uname, gid, btn) {
         if (action === 'timeout') {
             // Toggle the timeout picker
@@ -2071,41 +2118,43 @@ window.toggleChannelDrawer = function () {
             return;
         }
 
-        const confirmMsg = {
-            warn:  `Add a warning to ${uname}?`,
-            kick:  `Kick ${uname} from the server?`,
-            ban:   `Ban ${uname} permanently?`,
-            clear: `Clear all warnings for ${uname}?`,
-        }[action];
-
-        if (!confirm(confirmMsg)) return;
-
-        const endpoints = {
-            warn:  '/api/mod/warn',
-            kick:  '/api/mod/kick',
-            ban:   '/api/mod/ban',
-            clear: '/api/mod/clear_warns',
+        const ACTION_CONFIG = {
+            warn:  { msg: `Add a warning to <strong>${uname}</strong>?`,           icon: '⚠️', confirmLabel: 'Warn',          confirmClass: 'mod-confirm-warn',  endpoint: '/api/mod/warn'        },
+            kick:  { msg: `Kick <strong>${uname}</strong> from the server?`,        icon: '👢', confirmLabel: 'Kick',          confirmClass: 'mod-confirm-kick',  endpoint: '/api/mod/kick'        },
+            ban:   { msg: `Permanently ban <strong>${uname}</strong>?<br><small>This action cannot be undone.</small>`, icon: '🔨', confirmLabel: 'Ban', confirmClass: 'mod-confirm-ban', endpoint: '/api/mod/ban' },
+            clear: { msg: `Clear all warnings for <strong>${uname}</strong>?`,      icon: '🧹', confirmLabel: 'Clear',         confirmClass: 'mod-confirm-clear', endpoint: '/api/mod/clear_warns' },
         };
 
-        try {
-            btn.disabled = true;
-            const r = await fetch(endpoints[action], {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: uid, user_name: uname, guild_id: gid, reason: 'Web mod action' })
-            });
-            const d = await r.json();
-            if (r.ok) {
-                showToast(action === 'clear' ? 'Warnings cleared' : action + ' applied', 'success');
-                loadModPanel('warned');
-            } else {
-                showToast(d.error || 'Error', 'error');
+        const cfg = ACTION_CONFIG[action];
+        if (!cfg) return;
+
+        showModConfirm({
+            icon:         cfg.icon,
+            message:      cfg.msg,
+            confirmLabel: cfg.confirmLabel,
+            confirmClass: cfg.confirmClass,
+            onConfirm: async () => {
+                btn.disabled = true;
+                try {
+                    const r = await fetch(cfg.endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ user_id: uid, user_name: uname, guild_id: gid, reason: 'Web mod action' })
+                    });
+                    const d = await r.json();
+                    if (r.ok) {
+                        showToast(action === 'clear' ? 'Warnings cleared' : cfg.confirmLabel + ' applied', 'success');
+                        await loadModPanel('warned');
+                    } else {
+                        showToast(d.error || 'Error', 'error');
+                    }
+                } catch(e) {
+                    showToast('Network error', 'error');
+                } finally {
+                    btn.disabled = false;
+                }
             }
-        } catch(e) {
-            showToast('Network error', 'error');
-        } finally {
-            btn.disabled = false;
-        }
+        });
     };
 
     window.applyTimeout = async function (uid, gid) {
@@ -2123,7 +2172,7 @@ window.toggleChannelDrawer = function () {
             if (r.ok) {
                 showToast(`Timeout applied (${minutes}min)`, 'success');
                 document.getElementById('tp-' + uid)?.classList.remove('open');
-                loadModPanel('warned');
+                await loadModPanel('warned');
             } else {
                 showToast(d.error || 'Error', 'error');
             }
