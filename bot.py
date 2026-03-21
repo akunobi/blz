@@ -143,112 +143,209 @@ async def on_ready():
 _deadline_tasks = {}
 
 # ── Moderation: bad word list ──
-# ── Bad words: canonical forms (the algorithm handles variants) ──
-BAD_WORDS = [
-    # Racial slurs
-    'nigger','nigga','niga','negger',
-    'faggot','fagot','faget',
-    'retard',
-    'chink','spic','wetback','kike','gook','coon','jigaboo','beaner',
-    'tranny','dyke','trany',
-    # Sexual
-    'porn','cumshot','blowjob','handjob',
-    'pussy','cunt',
-    # Violence / self-harm
-    'kys','kill yourself','go die','hang yourself',
-    # Hate
-    'nazi','white power','kkk','heil hitler',
-    # Profanity
-    'bitch','asshole','motherfucker','cuck',
-    # Added per request
-    'gay',
-]
-
-# Leet-speak / typo normalization map
-_LEET = str.maketrans({
-    '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's',
-    '6': 'g', '7': 't', '8': 'b', '9': 'g',
-    '@': 'a', '$': 's', '!': 'i', '+': 't',
-})
+# ── AutoMod: bad word detection system ─────────────────────────────────────
+#
+# Diseño: matching por TOKEN (no substring ciego).
+# Esto elimina los falsos positivos clásicos:
+#   "document"   → no detecta "cum"   (substring)
+#   "raccoon"    → no detecta "coon"  (substring)
+#   "spicy"      → no detecta "spic"  (substring)
+#   "cockpit"    → no detecta "cock"  (prefix/whitelist)
+#   "Dickens"    → no detecta "dick"  (whitelist)
+#   "bigger"     → no detecta "nigger" (edit-distance con ancla)
+#   "heilung"    → no detecta "heil"  (exact-only + whitelist)
+#   "retardant"  → no detecta "retard" (whitelist)
+#   "day/bay/say"→ no detecta "gay"   (exact-only, sin edit-dist)
+#
+# Pasadas:
+#   0. Frases multi-palabra con límite de palabra
+#   1. Por token: exact-only para palabras ambiguas, prefix para las demás
+#   2. Evasión por espaciado ("n i g g e r", "f.a.g")
+#   3. Edit-distance solo en palabras largas (>5 chars), ancla de 2 letras iniciales
+# Normalizaciones extra:
+#   · _norm_sym: @→a, $→s para "f@ggot", "a$$hole"
+#   · _norm_c32: colapsa 3+ chars repetidos → 2 para "nigggger", "biiiitch"
 
 import re as _re_mod
 import unicodedata as _ud
 
-def _normalize(text: str) -> str:
-    """
-    Full normalization pipeline:
-    1. Unicode → ASCII (accented chars, lookalike unicode)
-    2. Lowercase
-    3. Leet-speak substitution
-    4. Strip all non-alphanumeric (keep spaces)
-    5. Collapse repeated characters (niggger → niger, so we catch nigger too)
-    """
-    # Step 1: unicode normalize + strip accents
-    text = _ud.normalize('NFKD', text)
-    text = ''.join(c for c in text if not _ud.combining(c))
-    # Step 2: lowercase
-    text = text.lower()
-    # Step 3: leet substitution
-    text = text.translate(_LEET)
-    # Step 4: strip non-alphanumeric → space
-    text = _re_mod.sub(r'[^a-z0-9]', ' ', text)
-    # Step 5: collapse runs of 3+ same chars to 2 (niggger→nigger, fuuuck→fuuck)
-    # This lets us still match doubled letters that are legit (e.g. "gg" in words)
-    # but catches extended spam like "niiiigger"
-    text = _re_mod.sub(r'(.)\1{2,}', r'\1\1', text)
-    return text
+_LEET_DIGITS = str.maketrans({
+    '0': 'o', '1': 'i', '3': 'e', '4': 'a',
+    '5': 's', '6': 'g', '7': 't', '8': 'b', '9': 'g',
+})
 
-def _normalize_word(word: str) -> str:
-    """Same pipeline but also collapse all repeated chars to single (niigger→niger)."""
-    text = _normalize(word)
-    # Additionally collapse ANY repeated char to single for fuzzy matching
-    text = _re_mod.sub(r'(.)\1+', r'\1', text)
-    return text
+
+def _norm(text: str) -> str:
+    """Unicode→ASCII, minúsculas, leet de dígitos, quitar no-alfanumérico."""
+    t = _ud.normalize('NFKD', text)
+    t = ''.join(c for c in t if not _ud.combining(c))
+    t = t.lower().translate(_LEET_DIGITS)
+    return _re_mod.sub(r'[^a-z0-9]', ' ', t).strip()
+
+
+def _norm_sym(text: str) -> str:
+    """Como _norm pero también @→a, $→s, !→i para evasión con símbolos."""
+    t = _ud.normalize('NFKD', text)
+    t = ''.join(c for c in t if not _ud.combining(c))
+    t = t.lower()
+    t = t.replace('@', 'a').replace('$', 's').replace('!', 'i').replace('+', 't')
+    t = t.translate(_LEET_DIGITS)
+    return _re_mod.sub(r'[^a-z0-9]', ' ', t).strip()
+
+
+def _norm_c32(text: str) -> str:
+    """Colapsa runs de 3+ chars iguales a 2. niggggger→nigger, biiiitch→biitch."""
+    return _re_mod.sub(r'(.)\1{2,}', r'\1\1', _norm(text))
+
 
 def _levenshtein(a: str, b: str) -> int:
-    """Compute edit distance between two strings."""
-    if len(a) > len(b):
-        a, b = b, a
+    if len(a) > len(b): a, b = b, a
     row = list(range(len(a) + 1))
     for cb in b:
-        new_row = [row[0] + 1]
+        nr = [row[0] + 1]
         for i, ca in enumerate(a):
-            new_row.append(min(row[i] + (ca != cb), new_row[-1] + 1, row[i + 1] + 1))
-        row = new_row
+            nr.append(min(row[i] + (ca != cb), nr[-1] + 1, row[i + 1] + 1))
+        row = nr
     return row[-1]
+
+
+def _join_single_chars(tokens):
+    """Junta chars sueltos consecutivos → detecta 'n i g g e r' y 'f.a.g'."""
+    chunks, buf = [], []
+    for t in tokens:
+        if len(t) == 1:
+            buf.append(t)
+        else:
+            if len(buf) >= 3:
+                chunks.append(''.join(buf))
+            buf = []
+    if len(buf) >= 3:
+        chunks.append(''.join(buf))
+    return chunks
+
+
+# Tokens legítimos que empiezan por una palabra mala → nunca se flagean
+# (retardant, cockpit, Dickens, heilung, cumulative, etc.)
+_TOKEN_WHITELIST = frozenset({
+    # retard prefix — química/ingeniería
+    'retardant', 'retardation',
+    # cock prefix — animales y objetos
+    'cockpit', 'cocktail', 'cockatoo', 'cockerel', 'cockroach', 'cockatiel',
+    # dick prefix — apellidos
+    'dickens', 'dickinson', 'dickson',
+    # heil prefix — música y geografía
+    'heilung', 'heilongjiang',
+    # cum prefix — palabras reales
+    'cumulative', 'cumulatively', 'cumbia',
+    'cumulonimbus', 'cumulonimbi', 'cummings', 'cumulus',
+})
+
+# Palabras donde SOLO se acepta el token exacto (no prefijo, no edit-dist).
+# Razón: su prefijo coincide con palabras comunes (spicy→spic, cockpit→cock,
+# cumulative→cum, "day"→gay por edit, etc.)
+_EXACT_ONLY = frozenset({
+    'spic',   # spicy
+    'cock',   # cockpit, cocktail  (además en whitelist)
+    'dick',   # dickens            (además en whitelist)
+    'cum',    # cumulative, cumbia (además en whitelist)
+    'gay',    # day, bay, say por edit-dist
+    'kys',    # keys por edit-dist
+    'fag',    # standalone; faggot está por separado
+    'heil',   # heilung, heilongjiang (además en whitelist)
+})
+
+# Palabras individuales prohibidas
+_BAD_SINGLE = [
+    # Slurs raciales
+    'nigger', 'nigga', 'niga', 'negger',
+    'faggot', 'fagot', 'faget', 'fag',
+    'retard',
+    'chink', 'spic', 'wetback', 'kike', 'gook', 'coon', 'jigaboo', 'beaner',
+    'tranny',
+    # Sexual explícito
+    'porn', 'pron', 'cumshot', 'blowjob', 'handjob',
+    'pussy', 'cunt', 'cum', 'cock', 'cocksucker', 'dick', 'dickhead',
+    # Daño / acoso
+    'kys',
+    # Simbología de odio
+    'nazi', 'kkk', 'heil',
+    # Palabrotas fuertes
+    'bitch', 'asshole', 'motherfucker', 'cuck',
+    # Solicitada
+    'gay',
+]
+
+# Frases multi-palabra
+_BAD_PHRASES = [
+    'kill yourself', 'kill your self',
+    'hang yourself', 'hang your self',
+    'white power',
+    'heil hitler',
+]
+
+# Alias para compatibilidad con código existente
+BAD_WORDS = _BAD_SINGLE
 
 
 def contains_bad_word(text: str):
     """
-    Multi-pass bad word detector:
-      Pass 1: substring match on fully normalized text (leet, unicode, punctuation)
-      Pass 2: collapsed-repeat match (niiiigger → niger)
-      Pass 3: edit-distance per token (catches niegger, niggar, faget, etc.)
-    Returns the matched canonical word string, or None.
+    Detector de palabras prohibidas basado en tokens. Devuelve la palabra/frase
+    detectada o None si el mensaje es limpio.
     """
-    norm     = _normalize(text)
-    norm_col = _normalize_word(text)
-    tokens   = norm.split() + norm_col.split()
+    ns   = _norm(text)       # normalización base
+    nl   = _norm_sym(text)   # con sustituciones de símbolo (@, $, !)
+    nc   = _norm_c32(text)   # con colapso de chars repetidos (niggggger)
+    toks = set(ns.split() + nl.split() + nc.split())
 
-    for word in BAD_WORDS:
-        w_norm = _normalize(word)
-        w_col  = _normalize_word(word)
+    # ── Pasada 0: frases, con límite de palabra ──
+    for phrase in _BAD_PHRASES:
+        pn  = _norm(phrase)
+        pat = r'(?<![a-z0-9])' + _re_mod.escape(pn) + r'(?![a-z0-9])'
+        if _re_mod.search(pat, ns) or _re_mod.search(pat, nl):
+            return phrase
 
-        # Pass 1 & 2: substring
-        if w_norm in norm or w_norm in norm_col:
-            return word
-        if w_col in norm or w_col in norm_col:
-            return word
-
-        # Pass 3: edit-distance on individual tokens
-        # Allow 1 edit per 4 chars (minimum 1)
-        threshold = max(1, len(w_col) // 4)
-        for token in tokens:
-            if abs(len(token) - len(w_col)) <= threshold:
-                if _levenshtein(token, w_col) <= threshold:
+    # ── Pasada 1: por token individual ──
+    for word in _BAD_SINGLE:
+        wn    = _norm(word)
+        exact = word in _EXACT_ONLY
+        for tok in toks:
+            if tok in _TOKEN_WHITELIST:
+                continue
+            if exact:
+                if tok == wn:
+                    return word
+            else:
+                # Prefijo detecta derivados: niggers, retarded, bitching, nazism
+                if tok == wn or tok.startswith(wn):
                     return word
 
+    # ── Pasada 2: evasión por espaciado ("n i g g e r", "f.a.g") ──
+    for chunk in _join_single_chars(ns.split()):
+        for word in _BAD_SINGLE:
+            if _norm(word) in chunk:
+                return word
+
+    # ── Pasada 3: edit-distance para typos deliberados ──
+    # Solo palabras largas (>5 chars), primeras 2 letras deben coincidir (ancla),
+    # máximo 1 edición. Esto captura niegger/niggar pero no bigger/trigger.
+    for word in _BAD_SINGLE:
+        wn = _norm(word)
+        if len(wn) <= 5:
+            continue
+        for tok in toks:
+            if tok in _TOKEN_WHITELIST:
+                continue
+            if len(tok) < 2:
+                continue
+            if tok[:2] != wn[:2]:
+                continue   # ancla: bi≠ni → bigger nunca matchea nigger
+            if abs(len(tok) - len(wn)) > 1:
+                continue
+            if _levenshtein(tok, wn) <= 1:
+                return word
+
     return None
+
 
 # _spam_cache[guild_id][user_id] = deque of (content_hash, timestamp)
 import collections, hashlib, time as _time
