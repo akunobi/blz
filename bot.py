@@ -41,31 +41,39 @@ _REGION_ROLES = [
 _SHEET_DATA_START_ROW  = 15   # first data row (1-indexed)
 _SHEET_NAME            = "Tracker"
 
-def _get_gc():
-    """Return an authenticated gspread client, or None if not configured."""
-    if not _GSPREAD_OK or not SHEETS_CREDS_JSON:
-        return None
-    try:
-        info  = _json_mod.loads(SHEETS_CREDS_JSON)
-        creds = _GCredentials.from_service_account_info(info, scopes=[
-            "https://spreadsheets.google.com/feeds",
-            "https://www.googleapis.com/auth/drive",
-        ])
-        return gspread.authorize(creds)
-    except Exception as e:
-        print(f"!!! [SHEETS] Auth error: {e}")
-        return None
-
 def _get_sheet():
-    """Return the Tracker worksheet, or None on failure."""
-    gc = _get_gc()
-    if not gc:
-        return None
+    """Return the Tracker worksheet, or raise an exception with a clear message."""
+    if not _GSPREAD_OK:
+        raise RuntimeError("gspread not installed — add 'gspread' to requirements.txt")
+    if not SHEETS_CREDS_JSON:
+        raise RuntimeError("GOOGLE_SHEETS_CREDENTIALS env var not set")
+    try:
+        info = _json_mod.loads(SHEETS_CREDS_JSON)
+    except Exception as e:
+        raise RuntimeError(f"Invalid JSON in GOOGLE_SHEETS_CREDENTIALS: {e}")
+    try:
+        # gspread v6+: service_account_from_dict (authorize() was removed in v6)
+        gc = gspread.service_account_from_dict(info)
+    except AttributeError:
+        # Fallback for older gspread (v5 and below)
+        try:
+            creds = _GCredentials.from_service_account_info(info, scopes=[
+                "https://spreadsheets.google.com/feeds",
+                "https://www.googleapis.com/auth/drive",
+            ])
+            gc = gspread.authorize(creds)
+        except Exception as e:
+            raise RuntimeError(f"Auth failed (legacy): {e}")
+    except Exception as e:
+        raise RuntimeError(f"Auth failed: {e}")
     try:
         return gc.open_by_key(SHEET_ID).worksheet(_SHEET_NAME)
+    except gspread.exceptions.SpreadsheetNotFound:
+        raise RuntimeError(f"Spreadsheet not found. Check GOOGLE_SHEET_ID and that the service account has Editor access.")
+    except gspread.exceptions.WorksheetNotFound:
+        raise RuntimeError(f"Worksheet '{_SHEET_NAME}' not found in spreadsheet.")
     except Exception as e:
-        print(f"!!! [SHEETS] Open error: {e}")
-        return None
+        raise RuntimeError(f"Could not open sheet: {e}")
 
 def _detect_region(member):
     """Return (region_label, col_user, col_eps, col_qw) for the member's first matching region role."""
@@ -78,28 +86,32 @@ def _detect_region(member):
 def _sheet_add_ep(member):
     """
     Increment EP count for the member in the Google Sheet.
-    - Finds the member's region from roles.
-    - Finds existing row by username match, or appends a new row.
-    - Returns (success: bool, message: str).
-    This runs synchronously (called via run_in_executor from async context).
+    Returns (success: bool, message: str).
+    Runs synchronously in run_in_executor thread.
+    All errors are caught and returned as descriptive strings.
     """
-    ws = _get_sheet()
-    if not ws:
-        return False, "Google Sheets not configured"
-
-    region, col_u, col_ep, col_qw = _detect_region(member)
-    if not region:
-        return False, "No region role found (EU/NA/ASIA)"
-
+    # Snapshot Discord data before entering thread (safe from executor)
     username = member.display_name
+    region, col_u, col_ep, col_qw = _detect_region(member)
+
+    if not region:
+        role_ids = [r.id for r in getattr(member, 'roles', [])]
+        return False, f"No EU/NA/ASIA role found. Your role IDs: {role_ids}"
 
     try:
-        # Read all values in the username column for this region
-        col_values = ws.col_values(col_u)  # 1-indexed, returns list from row 1
-        # Look for existing row (case-insensitive)
+        ws = _get_sheet()
+    except RuntimeError as e:
+        print(f"!!! [SHEETS] {e}")
+        return False, str(e)
+
+    try:
+        # Read entire username column for this region (1-indexed)
+        col_values = ws.col_values(col_u)
+
+        # Search for existing row (case-insensitive, from data start row)
         target_row = None
         for i, val in enumerate(col_values):
-            row_num = i + 1  # 1-indexed
+            row_num = i + 1  # gspread is 1-indexed
             if row_num < _SHEET_DATA_START_ROW:
                 continue
             if str(val).strip().lower() == username.lower():
@@ -107,32 +119,32 @@ def _sheet_add_ep(member):
                 break
 
         if target_row:
-            # Existing row — increment EP count
-            ep_cell = ws.cell(target_row, col_ep)
-            current_eps = int(ep_cell.value or 0)
-            ws.update_cell(target_row, col_ep, current_eps + 1)
-            print(f">>> [SHEETS] Updated EP for {username} ({region}) row {target_row}: {current_eps} → {current_eps+1}")
-            return True, f"EP updated! Total: **{current_eps + 1}**"
+            # Existing entry — read current EP and increment
+            ep_val   = ws.cell(target_row, col_ep).value
+            current  = int(ep_val) if ep_val and str(ep_val).isdigit() else 0
+            new_val  = current + 1
+            ws.update_cell(target_row, col_ep, new_val)
+            print(f">>> [SHEETS] {username} ({region}) row {target_row}: EP {current} → {new_val}")
+            return True, f"EP updated! Total: **{new_val}**"
+
         else:
-            # New row — find next empty row in username column
-            next_row = _SHEET_DATA_START_ROW
-            for i, val in enumerate(col_values):
-                row_num = i + 1
-                if row_num >= _SHEET_DATA_START_ROW and str(val).strip() == '':
-                    next_row = row_num
-                    break
-                if row_num >= _SHEET_DATA_START_ROW:
-                    next_row = row_num + 1
+            # New entry — find first empty slot from data start row
+            # col_values may be shorter than the sheet if trailing cells are empty
+            occupied = [
+                i + 1 for i, v in enumerate(col_values)
+                if i + 1 >= _SHEET_DATA_START_ROW and str(v).strip() != ''
+            ]
+            next_row = (max(occupied) + 1) if occupied else _SHEET_DATA_START_ROW
 
             ws.update_cell(next_row, col_u,  username)
             ws.update_cell(next_row, col_ep, 1)
             ws.update_cell(next_row, col_qw, 0)
-            print(f">>> [SHEETS] Added {username} ({region}) at row {next_row} with EP=1")
+            print(f">>> [SHEETS] New entry: {username} ({region}) at row {next_row}, EP=1")
             return True, "Added to tracker! EP: **1**"
 
     except Exception as e:
-        print(f"!!! [SHEETS] Update error: {e}")
-        return False, f"Sheets error: {e}"  
+        print(f"!!! [SHEETS] Update error for {username}: {e}")
+        return False, f"Sheet update failed: {e}"
 
 # Configuración de Categoría
 try:
@@ -788,17 +800,25 @@ async def handle_done(message):
 
     processing_embed = discord.Embed(
         title="⏳ Updating tracker...",
-        description="Recording your EP, please wait.",
+        description=f"Recording EP for **{member.display_name}** ({region}), please wait.",
         color=0xF5A623
     )
-    await sent.edit(embed=processing_embed)
-    await sent.clear_reactions()
+    try:
+        await sent.edit(embed=processing_embed)
+        await sent.clear_reactions()
+    except Exception:
+        pass
 
-    loop = asyncio.get_event_loop()
-    success, msg_text = await loop.run_in_executor(None, _sheet_add_ep, member)
+    try:
+        loop = asyncio.get_event_loop()
+        success, msg_text = await loop.run_in_executor(None, _sheet_add_ep, member)
+    except Exception as exc:
+        success, msg_text = False, f"Executor error: {exc}"
+
+    print(f">>> [DONE] {member.display_name} ({region}) | success={success} | {msg_text}")
 
     if success:
-        ok_embed = discord.Embed(
+        final_embed = discord.Embed(
             title="✅ EP Recorded!",
             description=(
                 f"**{member.display_name}** — Region: **{region}**\n"
@@ -806,17 +826,18 @@ async def handle_done(message):
             ),
             color=0x26C9B8
         )
-        ok_embed.set_footer(text="BLZ-T EP Tracker")
-        await sent.edit(embed=ok_embed)
+        final_embed.set_footer(text="BLZ-T EP Tracker")
     else:
-        err_embed = discord.Embed(
-            title="❌ Error",
-            description=f"Could not update the tracker: {msg_text}",
+        final_embed = discord.Embed(
+            title="❌ Error updating tracker",
+            description=f"```{msg_text}```\nContact an admin if this persists.",
             color=0xFF6B6B
         )
-        await sent.edit(embed=err_embed)
 
-    print(f">>> [DONE] {member.display_name} ({region}) | success={success} | {msg_text}")
+    try:
+        await sent.edit(embed=final_embed)
+    except Exception as exc2:
+        print(f"!!! [DONE] Could not edit final embed: {exc2}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
