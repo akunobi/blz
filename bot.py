@@ -8,12 +8,10 @@ try:
     import aiohttp as _aiohttp
 except ImportError:
     _aiohttp = None
-try:
-    import gspread
-    from google.oauth2.service_account import Credentials as _GCredentials
-    _GSPREAD_OK = True
-except ImportError:
-    _GSPREAD_OK = False
+import base64 as _b64
+import time as _time_gs
+import urllib.request as _urllib_req
+import urllib.parse as _urllib_parse
 from flask import Flask, render_template, jsonify, request
 from dotenv import load_dotenv
 
@@ -26,125 +24,157 @@ app.secret_key = os.urandom(24)
 TOKEN = os.getenv("DISCORD_TOKEN")
 OPENAI_MODERATION_KEY  = os.getenv("OPENAI_API_KEY", "")  # opcional
 
-# ── Google Sheets — EP Tracker ──
-SHEET_ID               = os.getenv("GOOGLE_SHEET_ID", "19YQvEMF2NoDDLAdvqok8Nko3Hw14o5G9AmheOcMdUdE")
-SHEETS_CREDS_JSON      = os.getenv("GOOGLE_SHEETS_CREDENTIALS", "")
-WARN_DM_ADMIN_IDS      = [898579360720764999, 1075463469865906216]  # DM targets when warns reach 2
+# ── Google Sheets — EP Tracker (HTTP API pura, sin librerías externas) ────────
+SHEET_ID           = os.getenv("GOOGLE_SHEET_ID", "19YQvEMF2NoDDLAdvqok8Nko3Hw14o5G9AmheOcMdUdE")
+SHEETS_CREDS_JSON  = os.getenv("GOOGLE_SHEETS_CREDENTIALS", "")
+WARN_DM_ADMIN_IDS  = [898579360720764999, 1075463469865906216]
 
-# Region role → (section_col_username, section_col_eps, section_col_qw)  — 1-indexed Google Sheets cols
-# EU=C,D,E  NA=G,H,I  ASIA=K,L,M  (headers row 14, data from row 15)
+# (role_id, label, col_username, col_eps, col_qw) — columnas 1-indexed
 _REGION_ROLES = [
-    (1355062394547736673, "EU",   3,  4,  5),   # EU:   C=3, D=4, E=5
-    (1355062394547736675, "NA",   7,  8,  9),   # NA:   G=7, H=8, I=9
-    (1355062394547736674, "ASIA", 11, 12, 13),  # ASIA: K=11,L=12,M=13
+    (1355062394547736673, "EU",   3,  4,  5),
+    (1355062394547736675, "NA",   7,  8,  9),
+    (1355062394547736674, "ASIA", 11, 12, 13),
 ]
-_SHEET_DATA_START_ROW  = 15   # first data row (1-indexed)
-_SHEET_NAME            = "Tracker"
+_SHEET_DATA_START_ROW = 15
+_SHEET_TAB            = "Tracker"
 
-def _get_sheet():
-    """Return the Tracker worksheet, or raise an exception with a clear message."""
-    if not _GSPREAD_OK:
-        raise RuntimeError("gspread not installed — add 'gspread' to requirements.txt")
+# ── Token cache ──────────────────────────────────────────────────────────────
+_gs_token_cache = {"token": None, "exp": 0}
+
+def _col_letter(n):
+    """Convierte número de columna (1-indexed) a letra de Sheets: 1→A, 3→C, 27→AA."""
+    s = ""
+    while n:
+        n, r = divmod(n - 1, 26)
+        s = chr(65 + r) + s
+    return s
+
+def _gs_get_token():
+    """Obtiene OAuth2 access token para Google Sheets usando JWT RS256."""
+    now = int(_time_gs.time())
+    if _gs_token_cache["token"] and now < _gs_token_cache["exp"] - 60:
+        return _gs_token_cache["token"]
+
     if not SHEETS_CREDS_JSON:
-        raise RuntimeError("GOOGLE_SHEETS_CREDENTIALS env var not set")
+        raise RuntimeError("GOOGLE_SHEETS_CREDENTIALS no está configurado en Render")
+
     try:
         info = _json_mod.loads(SHEETS_CREDS_JSON)
     except Exception as e:
-        raise RuntimeError(f"Invalid JSON in GOOGLE_SHEETS_CREDENTIALS: {e}")
+        raise RuntimeError(f"JSON de credenciales inválido: {e}")
+
+    # Construir JWT
+    header  = _b64.urlsafe_b64encode(_json_mod.dumps({"alg":"RS256","typ":"JWT"}).encode()).rstrip(b"=")
+    payload = _b64.urlsafe_b64encode(_json_mod.dumps({
+        "iss":   info["client_email"],
+        "scope": "https://www.googleapis.com/auth/spreadsheets",
+        "aud":   "https://oauth2.googleapis.com/token",
+        "iat":   now, "exp": now + 3600,
+    }).encode()).rstrip(b"=")
+    msg = header + b"." + payload
+
+    # Firmar con RSA — cryptography está disponible en Python moderno/Render
     try:
-        # gspread v6+: service_account_from_dict (authorize() was removed in v6)
-        gc = gspread.service_account_from_dict(info)
-    except AttributeError:
-        # Fallback for older gspread (v5 and below)
-        try:
-            creds = _GCredentials.from_service_account_info(info, scopes=[
-                "https://spreadsheets.google.com/feeds",
-                "https://www.googleapis.com/auth/drive",
-            ])
-            gc = gspread.authorize(creds)
-        except Exception as e:
-            raise RuntimeError(f"Auth failed (legacy): {e}")
-    except Exception as e:
-        raise RuntimeError(f"Auth failed: {e}")
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import padding as _padding
+        pk  = serialization.load_pem_private_key(info["private_key"].encode(), password=None)
+        sig = pk.sign(msg, _padding.PKCS1v15(), hashes.SHA256())
+        assertion = (msg + b"." + _b64.urlsafe_b64encode(sig).rstrip(b"=")).decode()
+    except ImportError:
+        raise RuntimeError("Falta el paquete 'cryptography'. Añádelo a requirements.txt")
+
+    # Intercambiar JWT por access token
+    data = _urllib_parse.urlencode({
+        "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        "assertion": assertion,
+    }).encode()
+    req = _urllib_req.Request("https://oauth2.googleapis.com/token", data=data)
     try:
-        return gc.open_by_key(SHEET_ID).worksheet(_SHEET_NAME)
-    except gspread.exceptions.SpreadsheetNotFound:
-        raise RuntimeError(f"Spreadsheet not found. Check GOOGLE_SHEET_ID and that the service account has Editor access.")
-    except gspread.exceptions.WorksheetNotFound:
-        raise RuntimeError(f"Worksheet '{_SHEET_NAME}' not found in spreadsheet.")
+        with _urllib_req.urlopen(req, timeout=10) as resp:
+            token = _json_mod.loads(resp.read())["access_token"]
     except Exception as e:
-        raise RuntimeError(f"Could not open sheet: {e}")
+        raise RuntimeError(f"Error al obtener token OAuth2: {e}")
+
+    _gs_token_cache["token"] = token
+    _gs_token_cache["exp"]   = now + 3600
+    return token
+
+def _gs_get(range_):
+    """GET de valores desde Google Sheets API v4."""
+    url = (f"https://sheets.googleapis.com/v4/spreadsheets/{SHEET_ID}"
+           f"/values/{_urllib_parse.quote(range_)}")
+    req = _urllib_req.Request(url, headers={"Authorization": f"Bearer {_gs_get_token()}"})
+    with _urllib_req.urlopen(req, timeout=10) as r:
+        return _json_mod.loads(r.read()).get("values", [])
+
+def _gs_put(range_, values):
+    """PUT de valores en Google Sheets API v4."""
+    url  = (f"https://sheets.googleapis.com/v4/spreadsheets/{SHEET_ID}"
+            f"/values/{_urllib_parse.quote(range_)}?valueInputOption=USER_ENTERED")
+    body = _json_mod.dumps({"range": range_, "majorDimension": "ROWS", "values": values}).encode()
+    req  = _urllib_req.Request(url, data=body, method="PUT",
+                               headers={"Authorization": f"Bearer {_gs_get_token()}",
+                                        "Content-Type": "application/json"})
+    with _urllib_req.urlopen(req, timeout=10) as r:
+        return _json_mod.loads(r.read())
 
 def _detect_region(member):
-    """Return (region_label, col_user, col_eps, col_qw) for the member's first matching region role."""
-    role_ids = [r.id for r in getattr(member, 'roles', [])]
+    """Devuelve (label, col_u, col_ep, col_qw) según primer rol de región del miembro."""
+    role_ids = [r.id for r in getattr(member, "roles", [])]
     for role_id, label, cu, ce, cq in _REGION_ROLES:
         if role_id in role_ids:
             return label, cu, ce, cq
     return None, None, None, None
 
-def _sheet_add_ep(member):
+def _sheet_add_ep(username, region, col_u, col_ep, col_qw):
     """
-    Increment EP count for the member in the Google Sheet.
-    Returns (success: bool, message: str).
-    Runs synchronously in run_in_executor thread.
-    All errors are caught and returned as descriptive strings.
+    Incrementa EP en Google Sheets. Toma strings/ints ya extraídos (thread-safe).
+    Devuelve (success: bool, message: str).
     """
-    # Snapshot Discord data before entering thread (safe from executor)
-    username = member.display_name
-    region, col_u, col_ep, col_qw = _detect_region(member)
-
-    if not region:
-        role_ids = [r.id for r in getattr(member, 'roles', [])]
-        return False, f"No EU/NA/ASIA role found. Your role IDs: {role_ids}"
-
     try:
-        ws = _get_sheet()
-    except RuntimeError as e:
-        print(f"!!! [SHEETS] {e}")
-        return False, str(e)
+        cl_u  = _col_letter(col_u)
+        cl_ep = _col_letter(col_ep)
+        cl_qw = _col_letter(col_qw)
+        tab   = _SHEET_TAB
 
-    try:
-        # Read entire username column for this region (1-indexed)
-        col_values = ws.col_values(col_u)
+        # Leer columna USERNAME completa
+        col_data = _gs_get(f"'{tab}'!{cl_u}1:{cl_u}200")
 
-        # Search for existing row (case-insensitive, from data start row)
+        # Buscar fila existente (case-insensitive, desde fila de datos)
         target_row = None
-        for i, val in enumerate(col_values):
-            row_num = i + 1  # gspread is 1-indexed
+        for i, row in enumerate(col_data):
+            row_num = i + 1
             if row_num < _SHEET_DATA_START_ROW:
                 continue
-            if str(val).strip().lower() == username.lower():
+            if row and str(row[0]).strip().lower() == username.lower():
                 target_row = row_num
                 break
 
         if target_row:
-            # Existing entry — read current EP and increment
-            ep_val   = ws.cell(target_row, col_ep).value
-            current  = int(ep_val) if ep_val and str(ep_val).isdigit() else 0
-            new_val  = current + 1
-            ws.update_cell(target_row, col_ep, new_val)
-            print(f">>> [SHEETS] {username} ({region}) row {target_row}: EP {current} → {new_val}")
+            ep_data = _gs_get(f"'{tab}'!{cl_ep}{target_row}")
+            current = 0
+            if ep_data and ep_data[0]:
+                try: current = int(ep_data[0][0])
+                except (ValueError, TypeError): current = 0
+            new_val = current + 1
+            _gs_put(f"'{tab}'!{cl_ep}{target_row}", [[str(new_val)]])
+            print(f">>> [SHEETS] {username} ({region}) fila {target_row}: EP {current}→{new_val}")
             return True, f"EP updated! Total: **{new_val}**"
 
         else:
-            # New entry — find first empty slot from data start row
-            # col_values may be shorter than the sheet if trailing cells are empty
-            occupied = [
-                i + 1 for i, v in enumerate(col_values)
-                if i + 1 >= _SHEET_DATA_START_ROW and str(v).strip() != ''
-            ]
+            occupied = [i + 1 for i, row in enumerate(col_data)
+                        if i + 1 >= _SHEET_DATA_START_ROW and row and str(row[0]).strip()]
             next_row = (max(occupied) + 1) if occupied else _SHEET_DATA_START_ROW
-
-            ws.update_cell(next_row, col_u,  username)
-            ws.update_cell(next_row, col_ep, 1)
-            ws.update_cell(next_row, col_qw, 0)
-            print(f">>> [SHEETS] New entry: {username} ({region}) at row {next_row}, EP=1")
+            _gs_put(f"'{tab}'!{cl_u}{next_row}",  [[username]])
+            _gs_put(f"'{tab}'!{cl_ep}{next_row}", [["1"]])
+            _gs_put(f"'{tab}'!{cl_qw}{next_row}", [["0"]])
+            print(f">>> [SHEETS] Nuevo: {username} ({region}) fila {next_row}, EP=1")
             return True, "Added to tracker! EP: **1**"
 
     except Exception as e:
-        print(f"!!! [SHEETS] Update error for {username}: {e}")
-        return False, f"Sheet update failed: {e}"
+        print(f"!!! [SHEETS] Error para {username}: {e}")
+        return False, f"{type(e).__name__}: {e}"
+
 
 # Configuración de Categoría
 try:
@@ -736,7 +766,7 @@ async def handle_done(message):
     if not member:
         return
 
-    region, _, _, _ = _detect_region(member)
+    region, col_u, col_ep, col_qw = _detect_region(member)
     region_label = f" ({region})" if region else " (no region role)"
 
     embed = discord.Embed(
@@ -811,7 +841,10 @@ async def handle_done(message):
 
     try:
         loop = asyncio.get_event_loop()
-        success, msg_text = await loop.run_in_executor(None, _sheet_add_ep, member)
+        username = member.display_name
+        success, msg_text = await loop.run_in_executor(
+            None, _sheet_add_ep, username, region, col_u, col_ep, col_qw
+        )
     except Exception as exc:
         success, msg_text = False, f"Executor error: {exc}"
 
