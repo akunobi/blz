@@ -3,10 +3,17 @@ import sqlite3
 import threading
 import os
 import asyncio
+import json as _json_mod
 try:
     import aiohttp as _aiohttp
 except ImportError:
     _aiohttp = None
+try:
+    import gspread
+    from google.oauth2.service_account import Credentials as _GCredentials
+    _GSPREAD_OK = True
+except ImportError:
+    _GSPREAD_OK = False
 from flask import Flask, render_template, jsonify, request
 from dotenv import load_dotenv
 
@@ -17,7 +24,115 @@ app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-OPENAI_MODERATION_KEY = os.getenv("OPENAI_API_KEY", "")  # opcional 
+OPENAI_MODERATION_KEY  = os.getenv("OPENAI_API_KEY", "")  # opcional
+
+# ── Google Sheets — EP Tracker ──
+SHEET_ID               = os.getenv("GOOGLE_SHEET_ID", "19YQvEMF2NoDDLAdvqok8Nko3Hw14o5G9AmheOcMdUdE")
+SHEETS_CREDS_JSON      = os.getenv("GOOGLE_SHEETS_CREDENTIALS", "")
+WARN_DM_ADMIN_IDS      = [898579360720764999, 1075463469865906216]  # DM targets when warns reach 2
+
+# Region role → (section_col_username, section_col_eps, section_col_qw)  — 1-indexed Google Sheets cols
+# EU=C,D,E  NA=G,H,I  ASIA=K,L,M  (headers row 14, data from row 15)
+_REGION_ROLES = [
+    (1355062394547736673, "EU",   3,  4,  5),   # EU:   C=3, D=4, E=5
+    (1355062394547736675, "NA",   7,  8,  9),   # NA:   G=7, H=8, I=9
+    (1355062394547736674, "ASIA", 11, 12, 13),  # ASIA: K=11,L=12,M=13
+]
+_SHEET_DATA_START_ROW  = 15   # first data row (1-indexed)
+_SHEET_NAME            = "Tracker"
+
+def _get_gc():
+    """Return an authenticated gspread client, or None if not configured."""
+    if not _GSPREAD_OK or not SHEETS_CREDS_JSON:
+        return None
+    try:
+        info  = _json_mod.loads(SHEETS_CREDS_JSON)
+        creds = _GCredentials.from_service_account_info(info, scopes=[
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/drive",
+        ])
+        return gspread.authorize(creds)
+    except Exception as e:
+        print(f"!!! [SHEETS] Auth error: {e}")
+        return None
+
+def _get_sheet():
+    """Return the Tracker worksheet, or None on failure."""
+    gc = _get_gc()
+    if not gc:
+        return None
+    try:
+        return gc.open_by_key(SHEET_ID).worksheet(_SHEET_NAME)
+    except Exception as e:
+        print(f"!!! [SHEETS] Open error: {e}")
+        return None
+
+def _detect_region(member):
+    """Return (region_label, col_user, col_eps, col_qw) for the member's first matching region role."""
+    role_ids = [r.id for r in getattr(member, 'roles', [])]
+    for role_id, label, cu, ce, cq in _REGION_ROLES:
+        if role_id in role_ids:
+            return label, cu, ce, cq
+    return None, None, None, None
+
+def _sheet_add_ep(member):
+    """
+    Increment EP count for the member in the Google Sheet.
+    - Finds the member's region from roles.
+    - Finds existing row by username match, or appends a new row.
+    - Returns (success: bool, message: str).
+    This runs synchronously (called via run_in_executor from async context).
+    """
+    ws = _get_sheet()
+    if not ws:
+        return False, "Google Sheets not configured"
+
+    region, col_u, col_ep, col_qw = _detect_region(member)
+    if not region:
+        return False, "No region role found (EU/NA/ASIA)"
+
+    username = member.display_name
+
+    try:
+        # Read all values in the username column for this region
+        col_values = ws.col_values(col_u)  # 1-indexed, returns list from row 1
+        # Look for existing row (case-insensitive)
+        target_row = None
+        for i, val in enumerate(col_values):
+            row_num = i + 1  # 1-indexed
+            if row_num < _SHEET_DATA_START_ROW:
+                continue
+            if str(val).strip().lower() == username.lower():
+                target_row = row_num
+                break
+
+        if target_row:
+            # Existing row — increment EP count
+            ep_cell = ws.cell(target_row, col_ep)
+            current_eps = int(ep_cell.value or 0)
+            ws.update_cell(target_row, col_ep, current_eps + 1)
+            print(f">>> [SHEETS] Updated EP for {username} ({region}) row {target_row}: {current_eps} → {current_eps+1}")
+            return True, f"EP updated! Total: **{current_eps + 1}**"
+        else:
+            # New row — find next empty row in username column
+            next_row = _SHEET_DATA_START_ROW
+            for i, val in enumerate(col_values):
+                row_num = i + 1
+                if row_num >= _SHEET_DATA_START_ROW and str(val).strip() == '':
+                    next_row = row_num
+                    break
+                if row_num >= _SHEET_DATA_START_ROW:
+                    next_row = row_num + 1
+
+            ws.update_cell(next_row, col_u,  username)
+            ws.update_cell(next_row, col_ep, 1)
+            ws.update_cell(next_row, col_qw, 0)
+            print(f">>> [SHEETS] Added {username} ({region}) at row {next_row} with EP=1")
+            return True, "Added to tracker! EP: **1**"
+
+    except Exception as e:
+        print(f"!!! [SHEETS] Update error: {e}")
+        return False, f"Sheets error: {e}"  
 
 # Configuración de Categoría
 try:
@@ -399,6 +514,29 @@ def get_recent_mod_action(user_id, guild_id, action):
     return dict(row) if row else None
 
 
+
+async def _notify_warn_admins(member, guild, warn_count):
+    """DM los admins configurados cuando un usuario llega a exactamente 2 warnings."""
+    if warn_count != 2:
+        return
+    for admin_id in WARN_DM_ADMIN_IDS:
+        try:
+            admin = await client.fetch_user(admin_id)
+            embed = discord.Embed(
+                title="⚠️ Warning Alert",
+                description=(
+                    f"**{member.display_name}** (`{member.id}`) has reached **2 warnings**.\n\n"
+                    f"Server: **{guild.name}**\n"
+                    f"Action may be required."
+                ),
+                color=0xF5A623
+            )
+            embed.set_footer(text="BLZ-T AutoMod")
+            await admin.send(embed=embed)
+            print(f">>> [WARN DM] Notified admin {admin_id} about {member.display_name}")
+        except Exception as e:
+            print(f"!!! [WARN DM] Failed to DM admin {admin_id}: {e}")
+
 async def escalate_user(member, guild, warn_count, reason):
     """Apply timeout or ban based on warn count and prior action history."""
     import datetime
@@ -577,35 +715,174 @@ async def handle_deadline(message, username_raw):
     _deadline_tasks[sent.id] = task
 
 
+async def handle_done(message):
+    """
+    Detecta !done: envía embed de confirmación con reacciones ✅/❌.
+    Si el usuario confirma, incrementa su EP en Google Sheets.
+    """
+    member = message.guild.get_member(message.author.id) if message.guild else None
+    if not member:
+        return
 
-# ─────────────────────────────────────────────────────
-# OpenAI Moderation API — segunda capa de detección
-# ─────────────────────────────────────────────────────
+    region, _, _, _ = _detect_region(member)
+    region_label = f" ({region})" if region else " (no region role)"
+
+    embed = discord.Embed(
+        title="📋 Tryout Completion",
+        description=(
+            f"Hey {message.author.mention}! Have you **completed your tryout** this week?{region_label}\n\n"
+            "React with ✅ to confirm or ❌ to cancel."
+        ),
+        color=0x26C9B8
+    )
+    embed.set_footer(text="BLZ-T EP Tracker • You have 60 seconds to respond")
+
+    try:
+        sent = await message.channel.send(embed=embed)
+    except Exception as e:
+        print(f"!!! [DONE] Could not send embed: {e}")
+        return
+
+    await sent.add_reaction("✅")
+    await sent.add_reaction("❌")
+
+    def check(reaction, user):
+        return (
+            user.id == message.author.id
+            and str(reaction.emoji) in ("✅", "❌")
+            and reaction.message.id == sent.id
+        )
+
+    try:
+        reaction, _ = await client.wait_for("reaction_add", timeout=60.0, check=check)
+    except asyncio.TimeoutError:
+        timeout_embed = discord.Embed(
+            title="⏰ Timed out",
+            description="No response received. Use `!done` again when ready.",
+            color=0x888888
+        )
+        await sent.edit(embed=timeout_embed)
+        await sent.clear_reactions()
+        return
+
+    if str(reaction.emoji) == "❌":
+        cancel_embed = discord.Embed(
+            title="❌ Cancelled",
+            description="No problem! Use `!done` when you have completed your tryout.",
+            color=0xFF6B6B
+        )
+        await sent.edit(embed=cancel_embed)
+        await sent.clear_reactions()
+        return
+
+    # ✅ confirmed
+    if not region:
+        no_region_embed = discord.Embed(
+            title="❌ No Region Role",
+            description="You do not have an EU, NA, or ASIA role assigned. Ask a moderator.",
+            color=0xFF6B6B
+        )
+        await sent.edit(embed=no_region_embed)
+        await sent.clear_reactions()
+        return
+
+    processing_embed = discord.Embed(
+        title="⏳ Updating tracker...",
+        description="Recording your EP, please wait.",
+        color=0xF5A623
+    )
+    await sent.edit(embed=processing_embed)
+    await sent.clear_reactions()
+
+    loop = asyncio.get_event_loop()
+    success, msg_text = await loop.run_in_executor(None, _sheet_add_ep, member)
+
+    if success:
+        ok_embed = discord.Embed(
+            title="✅ EP Recorded!",
+            description=(
+                f"**{member.display_name}** — Region: **{region}**\n"
+                f"{msg_text}"
+            ),
+            color=0x26C9B8
+        )
+        ok_embed.set_footer(text="BLZ-T EP Tracker")
+        await sent.edit(embed=ok_embed)
+    else:
+        err_embed = discord.Embed(
+            title="❌ Error",
+            description=f"Could not update the tracker: {msg_text}",
+            color=0xFF6B6B
+        )
+        await sent.edit(embed=err_embed)
+
+    print(f">>> [DONE] {member.display_name} ({region}) | success={success} | {msg_text}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OpenAI Moderation API — segunda capa de detección (capa IA)
+#
+# Flujo híbrido:
+#   1. contains_bad_word()  → acción INMEDIATA (sin latencia)
+#   2. _openai_moderate()   → corre en background tras guardar el mensaje;
+#                             actúa solo si el algoritmo lo dejó pasar
+#
+# Umbral de confianza: solo se actúa si score >= _MOD_THRESHOLD.
+# Sube el umbral (0.85-0.95) para menos falsos positivos de la IA.
+# Bájalo (0.60-0.75) para más sensibilidad.
+# ─────────────────────────────────────────────────────────────────────────────
 _MODERATION_URL = "https://api.openai.com/v1/moderations"
+_MOD_THRESHOLD  = float(os.getenv("MOD_AI_THRESHOLD", "0.80"))  # configurable por env var
+
+# Categorías que activan borrado + advertencia
 _MOD_CATEGORIES = frozenset({
-    "hate", "hate/threatening",
-    "harassment", "harassment/threatening",
-    "self-harm", "self-harm/intent", "self-harm/instructions",
+    "hate",
+    "hate/threatening",
+    "harassment",
+    "harassment/threatening",
+    "self-harm",
+    "self-harm/intent",
+    "self-harm/instructions",
+    "sexual/minors",        # contenido sexual con menores: siempre eliminar
+    "violence/graphic",     # gore / imágenes violentas explícitas
 })
+
+# Categorías que solo se REGISTRAN en el log pero NO borran ni advierten
+# (para auditoría sin castigar contenido borderline)
+_MOD_LOG_ONLY = frozenset({
+    "sexual",    # contenido sexual adulto — log, no ban automático
+    "violence",  # violencia genérica — frecuente en gaming
+})
+
 _MOD_LABELS = {
-    "hate":                   "discurso de odio",
-    "hate/threatening":       "amenaza con odio",
-    "harassment":             "acoso",
-    "harassment/threatening": "acoso con amenaza",
-    "self-harm":              "daño a uno mismo",
-    "self-harm/intent":       "intención de autolesión",
-    "self-harm/instructions": "instrucciones de autolesión",
+    "hate":                    "discurso de odio",
+    "hate/threatening":        "amenaza con odio",
+    "harassment":              "acoso",
+    "harassment/threatening":  "acoso con amenaza",
+    "self-harm":               "daño a uno mismo",
+    "self-harm/intent":        "intención de autolesión",
+    "self-harm/instructions":  "instrucciones de autolesión",
+    "sexual/minors":           "contenido inapropiado con menores",
+    "violence/graphic":        "violencia gráfica",
+    "sexual":                  "contenido sexual",
+    "violence":                "contenido violento",
 }
 
 async def _openai_moderate(message):
+    """
+    Llama a la OpenAI Moderation API en background.
+    Solo actúa si el score supera _MOD_THRESHOLD para la categoría detectada.
+    Registra TODAS las decisiones en mod_actions para auditoría.
+    """
     if not OPENAI_MODERATION_KEY or not _aiohttp:
         return
     text = (message.content or "").strip()
-    if not text:
+    if not text or len(text) < 3:
         return
     guild = getattr(message.channel, "guild", None)
     if not guild:
         return
+
     try:
         async with _aiohttp.ClientSession() as session:
             async with session.post(
@@ -613,63 +890,86 @@ async def _openai_moderate(message):
                 headers={"Authorization": f"Bearer {OPENAI_MODERATION_KEY}",
                          "Content-Type": "application/json"},
                 json={"input": text},
-                timeout=_aiohttp.ClientTimeout(total=5),
+                timeout=_aiohttp.ClientTimeout(total=6),
             ) as resp:
                 if resp.status != 200:
-                    print(f">>> [MODERATION API] HTTP {resp.status}")
+                    print(f">>> [AI-MOD] HTTP {resp.status}")
                     return
                 data = await resp.json()
     except asyncio.TimeoutError:
-        print(">>> [MODERATION API] Timeout")
+        print(">>> [AI-MOD] Timeout (>6s)")
         return
     except Exception as exc:
-        print(f">>> [MODERATION API] Error: {exc}")
+        print(f">>> [AI-MOD] Error: {exc}")
         return
 
-    result = data.get("results", [{}])[0]
-    if not result.get("flagged", False):
+    result  = data.get("results", [{}])[0]
+    cats    = result.get("categories",       {})
+    scores  = result.get("category_scores",  {})
+
+    # ── Categorías por encima del umbral (activas o no según la API) ──
+    # Usamos el score directamente en vez del booleano "flagged":
+    # así podemos ajustar la sensibilidad con _MOD_THRESHOLD.
+    over_threshold = {
+        c: scores[c]
+        for c in scores
+        if scores[c] >= _MOD_THRESHOLD
+    }
+
+    if not over_threshold:
+        return  # mensaje limpio según la IA
+
+    top_cat   = max(over_threshold, key=over_threshold.get)
+    top_score = over_threshold[top_cat]
+    label     = _MOD_LABELS.get(top_cat, top_cat)
+
+    # ── Categorías que solo se loguean (no acción) ──
+    if top_cat in _MOD_LOG_ONLY and top_cat not in _MOD_CATEGORIES:
+        print(f">>> [AI-MOD] LOG-ONLY {message.author} | {top_cat} ({top_score:.0%}) | '{text[:60]}'")
+        log_mod_action(
+            message.author.id, message.author.name, guild.id,
+            action="ai_flagged_log",
+            reason=f"AI log-only: {top_cat} ({top_score:.0%})",
+        )
         return
 
-    cats    = result.get("categories", {})
-    scores  = result.get("category_scores", {})
-    flagged = [c for c in _MOD_CATEGORIES if cats.get(c, False)]
-    if not flagged:
-        return
-
-    top_cat   = max(flagged, key=lambda c: scores.get(c, 0))
-    top_score = scores.get(top_cat, 0)
-    print(f">>> [MODERATION API] FLAGGED {message.author} | {top_cat} ({top_score:.2f})")
+    # ── Categoría de acción: borrar + advertir ──
+    print(f">>> [AI-MOD] FLAGGED {message.author} | {top_cat} ({top_score:.0%}) | '{text[:60]}'")
 
     deleted = False
     try:
         await message.delete()
         deleted = True
     except discord.NotFound:
-        pass
+        deleted = True   # ya fue borrado (por otro mod, por ejemplo)
     except discord.Forbidden:
-        print(f"!!! [MODERATION API] Sin permiso en #{message.channel.name}")
+        print(f"!!! [AI-MOD] Sin permiso en #{message.channel.name}")
     except Exception as exc:
-        print(f"!!! [MODERATION API] Delete error: {exc}")
+        print(f"!!! [AI-MOD] Delete error: {exc}")
 
     warn_count = add_warning(
         message.author.id, message.author.name, guild.id,
-        reason=f"AI moderation: {top_cat} ({top_score:.0%})"
+        reason=f"IA: {label} ({top_score:.0%})",
     )
-    print(f">>> [MODERATION API] {message.author.name} warned ({warn_count}) | deleted={deleted}")
+    log_mod_action(
+        message.author.id, message.author.name, guild.id,
+        action="ai_automod",
+        reason=f"AI: {top_cat} ({top_score:.0%}) | msg: {text[:120]}",
+    )
+    print(f">>> [AI-MOD] {message.author.name} warned ({warn_count}) | deleted={deleted}")
 
     try:
-        label = _MOD_LABELS.get(top_cat, top_cat)
         await message.channel.send(
-            f"\u26a0\ufe0f {message.author.mention} Tu mensaje fue eliminado: **{label}**. "
+            f"⚠️ {message.author.mention} Tu mensaje fue eliminado: **{label}**. "
             f"Advertencia **{warn_count}**.",
             delete_after=8,
         )
     except Exception as exc:
-        print(f"!!! [MODERATION API] Warn msg error: {exc}")
+        print(f"!!! [AI-MOD] Warn msg error: {exc}")
 
     member = guild.get_member(message.author.id)
     if member:
-        await escalate_user(member, guild, warn_count, f"AI moderation: {top_cat}")
+        await escalate_user(member, guild, warn_count, f"IA: {top_cat}")
 
 
 @client.event
@@ -730,6 +1030,7 @@ async def on_message(message):
                 print(f'!!! [AUTOMOD WARN MSG ERROR]: {e}')
             member = guild.get_member(message.author.id)
             if member:
+                await _notify_warn_admins(member, guild, warn_count)
                 await escalate_user(member, guild, warn_count, f'Bad word: {found_word}')
             return  # stop processing — don't fall through to spam or DB save
 
@@ -778,6 +1079,7 @@ async def on_message(message):
                 pass
 
             if member:
+                await _notify_warn_admins(member, guild, warn_count)
                 await escalate_user(member, guild, warn_count, 'Spam')
 
             # Bulk delete older duplicates in background (non-blocking)
@@ -798,6 +1100,12 @@ async def on_message(message):
                     pass
             asyncio.create_task(_bulk_delete())
             return
+
+    # ── !done — EP Tracker ──
+    if message.content and message.content.strip().lower() == '!done':
+        if message.guild:
+            asyncio.create_task(handle_done(message))
+        return
 
     # ── Segunda capa: OpenAI Moderation (background, no bloqueante) ──
     if guild and message.content and OPENAI_MODERATION_KEY:
@@ -1564,52 +1872,16 @@ except Exception as _e:
 
 @app.route('/api/messages/<int:message_id>/interact', methods=['POST'])
 def interact_message(message_id):
-    """Click a bot button component on a message."""
-    data = request.json or {}
-    channel_id = data.get('channel_id')
-    custom_id  = data.get('custom_id')
-    if not channel_id or not custom_id:
-        return jsonify({'error': 'channel_id and custom_id required'}), 400
-    if not bot_loop or not bot_ready_event.is_set():
-        return jsonify({'error': 'Bot desconectado'}), 503
-
-    async def _click():
-        try:
-            channel = await client.fetch_channel(int(channel_id))
-            msg = await channel.fetch_message(message_id)
-
-            # Find the matching component
-            target_component = None
-            for row in msg.components:
-                for comp in row.children:
-                    if getattr(comp, 'custom_id', None) == custom_id:
-                        target_component = comp
-                        break
-                if target_component:
-                    break
-
-            if not target_component:
-                return {'success': False, 'error': 'Botón no encontrado en el mensaje'}
-
-            # Simulate the click via the interaction
-            await target_component.click()
-            return {'success': True}
-        except AttributeError:
-            return {'success': False, 'error': 'Esta versión de discord.py no soporta .click(). Usa discord.py 2.0+ o py-cord.'}
-        except discord.NotFound:
-            return {'success': False, 'error': 'Mensaje no encontrado'}
-        except discord.Forbidden:
-            return {'success': False, 'error': 'Sin permisos'}
-        except Exception as e:
-            return {'success': False, 'error': str(e)}
-
-    try:
-        result = asyncio.run_coroutine_threadsafe(_click(), bot_loop).result(timeout=10)
-        if result['success']:
-            return jsonify({'status': 'clicked'})
-        return jsonify({'error': result['error']}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    """
+    Los bots de Discord no pueden hacer click en botones de otros mensajes —
+    esa acción es exclusiva de usuarios (self-bot), que Discord prohíbe.
+    Los botones se muestran en el UI de forma visual pero deben pulsarse
+    directamente en el cliente de Discord.
+    """
+    return jsonify({
+        'error': 'Los botones de Discord deben pulsarse directamente en Discord. '
+                 'Los bots no pueden interactuar con botones de otros mensajes.'
+    }), 501
 
 
 # ═══════════════════════════════════════════

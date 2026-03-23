@@ -3,3 +3,5 @@ discord.py
 python-dotenv
 gunicorn
 aiohttp
+gspread
+google-auth
