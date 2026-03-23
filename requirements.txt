@@ -3,4 +3,5 @@ discord.py
 python-dotenv
 gunicorn
 aiohttp
-cryptography
+google-auth
+requests

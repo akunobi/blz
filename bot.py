@@ -8,7 +8,6 @@ try:
     import aiohttp as _aiohttp
 except ImportError:
     _aiohttp = None
-import base64 as _b64
 import time as _time_gs
 import urllib.request as _urllib_req
 import urllib.parse as _urllib_parse
@@ -50,7 +49,7 @@ def _col_letter(n):
     return s
 
 def _gs_get_token():
-    """Obtiene OAuth2 access token para Google Sheets usando JWT RS256."""
+    """Obtiene OAuth2 access token usando google-auth (maneja JWT internamente)."""
     now = int(_time_gs.time())
     if _gs_token_cache["token"] and now < _gs_token_cache["exp"] - 60:
         return _gs_token_cache["token"]
@@ -63,37 +62,18 @@ def _gs_get_token():
     except Exception as e:
         raise RuntimeError(f"JSON de credenciales inválido: {e}")
 
-    # Construir JWT
-    header  = _b64.urlsafe_b64encode(_json_mod.dumps({"alg":"RS256","typ":"JWT"}).encode()).rstrip(b"=")
-    payload = _b64.urlsafe_b64encode(_json_mod.dumps({
-        "iss":   info["client_email"],
-        "scope": "https://www.googleapis.com/auth/spreadsheets",
-        "aud":   "https://oauth2.googleapis.com/token",
-        "iat":   now, "exp": now + 3600,
-    }).encode()).rstrip(b"=")
-    msg = header + b"." + payload
-
-    # Firmar con RSA — cryptography está disponible en Python moderno/Render
     try:
-        from cryptography.hazmat.primitives import hashes, serialization
-        from cryptography.hazmat.primitives.asymmetric import padding as _padding
-        pk  = serialization.load_pem_private_key(info["private_key"].encode(), password=None)
-        sig = pk.sign(msg, _padding.PKCS1v15(), hashes.SHA256())
-        assertion = (msg + b"." + _b64.urlsafe_b64encode(sig).rstrip(b"=")).decode()
+        from google.oauth2.service_account import Credentials
+        from google.auth.transport.requests import Request as GRequest
+        creds = Credentials.from_service_account_info(info, scopes=[
+            "https://www.googleapis.com/auth/spreadsheets"
+        ])
+        creds.refresh(GRequest())
+        token = creds.token
     except ImportError:
-        raise RuntimeError("Falta el paquete 'cryptography'. Añádelo a requirements.txt")
-
-    # Intercambiar JWT por access token
-    data = _urllib_parse.urlencode({
-        "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-        "assertion": assertion,
-    }).encode()
-    req = _urllib_req.Request("https://oauth2.googleapis.com/token", data=data)
-    try:
-        with _urllib_req.urlopen(req, timeout=10) as resp:
-            token = _json_mod.loads(resp.read())["access_token"]
+        raise RuntimeError("Falta 'google-auth'. Añádelo a requirements.txt")
     except Exception as e:
-        raise RuntimeError(f"Error al obtener token OAuth2: {e}")
+        raise RuntimeError(f"Error de autenticación Google: {e}")
 
     _gs_token_cache["token"] = token
     _gs_token_cache["exp"]   = now + 3600
