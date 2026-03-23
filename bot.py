@@ -64,16 +64,20 @@ def _gs_get_token():
 
     try:
         from google.oauth2.service_account import Credentials
-        from google.auth.transport.requests import Request as GRequest
+        import requests as _requests
         creds = Credentials.from_service_account_info(info, scopes=[
             "https://www.googleapis.com/auth/spreadsheets"
         ])
-        creds.refresh(GRequest())
+        session = _requests.Session()
+        from google.auth.transport.requests import Request as GRequest
+        creds.refresh(GRequest(session=session))
+        if not creds.token:
+            raise RuntimeError("Token vacío tras refresh")
         token = creds.token
-    except ImportError:
-        raise RuntimeError("Falta 'google-auth'. Añádelo a requirements.txt")
+    except ImportError as e:
+        raise RuntimeError(f"Dependencia faltante: {e}. Revisa requirements.txt")
     except Exception as e:
-        raise RuntimeError(f"Error de autenticación Google: {e}")
+        raise RuntimeError(f"Auth Google falló: {type(e).__name__}: {e}")
 
     _gs_token_cache["token"] = token
     _gs_token_cache["exp"]   = now + 3600
@@ -819,14 +823,17 @@ async def handle_done(message):
     except Exception:
         pass
 
+    username = member.display_name
     try:
-        loop = asyncio.get_event_loop()
-        username = member.display_name
-        success, msg_text = await loop.run_in_executor(
-            None, _sheet_add_ep, username, region, col_u, col_ep, col_qw
+        loop = asyncio.get_running_loop()
+        success, msg_text = await asyncio.wait_for(
+            loop.run_in_executor(None, _sheet_add_ep, username, region, col_u, col_ep, col_qw),
+            timeout=20.0
         )
+    except asyncio.TimeoutError:
+        success, msg_text = False, "Timeout: Google Sheets tardó demasiado (>20s)"
     except Exception as exc:
-        success, msg_text = False, f"Executor error: {exc}"
+        success, msg_text = False, f"{type(exc).__name__}: {exc}"
 
     print(f">>> [DONE] {member.display_name} ({region}) | success={success} | {msg_text}")
 
