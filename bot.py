@@ -85,19 +85,20 @@ def _gs_get_token():
 
 def _gs_get(range_):
     """GET de valores desde Google Sheets API v4."""
-    url = (f"https://sheets.googleapis.com/v4/spreadsheets/{SHEET_ID}"
-           f"/values/{_urllib_parse.quote(range_)}")
-    req = _urllib_req.Request(url, headers={"Authorization": f"Bearer {_gs_get_token()}"})
+    _enc = _urllib_parse.quote(range_, safe="!'")
+    _url = "https://sheets.googleapis.com/v4/spreadsheets/" + SHEET_ID + "/values/" + _enc
+    req = _urllib_req.Request(_url, headers={"Authorization": "Bearer " + _gs_get_token()})
     with _urllib_req.urlopen(req, timeout=10) as r:
         return _json_mod.loads(r.read()).get("values", [])
 
 def _gs_put(range_, values):
     """PUT de valores en Google Sheets API v4."""
-    url  = (f"https://sheets.googleapis.com/v4/spreadsheets/{SHEET_ID}"
-            f"/values/{_urllib_parse.quote(range_)}?valueInputOption=USER_ENTERED")
+    _enc = _urllib_parse.quote(range_, safe="!'")
+    _url = ("https://sheets.googleapis.com/v4/spreadsheets/" + SHEET_ID
+            + "/values/" + _enc + "?valueInputOption=USER_ENTERED")
     body = _json_mod.dumps({"range": range_, "majorDimension": "ROWS", "values": values}).encode()
-    req  = _urllib_req.Request(url, data=body, method="PUT",
-                               headers={"Authorization": f"Bearer {_gs_get_token()}",
+    req  = _urllib_req.Request(_url, data=body, method="PUT",
+                               headers={"Authorization": "Bearer " + _gs_get_token(),
                                         "Content-Type": "application/json"})
     with _urllib_req.urlopen(req, timeout=10) as r:
         return _json_mod.loads(r.read())
