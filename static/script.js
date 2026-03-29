@@ -509,27 +509,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (comp.style === 5 && comp.url) {
                     btn.onclick = () => window.open(comp.url, '_blank');
                 } else if (comp.custom_id) {
-                    btn.onclick = async () => {
-                        if (btn.disabled) return;
-                        btn.classList.add('comp-btn--loading');
-                        btn.disabled = true;
-                        try {
-                            const r = await fetch('/api/messages/' + msgEl.dataset.msgId + '/interact', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    channel_id: currentChannelId,
-                                    custom_id: comp.custom_id
-                                })
-                            });
-                            const j = await r.json();
-                            if (!r.ok) showMsgError(msgEl, j.error || 'Error');
-                        } catch(e) {
-                            showMsgError(msgEl, 'Error de red');
-                        } finally {
-                            btn.classList.remove('comp-btn--loading');
-                            btn.disabled = false;
-                        }
+                    btn.title = 'Pulsa este botón en Discord';
+                    btn.classList.add('comp-btn--readonly');
+                    btn.setAttribute('aria-disabled', 'true');
+                    btn.onclick = (e) => {
+                        e.preventDefault();
+                        showToast('Abre Discord para pulsar este botón', 'info');
                     };
                 }
                 rowEl.appendChild(btn);
@@ -1990,12 +1975,13 @@ window.toggleChannelDrawer = function () {
 
             card.innerHTML = `
                 <div class="mod-user-avatar">${initial}</div>
-                <div class="mod-user-info">
+                <div class="mod-user-info" style="cursor:pointer" onclick="showWarnHistory(this, ${JSON.stringify(u).split('</').join('<\\/')})">
                     <div class="mod-user-name">${escHtml(u.user_name || 'Unknown')}</div>
                     <div class="mod-user-meta">${escHtml(u.user_id)}</div>
                     <div class="warn-badges">
                         <span class="warn-badge warn-badge-count">⚠ ${u.warn_count} warn${u.warn_count !== 1 ? 's' : ''}</span>
                         ${lastAction ? `<span class="warn-badge warn-badge-action">${lastAction}</span>` : ''}
+                        <span class="warn-badge warn-badge-history">📋 History</span>
                     </div>
                 </div>
                 <div class="mod-user-actions">
@@ -2065,6 +2051,67 @@ window.toggleChannelDrawer = function () {
 
     function escHtml(s) {
         return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ── Warn History Modal ──────────────────────────────────────────────────
+    let _warnHistoryModal = null;
+
+    window.showWarnHistory = function(el, userData) {
+        if (!_warnHistoryModal) {
+            _warnHistoryModal = document.createElement('div');
+            _warnHistoryModal.id = 'warn-history-modal';
+            _warnHistoryModal.innerHTML = `
+                <div class="wh-backdrop"></div>
+                <div class="wh-card">
+                    <div class="wh-header">
+                        <div class="wh-title" id="wh-title"></div>
+                        <button class="wh-close" id="wh-close">✕</button>
+                    </div>
+                    <div class="wh-body" id="wh-body"></div>
+                </div>
+            `;
+            document.body.appendChild(_warnHistoryModal);
+            _warnHistoryModal.querySelector('.wh-backdrop').addEventListener('click', closeWarnHistory);
+            _warnHistoryModal.querySelector('#wh-close').addEventListener('click', closeWarnHistory);
+            document.addEventListener('keydown', e => { if (e.key === 'Escape') closeWarnHistory(); });
+        }
+
+        const u = typeof userData === 'string' ? JSON.parse(userData) : userData;
+        _warnHistoryModal.querySelector('#wh-title').textContent =
+            `${u.user_name || 'Unknown'} — ${u.warn_count} warning${u.warn_count !== 1 ? 's' : ''}`;
+
+        const body = _warnHistoryModal.querySelector('#wh-body');
+        if (!u.warnings || !u.warnings.length) {
+            body.innerHTML = '<div class="wh-empty">No warnings on record</div>';
+        } else {
+            body.innerHTML = u.warnings.map((w, i) => {
+                const ts = w.timestamp ? new Date(w.timestamp.replace(' ', 'T') + 'Z').toLocaleString() : '—';
+                const hasMsg = w.message_content && w.message_content.trim();
+                const hasLink = w.message_link && w.message_link.trim();
+                return `
+                <div class="wh-warn-item">
+                    <div class="wh-warn-num">#${u.warnings.length - i}</div>
+                    <div class="wh-warn-body">
+                        <div class="wh-warn-reason">${escHtml(w.reason || 'No reason')}</div>
+                        ${hasMsg ? `<div class="wh-warn-message">${escHtml(w.message_content)}</div>` : ''}
+                        <div class="wh-warn-meta">
+                            <span class="wh-warn-mod">by ${escHtml(w.moderator_name || 'AutoMod')}</span>
+                            <span class="wh-warn-time">${ts}</span>
+                            ${hasLink ? `<a class="wh-warn-link" href="${escHtml(w.message_link)}" target="_blank" rel="noopener">↗ Jump to message</a>` : '<span class="wh-warn-link wh-warn-link--deleted">Message deleted</span>'}
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        _warnHistoryModal.classList.add('wh-open');
+        requestAnimationFrame(() => _warnHistoryModal.classList.add('wh-visible'));
+    };
+
+    function closeWarnHistory() {
+        if (!_warnHistoryModal) return;
+        _warnHistoryModal.classList.remove('wh-visible');
+        setTimeout(() => _warnHistoryModal?.classList.remove('wh-open'), 220);
     }
 
     // ── Mod confirm modal ──
