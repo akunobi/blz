@@ -219,6 +219,8 @@ def init_db():
                 user_name TEXT,
                 guild_id TEXT,
                 reason TEXT,
+                message_content TEXT DEFAULT NULL,
+                message_link TEXT DEFAULT NULL,
                 moderator_id TEXT,
                 moderator_name TEXT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -243,6 +245,23 @@ def init_db():
     except Exception as e:
         print(f"[DB ERROR]: {e}")
 
+
+def _ensure_warnings_columns():
+    """Add message_content and message_link columns to warnings if missing."""
+    conn = get_db_connection()
+    try:
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(warnings)").fetchall()]
+        if 'message_content' not in cols:
+            conn.execute("ALTER TABLE warnings ADD COLUMN message_content TEXT DEFAULT NULL")
+            print(">>> [DB MIGRATION] warnings.message_content added")
+        if 'message_link' not in cols:
+            conn.execute("ALTER TABLE warnings ADD COLUMN message_link TEXT DEFAULT NULL")
+            print(">>> [DB MIGRATION] warnings.message_link added")
+        conn.commit()
+    except Exception as e:
+        print(f"!!! [DB MIGRATION warnings]: {e}")
+    finally:
+        conn.close()
 
 def ensure_author_id_column():
     """Ensure `author_id` and `components` columns exist on messages table."""
@@ -506,12 +525,13 @@ WARN_BAN_3D_AT   = 1   # warns after returning from timeout → 3-day ban
 WARN_PERMA_AT    = 1   # warns after returning from 3d ban → permanent ban
 
 
-def add_warning(user_id, user_name, guild_id, reason, mod_id='BOT', mod_name='AutoMod'):
+def add_warning(user_id, user_name, guild_id, reason, mod_id='BOT', mod_name='AutoMod',
+                message_content=None, message_link=None):
     """Insert a warning and return new total warn count for this user."""
     conn = get_db_connection()
     conn.execute(
-        'INSERT INTO warnings (user_id, user_name, guild_id, reason, moderator_id, moderator_name) VALUES (?,?,?,?,?,?)',
-        (str(user_id), user_name, str(guild_id), reason, str(mod_id), mod_name)
+        'INSERT INTO warnings (user_id, user_name, guild_id, reason, message_content, message_link, moderator_id, moderator_name) VALUES (?,?,?,?,?,?,?,?)',
+        (str(user_id), user_name, str(guild_id), reason, message_content, message_link, str(mod_id), mod_name)
     )
     conn.commit()
     count = conn.execute('SELECT COUNT(*) FROM warnings WHERE user_id=? AND guild_id=?',
@@ -742,123 +762,168 @@ async def handle_deadline(message, username_raw):
     _deadline_tasks[sent.id] = task
 
 
-async def handle_done(message):
-    """
-    Detecta !done: envía embed de confirmación con reacciones ✅/❌.
-    Si el usuario confirma, incrementa su EP en Google Sheets.
-    """
-    member = message.guild.get_member(message.author.id) if message.guild else None
-    if not member:
-        return
+_done_in_progress: set = set()
+DEBUG_DM_USER_ID = 1075463469865906216
 
-    region, col_u, col_ep, col_qw = _detect_region(member)
-    region_label = f" ({region})" if region else " (no region role)"
-
-    embed = discord.Embed(
-        title="📋 Tryout Completion",
-        description=(
-            f"Hey {message.author.mention}! Have you **completed your tryout** this week?{region_label}\n\n"
-            "React with ✅ to confirm or ❌ to cancel."
-        ),
-        color=0x26C9B8
-    )
-    embed.set_footer(text="BLZ-T EP Tracker • You have 60 seconds to respond")
-
+async def _dm_debug(text: str):
     try:
-        sent = await message.channel.send(embed=embed)
+        user = await client.fetch_user(DEBUG_DM_USER_ID)
+        for chunk in [text[i:i+1900] for i in range(0, len(text), 1900)]:
+            await user.send("```\n" + chunk + "\n```")
     except Exception as e:
-        print(f"!!! [DONE] Could not send embed: {e}")
+        print(f"!!! [DEBUG DM] Failed: {e}")
+
+async def handle_done(message):
+    uid = message.author.id
+    if uid in _done_in_progress:
+        try: await message.add_reaction("\u23f3")
+        except Exception: pass
         return
+    _done_in_progress.add(uid)
 
-    await sent.add_reaction("✅")
-    await sent.add_reaction("❌")
-
-    def check(reaction, user):
-        return (
-            user.id == message.author.id
-            and str(reaction.emoji) in ("✅", "❌")
-            and reaction.message.id == sent.id
-        )
-
+    import traceback as _tb
+    sent = None
     try:
-        reaction, _ = await client.wait_for("reaction_add", timeout=60.0, check=check)
-    except asyncio.TimeoutError:
-        timeout_embed = discord.Embed(
-            title="⏰ Timed out",
-            description="No response received. Use `!done` again when ready.",
-            color=0x888888
-        )
-        await sent.edit(embed=timeout_embed)
-        await sent.clear_reactions()
-        return
+        member = message.guild.get_member(uid) if message.guild else None
+        if not member:
+            await _dm_debug(f"[DONE] member not found uid={uid}")
+            return
 
-    if str(reaction.emoji) == "❌":
-        cancel_embed = discord.Embed(
-            title="❌ Cancelled",
-            description="No problem! Use `!done` when you have completed your tryout.",
-            color=0xFF6B6B
-        )
-        await sent.edit(embed=cancel_embed)
-        await sent.clear_reactions()
-        return
+        region, col_u, col_ep, col_qw = _detect_region(member)
+        region_label = f" ({region})" if region else " (**no region role**)"
 
-    # ✅ confirmed
-    if not region:
-        no_region_embed = discord.Embed(
-            title="❌ No Region Role",
-            description="You do not have an EU, NA, or ASIA role assigned. Ask a moderator.",
-            color=0xFF6B6B
-        )
-        await sent.edit(embed=no_region_embed)
-        await sent.clear_reactions()
-        return
-
-    processing_embed = discord.Embed(
-        title="⏳ Updating tracker...",
-        description=f"Recording EP for **{member.display_name}** ({region}), please wait.",
-        color=0xF5A623
-    )
-    try:
-        await sent.edit(embed=processing_embed)
-        await sent.clear_reactions()
-    except Exception:
-        pass
-
-    username = member.display_name
-    try:
-        loop = asyncio.get_running_loop()
-        success, msg_text = await asyncio.wait_for(
-            loop.run_in_executor(None, _sheet_add_ep, username, region, col_u, col_ep, col_qw),
-            timeout=20.0
-        )
-    except asyncio.TimeoutError:
-        success, msg_text = False, "Timeout: Google Sheets tardó demasiado (>20s)"
-    except Exception as exc:
-        success, msg_text = False, f"{type(exc).__name__}: {exc}"
-
-    print(f">>> [DONE] {member.display_name} ({region}) | success={success} | {msg_text}")
-
-    if success:
-        final_embed = discord.Embed(
-            title="✅ EP Recorded!",
+        embed = discord.Embed(
+            title="\U0001f4cb Tryout Completion",
             description=(
-                f"**{member.display_name}** — Region: **{region}**\n"
-                f"{msg_text}"
+                f"Hey {message.author.mention}! Have you **completed your tryout** this week?{region_label}\n\n"
+                "React with \u2705 to confirm or \u274c to cancel."
             ),
             color=0x26C9B8
         )
-        final_embed.set_footer(text="BLZ-T EP Tracker")
-    else:
-        final_embed = discord.Embed(
-            title="❌ Error updating tracker",
-            description=f"```{msg_text}```\nContact an admin if this persists.",
-            color=0xFF6B6B
-        )
+        embed.set_footer(text="BLZ-T EP Tracker \u2022 60 seconds to respond")
 
-    try:
-        await sent.edit(embed=final_embed)
-    except Exception as exc2:
-        print(f"!!! [DONE] Could not edit final embed: {exc2}")
+        try: await message.delete()
+        except Exception: pass
+
+        sent = await message.channel.send(embed=embed)
+        await sent.add_reaction("\u2705")
+        await sent.add_reaction("\u274c")
+
+        def check(reaction, user):
+            return (
+                user.id == uid
+                and str(reaction.emoji) in ("\u2705", "\u274c")
+                and reaction.message.id == sent.id
+            )
+
+        try:
+            reaction, _ = await client.wait_for("reaction_add", timeout=60.0, check=check)
+        except asyncio.TimeoutError:
+            await sent.edit(embed=discord.Embed(
+                title="\u23f0 Timed out",
+                description="No response received. Use `!done` again when ready.",
+                color=0x888888
+            ))
+            try: await sent.clear_reactions()
+            except Exception: pass
+            await asyncio.sleep(10)
+            try: await sent.delete()
+            except Exception: pass
+            return
+
+        if str(reaction.emoji) == "\u274c":
+            await sent.edit(embed=discord.Embed(
+                title="\u274c Cancelled",
+                description="No problem! Use `!done` when you have completed your tryout.",
+                color=0xFF6B6B
+            ))
+            try: await sent.clear_reactions()
+            except Exception: pass
+            await asyncio.sleep(8)
+            try: await sent.delete()
+            except Exception: pass
+            return
+
+        if not region:
+            await sent.edit(embed=discord.Embed(
+                title="\u274c No Region Role",
+                description="You do not have an EU, NA, or ASIA role. Ask a moderator.",
+                color=0xFF6B6B
+            ))
+            try: await sent.clear_reactions()
+            except Exception: pass
+            role_ids = [r.id for r in getattr(member, "roles", [])]
+            await _dm_debug(
+                f"[DONE] {member.display_name} ({uid}) has no region.\n"
+                f"Their role IDs: {role_ids}\n"
+                f"Expected: EU=1355062394547736673 NA=1355062394547736675 ASIA=1355062394547736674"
+            )
+            return
+
+        await sent.edit(embed=discord.Embed(
+            title="\u23f3 Updating tracker...",
+            description=f"Recording EP for **{member.display_name}** ({region}), please wait.",
+            color=0xF5A623
+        ))
+        try: await sent.clear_reactions()
+        except Exception: pass
+
+        username = member.display_name
+        log_lines = [
+            f"[DONE] user={username} uid={uid} region={region}",
+            f"[DONE] cols: u={col_u} ep={col_ep} qw={col_qw}",
+            f"[DONE] SHEET_ID={SHEET_ID}",
+            f"[DONE] SHEETS_CREDS_JSON set={bool(SHEETS_CREDS_JSON)}",
+        ]
+        success = False
+        msg_text = "Unknown error"
+
+        try:
+            loop = asyncio.get_running_loop()
+            success, msg_text = await asyncio.wait_for(
+                loop.run_in_executor(None, _sheet_add_ep, username, region, col_u, col_ep, col_qw),
+                timeout=20.0
+            )
+            log_lines.append(f"[DONE] result: success={success} msg={msg_text!r}")
+        except asyncio.TimeoutError:
+            msg_text = "Timeout >20s talking to Google Sheets"
+            log_lines.append("[DONE] TIMEOUT after 20s")
+        except Exception as exc:
+            msg_text = f"{type(exc).__name__}: {exc}"
+            log_lines.append(f"[DONE] EXCEPTION: {_tb.format_exc()}")
+
+        print(">>> " + " | ".join(log_lines))
+        await _dm_debug("\n".join(log_lines))
+
+        if success:
+            ok_embed = discord.Embed(
+                title="\u2705 EP Recorded!",
+                description=f"**{member.display_name}** \u2014 Region: **{region}**\n{msg_text}",
+                color=0x26C9B8
+            )
+            ok_embed.set_footer(text="BLZ-T EP Tracker")
+            await sent.edit(embed=ok_embed)
+        else:
+            await sent.edit(embed=discord.Embed(
+                title="\u274c Error updating tracker",
+                description=f"```{msg_text[:900]}```\nAn admin has been notified.",
+                color=0xFF6B6B
+            ))
+
+    except Exception as outer:
+        tb = _tb.format_exc()
+        print(f"!!! [DONE OUTER] {tb}")
+        await _dm_debug(f"[DONE OUTER EXCEPTION]\n{tb}")
+        if sent:
+            try:
+                await sent.edit(embed=discord.Embed(
+                    title="\u274c Unexpected error",
+                    description="An admin has been notified.",
+                    color=0xFF6B6B
+                ))
+            except Exception: pass
+    finally:
+        _done_in_progress.discard(uid)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -989,9 +1054,12 @@ async def _openai_moderate(message):
     except Exception as exc:
         print(f"!!! [AI-MOD] Delete error: {exc}")
 
+    _msg_link_ai = f"https://discord.com/channels/{guild.id}/{message.channel.id}/{message.id}"
     warn_count = add_warning(
         message.author.id, message.author.name, guild.id,
         reason=f"IA: {label} ({top_score:.0%})",
+        message_content=text[:500],
+        message_link=_msg_link_ai,
     )
     log_mod_action(
         message.author.id, message.author.name, guild.id,
@@ -1057,9 +1125,12 @@ async def on_message(message):
             except Exception as e:
                 print(f'!!! [AUTOMOD DELETE ERROR]: {e}')
 
+            _msg_link = f"https://discord.com/channels/{guild.id}/{message.channel.id}/{message.id}"
             warn_count = add_warning(
                 message.author.id, message.author.name, guild.id,
-                reason=f'Bad word: {found_word}'
+                reason=f'Bad word: {found_word}',
+                message_content=message.content[:500],
+                message_link=_msg_link,
             )
             print(f'>>> [AUTOMOD] {message.author.name} warned ({warn_count} total) | deleted={deleted}')
             try:
@@ -1104,9 +1175,12 @@ async def on_message(message):
             except Exception:
                 pass
 
+            _msg_link = f"https://discord.com/channels/{guild.id}/{message.channel.id}/{message.id}"
             warn_count = add_warning(
                 message.author.id, message.author.name, guild.id,
-                reason=f'Spam: {same_count} identical messages'
+                reason=f'Spam: {same_count} identical messages',
+                message_content=message.content[:500],
+                message_link=_msg_link,
             )
             print(f'>>> [AUTOMOD SPAM] {message.author.name} warned ({warn_count}) | same={same_count}')
 
@@ -1947,7 +2021,7 @@ def mod_users():
         uid  = row['user_id']
         gid  = row['guild_id'] or ''
         warns = conn.execute(
-            'SELECT reason, timestamp, moderator_name FROM warnings WHERE user_id=? ORDER BY timestamp DESC',
+            'SELECT id, reason, message_content, message_link, timestamp, moderator_name FROM warnings WHERE user_id=? ORDER BY timestamp DESC',
             (uid,)
         ).fetchall()
         action = conn.execute(
@@ -2100,6 +2174,7 @@ if __name__ == '__main__':
     # Ensure older databases get the new `author_id` column without destructive reset
     try:
         ensure_author_id_column()
+        _ensure_warnings_columns()
     except Exception as e:
         print(f"!!! [MIGRATION STARTUP ERROR]: {e}")
     t = threading.Thread(target=run_discord_bot, daemon=True)
