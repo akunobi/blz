@@ -1784,28 +1784,7 @@ body {
 }
 
 /* ── 17. Topnav bottom border: animated gradient sweep ── */
-.topnav::after {
-    content: '';
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    height: 1px;
-    background: linear-gradient(90deg,
-        transparent 0%,
-        var(--amber) 20%,
-        var(--teal) 50%,
-        var(--lav) 80%,
-        transparent 100%
-    );
-    background-size: 200% 100%;
-    animation: navBorder 6s ease-in-out infinite;
-    opacity: 0.5;
-}
-.topnav { position: relative; overflow: visible; }
-@keyframes navBorder {
-    0%   { background-position: 0% 0%; opacity: 0.3; }
-    50%  { background-position: 100% 0%; opacity: 0.7; }
-    100% { background-position: 0% 0%; opacity: 0.3; }
-}
+.topnav { position: relative; }
 
 /* ── 18. Action buttons: pop on hover ── */
 .msg-action-btn {
@@ -2078,7 +2057,6 @@ body {
 
 /* LOW — remove purely decorative animations, keep all UI functional */
 html.q-low .orb                           { display: none !important; }
-html.q-low .topnav::after                 { display: none !important; }
 html.q-low .brand-orb::after              { display: none !important; }
 html.q-low .brand-orb                     { animation: none !important; }
 html.q-low .channel-bar-hash              { animation: none !important; }
@@ -2983,3 +2961,132 @@ html.q-medium .composer                   { backdrop-filter: blur(8px) !importan
 
 .mod-confirm-clear { background: var(--teal-dim); border-color: rgba(38,201,184,0.40); color: var(--teal-hi); }
 .mod-confirm-clear:hover { background: rgba(38,201,184,0.18); box-shadow: 0 0 14px var(--teal-glow); }
+
+/* ── Botones de componentes no interactivos (limitación API Discord) ── */
+.comp-btn--readonly {
+    opacity: 0.55;
+    cursor: not-allowed;
+    position: relative;
+}
+.comp-btn--readonly:hover {
+    opacity: 0.7;
+    filter: brightness(1.1);
+}
+.comp-btn--readonly::after {
+    content: '↗ Discord';
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--surface);
+    border: 1px solid var(--border-hi);
+    color: var(--t2);
+    font-size: 0.7rem;
+    padding: 3px 8px;
+    border-radius: 6px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 150ms;
+}
+.comp-btn--readonly:hover::after {
+    opacity: 1;
+}
+
+/* ════════════════════════════════════
+   WARN HISTORY MODAL
+   ════════════════════════════════════ */
+#warn-history-modal {
+    position: fixed; inset: 0; z-index: 910;
+    display: none; align-items: center; justify-content: center; padding: 20px;
+}
+#warn-history-modal.wh-open { display: flex; }
+
+.wh-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(10,9,18,0.82); backdrop-filter: blur(8px);
+    opacity: 0; transition: opacity 220ms;
+}
+#warn-history-modal.wh-visible .wh-backdrop { opacity: 1; }
+
+.wh-card {
+    position: relative; z-index: 1;
+    width: 520px; max-width: 96vw; max-height: 80vh;
+    background: var(--bg2); border: 1px solid var(--border-hi); border-radius: 20px;
+    display: flex; flex-direction: column;
+    opacity: 0; transform: scale(0.9) translateY(16px);
+    transition: opacity 220ms, transform 280ms cubic-bezier(0.34,1.4,0.64,1);
+    box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+    overflow: hidden;
+}
+#warn-history-modal.wh-visible .wh-card { opacity: 1; transform: none; }
+
+.wh-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+.wh-title { font-family: var(--f-display); font-weight: 700; font-size: 0.95rem; color: var(--t0); }
+.wh-close {
+    width: 28px; height: 28px; border-radius: 8px; border: none;
+    background: var(--surface); color: var(--t2); cursor: pointer;
+    font-size: 0.8rem; display: flex; align-items: center; justify-content: center;
+    transition: all 150ms;
+}
+.wh-close:hover { background: var(--coral-dim); color: var(--coral-hi); }
+
+.wh-body {
+    overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
+}
+.wh-empty { text-align: center; color: var(--t2); padding: 24px; font-size: 0.85rem; }
+
+.wh-warn-item {
+    display: flex; gap: 12px; align-items: flex-start;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 14px;
+    transition: border-color 150ms;
+}
+.wh-warn-item:hover { border-color: var(--border-hi); }
+
+.wh-warn-num {
+    font-family: var(--f-mono); font-size: 0.72rem; color: var(--t3);
+    background: var(--lift); border-radius: 6px; padding: 3px 7px;
+    flex-shrink: 0; margin-top: 2px;
+}
+
+.wh-warn-body { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
+
+.wh-warn-reason {
+    font-size: 0.83rem; font-weight: 600; color: var(--amber-hi);
+}
+
+.wh-warn-message {
+    font-family: var(--f-mono); font-size: 0.76rem;
+    color: var(--t1); background: var(--bg);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 10px; white-space: pre-wrap; word-break: break-word;
+    max-height: 80px; overflow-y: auto;
+}
+
+.wh-warn-meta {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.wh-warn-mod { font-size: 0.72rem; color: var(--t3); }
+.wh-warn-time { font-size: 0.72rem; color: var(--t3); margin-left: auto; }
+
+.wh-warn-link {
+    font-size: 0.72rem; font-weight: 600;
+    color: var(--teal-hi); text-decoration: none;
+    border: 1px solid rgba(38,201,184,0.3); border-radius: 6px;
+    padding: 2px 8px; transition: all 150ms;
+}
+.wh-warn-link:hover { background: var(--teal-dim); }
+.wh-warn-link--deleted { color: var(--t3); border-color: var(--border); font-weight: 400; }
+
+/* Badge de history en mod panel */
+.warn-badge-history {
+    cursor: pointer; background: rgba(167,139,250,0.12);
+    border: 1px solid rgba(167,139,250,0.3); color: var(--lav);
+    transition: all 150ms;
+}
+.warn-badge-history:hover { background: rgba(167,139,250,0.22); }
