@@ -1982,6 +1982,7 @@ def start_periodic_sync_thread():
 try:
     init_db()
     ensure_author_id_column()
+    _ensure_warnings_columns()
 except Exception as _e:
     print(f'!!! [STARTUP DB INIT]: {_e}')
 
