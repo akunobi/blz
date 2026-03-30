@@ -2086,8 +2086,8 @@ window.toggleChannelDrawer = function () {
         } else {
             body.innerHTML = u.warnings.map((w, i) => {
                 const ts = w.timestamp ? new Date(w.timestamp.replace(' ', 'T') + 'Z').toLocaleString() : '—';
-                const hasMsg = w.message_content && w.message_content.trim();
-                const hasLink = w.message_link && w.message_link.trim();
+                const hasMsg = w.message_content != null && String(w.message_content).trim() !== '';
+                const hasLink = w.message_link != null && String(w.message_link).trim() !== '';
                 return `
                 <div class="wh-warn-item">
                     <div class="wh-warn-num">#${u.warnings.length - i}</div>
