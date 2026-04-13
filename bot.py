@@ -176,9 +176,8 @@ intents.members = True
 intents.guilds = True
 intents.guild_messages = True
 intents.reactions = True
-client = commands.Bot(command_prefix='!', intents=intents)  # El prefijo '!' se mantiene para compatibilidad
+client = commands.Bot(command_prefix='!', intents=intents)
 
-bot_loop = None
 bot_ready_event = threading.Event()
 deadline_tasks = {}
 
@@ -278,13 +277,11 @@ async def on_ready():
     logger.info(f'>>> [DISCORD]: Conectado como {client.user}')
     logger.info(f'>>> [DISCORD]: ID Categoría: {TARGET_CATEGORY_ID}')
     bot_ready_event.set()
-    # Sincronizar comandos slash
     try:
         synced = await client.tree.sync()
         logger.info(f">>> [SLASH] Synced {len(synced)} commands")
     except Exception as e:
         logger.error(f"!!! [SLASH SYNC ERROR]: {e}")
-    # Backfill history
     try:
         history_limit = int(os.getenv('HISTORY_LIMIT', '200'))
     except ValueError:
@@ -304,7 +301,6 @@ def _norm(text: str) -> str:
     t = _ud.normalize('NFKD', text)
     t = ''.join(c for c in t if not _ud.combining(c))
     t = t.lower().translate(_LEET_DIGITS)
-    # Eliminar emojis de Discord :emoji:
     t = _re_mod.sub(r':[a-zA-Z0-9_+-]+:', ' ', t)
     return _re_mod.sub(r'[^a-z0-9]', ' ', t).strip()
 
@@ -498,7 +494,6 @@ async def escalate_user(member, guild, warn_count, reason):
         logger.error(f'!!! [ESCALATE ERROR] {name}: {e}')
 
 async def handle_deadline_interaction(interaction: discord.Interaction, user: discord.Member):
-    """Versión para slash command /deadline"""
     await interaction.response.defer(ephemeral=False)
     channel = interaction.channel
     guild = interaction.guild
@@ -519,7 +514,6 @@ async def handle_deadline_interaction(interaction: discord.Interaction, user: di
         logger.error(f'!!! [DEADLINE SEND ERROR]: {e}')
         await interaction.followup.send("Error al enviar el deadline.", ephemeral=True)
         return
-    # Watcher
     async def watch():
         try:
             def check(reaction, u):
@@ -541,14 +535,12 @@ async def handle_deadline_interaction(interaction: discord.Interaction, user: di
     await interaction.followup.send("Deadline enviado.", ephemeral=True)
 
 async def handle_done_interaction(interaction: discord.Interaction):
-    """Versión para slash command /done"""
     await interaction.response.defer(ephemeral=False)
     member = interaction.user
     region, col_u, col_ep, col_qw = _detect_region(member)
     if not region:
         await interaction.followup.send("No tienes rol de región (EU/NA/ASIA). Contacta a un moderador.", ephemeral=True)
         return
-    # Enviar mensaje de "procesando"
     embed = discord.Embed(title="⏳ Updating tracker...", description=f"Registrando EP para **{member.display_name}** ({region})", color=0xF5A623)
     msg = await interaction.channel.send(embed=embed)
     try:
@@ -569,7 +561,6 @@ async def handle_done_interaction(interaction: discord.Interaction):
         await msg.edit(embed=discord.Embed(title="❌ Error", description=f"```{msg_text[:900]}```", color=0xFF6B6B))
     await interaction.followup.send("Comando procesado.", ephemeral=True)
 
-# Definir slash commands
 @client.tree.command(name="done", description="Registra tu EP semanal (debes tener rol EU/NA/ASIA)")
 async def slash_done(interaction: discord.Interaction):
     await handle_done_interaction(interaction)
@@ -582,21 +573,17 @@ async def slash_deadline(interaction: discord.Interaction, user: discord.Member)
         return
     await handle_deadline_interaction(interaction, user)
 
-# Mantener compatibilidad con comandos de prefijo !done y !deadline (reutilizan lógica)
 @client.event
 async def on_message(message):
     if message.author.bot:
-        # Aún así guardar mensajes de bots en la categoría objetivo
         if hasattr(message.channel, 'category') and message.channel.category and message.channel.category.id == TARGET_CATEGORY_ID:
             await save_message_to_db(message)
-        await client.process_commands(message)  # Para comandos de prefijo
+        await client.process_commands(message)
         return
 
-    # Guardar mensaje en DB siempre que esté en la categoría objetivo
     if hasattr(message.channel, 'category') and message.channel.category and message.channel.category.id == TARGET_CATEGORY_ID:
         await save_message_to_db(message)
 
-    # AutoMod
     guild = getattr(message.channel, 'guild', None)
     if guild and message.content:
         found_word = contains_bad_word(message.content)
@@ -623,9 +610,8 @@ async def on_message(message):
             if member:
                 await _notify_warn_admins(member, guild, warn_count)
                 await escalate_user(member, guild, warn_count, f'Bad word: {found_word}')
-            return  # No procesar más este mensaje
+            return
 
-        # Spam detection
         now = _time_gs.time()
         gid = str(guild.id)
         uid = str(message.author.id)
@@ -660,10 +646,8 @@ async def on_message(message):
                 await escalate_user(member, guild, warn_count, 'Spam')
             return
 
-    # Comandos de prefijo (compatibilidad)
     if message.content and message.content.strip().lower() == '!done':
         if message.guild:
-            # Simular interacción para reutilizar lógica
             await handle_done_prefix(message)
         return
 
@@ -680,7 +664,6 @@ async def on_message(message):
             await message.reply('Uso: `!deadline <usuario>`', delete_after=5)
         return
 
-    # OpenAI moderation (background)
     if guild and message.content and OPENAI_MODERATION_KEY:
         asyncio.create_task(_openai_moderate(message))
 
@@ -729,7 +712,6 @@ async def save_message_to_db(message):
         logger.error(f"!!! [SAVE ERROR]: {e}")
 
 async def handle_done_prefix(message):
-    # Reutilizar lógica de handle_done_interaction pero con message
     member = message.author
     region, col_u, col_ep, col_qw = _detect_region(member)
     if not region:
@@ -754,7 +736,6 @@ async def handle_done_prefix(message):
         await msg.edit(embed=discord.Embed(title="❌ Error", description=f"```{msg_text[:900]}```", color=0xFF6B6B))
 
 async def handle_deadline_prefix(message, username_raw):
-    # Resolver usuario similar a handle_deadline
     guild = message.guild
     target_user = None
     username_clean = username_raw.lstrip('@').strip()
@@ -890,7 +871,7 @@ async def sync_category_history(limit=200):
     except Exception as e:
         logger.error(f"!!! [HISTORY ERROR]: {e}")
 
-# --- RUTAS FLASK (incluyendo /api/logs) ---
+# --- RUTAS FLASK ---
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -915,7 +896,7 @@ def get_channels():
         except:
             return []
     try:
-        future = asyncio.run_coroutine_threadsafe(get_channels_async(), bot_loop)
+        future = asyncio.run_coroutine_threadsafe(get_channels_async(), client.loop)
         channels = future.result(timeout=5)
         if channels:
             return jsonify(channels)
@@ -991,7 +972,7 @@ def send_message():
     content = data.get('content')
     if not channel_id or not content:
         return jsonify({"error": "Faltan datos"}), 400
-    if not bot_loop or not bot_ready_event.is_set():
+    if not bot_ready_event.is_set():
         return jsonify({"error": "Bot desconectado"}), 503
     async def send_async():
         try:
@@ -1004,10 +985,9 @@ def send_message():
         except Exception as e:
             return {"success": False, "error": str(e)}
     try:
-        future = asyncio.run_coroutine_threadsafe(send_async(), bot_loop)
+        future = asyncio.run_coroutine_threadsafe(send_async(), client.loop)
         result = future.result(timeout=10)
         if result["success"]:
-            # Guardar en DB
             try:
                 conn = get_db_connection()
                 conn.execute('''
@@ -1037,6 +1017,152 @@ def get_logs():
             return ''.join(all_lines[-lines:]), 200, {'Content-Type': 'text/plain; charset=utf-8'}
     except FileNotFoundError:
         return "No log file yet.", 404
+
+# --- MOD API ---
+@app.route('/api/mod/users')
+def mod_users():
+    conn = get_db_connection()
+    rows = conn.execute('''
+        SELECT user_id, MAX(user_name) as user_name, guild_id,
+               COUNT(*) as warn_count, MAX(timestamp) as last_warn
+        FROM warnings
+        GROUP BY user_id
+        ORDER BY warn_count DESC, last_warn DESC
+    ''').fetchall()
+    users = []
+    for row in rows:
+        uid = row['user_id']
+        gid = row['guild_id'] or ''
+        warns = conn.execute(
+            'SELECT id, reason, message_content, message_link, timestamp, moderator_name FROM warnings WHERE user_id=? ORDER BY timestamp DESC',
+            (uid,)
+        ).fetchall()
+        action = conn.execute(
+            'SELECT action, timestamp, reason FROM mod_actions WHERE user_id=? ORDER BY timestamp DESC LIMIT 1',
+            (uid,)
+        ).fetchone()
+        users.append({
+            'user_id': uid,
+            'user_name': row['user_name'],
+            'guild_id': gid,
+            'warn_count': row['warn_count'],
+            'last_warn': row['last_warn'],
+            'warnings': [dict(w) for w in warns],
+            'last_action': dict(action) if action else None,
+        })
+    conn.close()
+    return jsonify(users)
+
+@app.route('/api/mod/action_log')
+def mod_action_log():
+    conn = get_db_connection()
+    rows = conn.execute('SELECT * FROM mod_actions ORDER BY timestamp DESC LIMIT 200').fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/mod/warn', methods=['POST'])
+def mod_warn():
+    data = request.json or {}
+    uid = data.get('user_id')
+    uname = data.get('user_name', 'Unknown')
+    gid = data.get('guild_id')
+    reason = data.get('reason', 'Manual warn')
+    if not uid or not gid:
+        return jsonify({'error': 'user_id and guild_id required'}), 400
+    count = add_warning(uid, uname, gid, reason, mod_id='WEB', mod_name='WebMod')
+    return jsonify({'status': 'warned', 'warn_count': count})
+
+@app.route('/api/mod/timeout', methods=['POST'])
+def mod_timeout():
+    data = request.json or {}
+    uid = data.get('user_id')
+    gid = data.get('guild_id')
+    duration = int(data.get('duration_seconds', 3600))
+    reason = data.get('reason', 'Manual timeout')
+    if not uid or not gid:
+        return jsonify({'error': 'user_id and guild_id required'}), 400
+    if not bot_ready_event.is_set():
+        return jsonify({'error': 'Bot desconectado'}), 503
+    async def _do():
+        import datetime
+        try:
+            guild = await client.fetch_guild(int(gid))
+            member = guild.get_member(int(uid)) or await guild.fetch_member(int(uid))
+            until = datetime.datetime.utcnow() + datetime.timedelta(seconds=duration)
+            await member.timeout(until, reason=reason)
+            log_mod_action(uid, member.name, gid, 'timeout', reason, duration, 'WEB', 'WebMod')
+            return {'success': True}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    try:
+        r = asyncio.run_coroutine_threadsafe(_do(), client.loop).result(timeout=10)
+        return jsonify(r) if r['success'] else jsonify({'error': r['error']}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/mod/kick', methods=['POST'])
+def mod_kick():
+    data = request.json or {}
+    uid = data.get('user_id')
+    gid = data.get('guild_id')
+    reason = data.get('reason', 'Manual kick')
+    if not uid or not gid:
+        return jsonify({'error': 'user_id and guild_id required'}), 400
+    if not bot_ready_event.is_set():
+        return jsonify({'error': 'Bot desconectado'}), 503
+    async def _do():
+        try:
+            guild = await client.fetch_guild(int(gid))
+            member = guild.get_member(int(uid)) or await guild.fetch_member(int(uid))
+            await member.kick(reason=reason)
+            log_mod_action(uid, member.name, gid, 'kick', reason, None, 'WEB', 'WebMod')
+            return {'success': True}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    try:
+        r = asyncio.run_coroutine_threadsafe(_do(), client.loop).result(timeout=10)
+        return jsonify(r) if r['success'] else jsonify({'error': r['error']}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/mod/ban', methods=['POST'])
+def mod_ban():
+    data = request.json or {}
+    uid = data.get('user_id')
+    gid = data.get('guild_id')
+    reason = data.get('reason', 'Manual ban')
+    days = int(data.get('delete_days', 0))
+    if not uid or not gid:
+        return jsonify({'error': 'user_id and guild_id required'}), 400
+    if not bot_ready_event.is_set():
+        return jsonify({'error': 'Bot desconectado'}), 503
+    async def _do():
+        try:
+            guild = await client.fetch_guild(int(gid))
+            member = guild.get_member(int(uid)) or await guild.fetch_member(int(uid))
+            await member.ban(reason=reason, delete_message_days=days)
+            log_mod_action(uid, member.name, gid, 'ban', reason, None, 'WEB', 'WebMod')
+            return {'success': True}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    try:
+        r = asyncio.run_coroutine_threadsafe(_do(), client.loop).result(timeout=10)
+        return jsonify(r) if r['success'] else jsonify({'error': r['error']}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/mod/clear_warns', methods=['POST'])
+def mod_clear_warns():
+    data = request.json or {}
+    uid = data.get('user_id')
+    gid = data.get('guild_id')
+    if not uid or not gid:
+        return jsonify({'error': 'user_id and guild_id required'}), 400
+    conn = get_db_connection()
+    conn.execute('DELETE FROM warnings WHERE user_id=? AND guild_id=?', (uid, gid))
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'cleared'})
 
 # --- ARRANQUE ---
 if __name__ == '__main__':
