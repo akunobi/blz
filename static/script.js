@@ -1,263 +1,392 @@
-document.addEventListener('DOMContentLoaded', () => {
-    // --- REFERENCIAS ---
-    const channelList = document.getElementById('channel-list');
-    const chatFeed = document.getElementById('chat-feed');
-    const msgInput = document.getElementById('msg-input');
-    const modal = document.getElementById('stats-modal');
-    const canvas = document.getElementById('stats-canvas');
-    const ctx = canvas.getContext('2d');
-    
-    // HEADER REFERENCES
+// static/script.js — BLZ-T Frontend v2 (Bugs fixed + mejoras)
+(function () {
+    "use strict";
+
+    // ─── DOM ──────────────────────────────────────────────────────────────────
+    const channelList     = document.getElementById('channel-list');
+    const chatFeed        = document.getElementById('chat-feed');
+    const msgInput        = document.getElementById('msg-input');
+    const sendBtn         = document.getElementById('send-btn');
     const chatChannelName = document.getElementById('chat-channel-name');
-    const chatUptime = document.getElementById('chat-uptime');
-    let timerInterval;
+    const chatUptime      = document.getElementById('chat-uptime');
+    const channelCount    = document.getElementById('channel-count');
+    const canvas          = document.getElementById('stats-canvas');
+    const ctx             = canvas ? canvas.getContext('2d') : null;
 
+    // ─── ESTADO ──────────────────────────────────────────────────────────────
     window._currentChannelId = null;
-    // Expose via window so other scripts can read it
-    Object.defineProperty(window, 'currentChannelId', { get: () => window._currentChannelId, set: v => { window._currentChannelId = v; } });
-    let isFetching = false;
-    let botName = null;
-    let channelMap = {};
-    let mentionCache = { users: {}, roles: {} };
-    let lastMessageId = {};
+    Object.defineProperty(window, 'currentChannelId', {
+        get: () => window._currentChannelId,
+        set: v => { window._currentChannelId = v; }
+    });
 
-    // --- INICIO ---
-    // Fetch bot info used to mark bot-authored messages
-    (async function fetchBotInfo(){
-        try{
-            const r = await fetch('/api/botinfo');
-            if (r.ok){
-                const j = await r.json();
-                botName = j.name || null;
-                window._botId = j.id || null;
-            }
-        }catch(e){ console.warn('botinfo fetch failed', e); }
-    })();
-    fetchChannels();
-    setInterval(() => {
-        if (!isFetching && currentChannelId) fetchMessages(false);
-    }, 500);
+    let isFetching      = false;
+    let botName         = null;
+    let channelMap      = {};
+    let mentionCache    = { users: {}, roles: {} };
+    let lastMessageId   = {};
+    let timerInterval   = null;
+    let acMembers = [], acRoles = [], acLoaded = false;
+    let acBox = null, acItems = [], acIdx = -1, acTriggerPos = -1;
 
-    if(msgInput) {
-        msgInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') window.sendMessage();
-        });
-        document.getElementById('send-btn').onclick = window.sendMessage;
+    // ─── INIT ─────────────────────────────────────────────────────────────────
+    async function init() {
+        createCustomCursor();
+        await fetchBotInfo();
+        fetchChannels();
+        startTimer();
+        setupEventListeners();
+        setInterval(() => {
+            if (!isFetching && currentChannelId) fetchMessages(false);
+        }, 500);
+        applyLoginState(localStorage.getItem('blzt_mod') === '1');
     }
 
-    // --- CANALES (CADENAS) ---
+    // ─── CURSOR ───────────────────────────────────────────────────────────────
+    function createCustomCursor() {
+        const cur = document.createElement('div');
+        cur.id = 'custom-cursor';
+        document.body.appendChild(cur);
+        document.addEventListener('mousemove', e => {
+            cur.style.left = e.clientX + 'px';
+            cur.style.top  = e.clientY + 'px';
+            const el   = document.elementFromPoint(e.clientX, e.clientY);
+            const type = getCursorType(el);
+            cur.classList.remove('is-pointer', 'is-text', 'is-notallowed');
+            if (type === 'pointer')          cur.classList.add('is-pointer');
+            else if (type === 'text')        cur.classList.add('is-text');
+            else if (type === 'not-allowed') cur.classList.add('is-notallowed');
+        });
+        document.addEventListener('mouseleave', () => cur.style.opacity = '0');
+        document.addEventListener('mouseenter', () => cur.style.opacity = '1');
+    }
+
+    function getCursorType(el) {
+        if (!el) return 'default';
+        let node = el;
+        while (node && node !== document.body) {
+            const tag = node.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || node.isContentEditable) return 'text';
+            if (node.disabled || node.hasAttribute('disabled')) return 'not-allowed';
+            if (tag === 'BUTTON' || tag === 'A' || tag === 'LABEL' ||
+                node.getAttribute('role') === 'button' ||
+                ['channel-item','metrics-pill','comp-btn','emoji-btn','ac-item',
+                 'stats-btn','del-btn','modal-submit','brand-orb','msg-action-btn',
+                 'modal-close','composer-send','settings-btn','cursor-upload-btn',
+                 'cursor-reset-btn','quality-btn','mod-action-btn','cmd-send-btn',
+                 'warn-badge-history','warn-history-btn'].some(c => node.classList.contains(c)))
+                return 'pointer';
+            node = node.parentElement;
+        }
+        return 'default';
+    }
+
+    // ─── BOT INFO ─────────────────────────────────────────────────────────────
+    async function fetchBotInfo() {
+        try {
+            const r = await fetch('/api/botinfo');
+            if (r.ok) {
+                const j = await r.json();
+                botName       = j.name || null;
+                window._botId = j.id  || null;
+            }
+        } catch (e) { console.warn('botinfo fetch failed', e); }
+    }
+
+    // ─── EVENTOS ──────────────────────────────────────────────────────────────
+    function setupEventListeners() {
+        if (msgInput) {
+            msgInput.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage(); });
+            msgInput.addEventListener('input',    handleAcInput);
+            msgInput.addEventListener('keydown',  handleAcKeydown);
+        }
+        if (sendBtn) sendBtn.onclick = sendMessage;
+
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') closeAllModals();
+            // AltGr + 0 abre consola de logs
+            if (e.code === 'Digit0' && e.getModifierState('AltGraph')) {
+                e.preventDefault();
+                openLogs();
+            }
+        });
+
+        document.addEventListener('pointerdown', e => {
+            if (!acBox || !acBox.classList.contains('ac-open')) return;
+            if (!acBox.contains(e.target) && !msgInput?.contains(e.target)) hideAc();
+        });
+    }
+
+    function closeAllModals() {
+        ['stats-drawer','stats-modal','commands-panel','settings-panel',
+         'mod-panel','login-modal','logs-panel','warn-history-modal']
+            .forEach(id => document.getElementById(id)?.classList.remove('active'));
+    }
+
+    // ─── CANALES ──────────────────────────────────────────────────────────────
     async function fetchChannels() {
         try {
-            const res = await fetch('/api/channels');
+            const res      = await fetch('/api/channels');
             const channels = await res.json();
+            if (!Array.isArray(channels) || !channels.length) return;
 
-            if (channels.length > 0) channelList.innerHTML = '';
-            
+            channelList.innerHTML = '';
+            const drawerList = document.getElementById('channel-drawer-list');
+            if (drawerList) drawerList.innerHTML = '';
+
             channels.forEach((ch, idx) => {
-                const cName = ch.name || "Unknown";
-                const cId = ch.id; 
+                const cName = ch.name || 'Unknown';
+                const cId   = ch.id;
                 channelMap[cId] = cName;
-
-                const link = document.createElement('div');
-                link.className = 'channel-item';
-                link.setAttribute('data-index', String(idx + 1).padStart(2, '0'));
-
-                const nameSpan = document.createElement('span');
-                nameSpan.className = 'ch-name';
-                nameSpan.textContent = cName.toUpperCase();
-                link.appendChild(nameSpan);
-
-                link.onclick = () => {
-                    currentChannelId = cId;
-                    window._currentChannelId = cId;
-                    document.querySelectorAll('.channel-item').forEach(b => b.classList.remove('active'));
-                    link.classList.add('active');
-
-                    chatChannelName.innerText = cName.toUpperCase();
-                    startTimer();
-
-                    chatFeed.innerHTML = '<div class="feed-empty"><div class="feed-empty-icon">⚡</div><p class="feed-empty-title">Receiving signal...</p><p class="feed-empty-sub">信号受信中</p></div>';
-                    fetchMessages(true);
-                };
-
-                channelList.appendChild(link);
+                channelList.appendChild(createChannelElement(cName, cId, idx));
+                if (drawerList) drawerList.appendChild(createChannelElement(cName, cId, idx, true));
             });
 
-            // Update count badge
-            const countEl = document.getElementById('channel-count');
-            if (countEl) countEl.textContent = channels.length;
-        } catch(e) { console.error(e); }
+            if (channelCount) channelCount.textContent = channels.length;
+        } catch (e) { console.error('fetchChannels error', e); }
     }
 
-    function startTimer() {
+    function createChannelElement(name, id, idx, forDrawer = false) {
+        const div  = document.createElement('div');
+        div.className = 'channel-item';
+        div.setAttribute('data-index', String(idx + 1).padStart(2, '0'));
+        const span = document.createElement('span');
+        span.className   = 'ch-name';
+        span.textContent = name.toUpperCase();
+        div.appendChild(span);
+        div.onclick = () => {
+            currentChannelId = id;
+            document.querySelectorAll('.channel-item').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.channel-item').forEach(b => {
+                if (b.querySelector('.ch-name')?.textContent === name.toUpperCase())
+                    b.classList.add('active');
+            });
+            if (chatChannelName) chatChannelName.innerText = name.toUpperCase();
+            resetTimer();
+            chatFeed.innerHTML = '<div class="feed-empty"><div class="feed-empty-icon">⚡</div><p class="feed-empty-title">Receiving signal...</p><p class="feed-empty-sub">信号受信中</p></div>';
+            fetchMessages(true);
+            if (forDrawer) document.getElementById('channel-drawer')?.classList.remove('open');
+        };
+        return div;
+    }
+
+    // ─── TIMER ────────────────────────────────────────────────────────────────
+    function startTimer() { resetTimer(); }
+    function resetTimer() {
         if (timerInterval) clearInterval(timerInterval);
         let seconds = 0;
-        chatUptime.innerText = "00:00";
+        if (chatUptime) { chatUptime.innerText = '00:00'; chatUptime.style.color = 'var(--teal)'; }
         timerInterval = setInterval(() => {
             seconds++;
-            const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
-            const secs = (seconds % 60).toString().padStart(2, '0');
-            chatUptime.innerText = `${mins}:${secs}`;
-            // Color shift: green → amber → coral based on session length
-            if (seconds < 300)       chatUptime.style.color = 'var(--teal)';
-            else if (seconds < 900)  chatUptime.style.color = 'var(--amber)';
-            else                     chatUptime.style.color = 'var(--coral)';
+            const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const s = (seconds % 60).toString().padStart(2, '0');
+            if (chatUptime) {
+                chatUptime.innerText = `${m}:${s}`;
+                chatUptime.style.color = seconds < 300 ? 'var(--teal)' : seconds < 900 ? 'var(--amber)' : 'var(--coral)';
+            }
         }, 1000);
     }
 
-    // --- MENSAJES (FUSED) ---
-    async function fetchMessages(initial=false) {
+    // ─── MENSAJES ─────────────────────────────────────────────────────────────
+    async function fetchMessages(initial = false) {
         if (!currentChannelId) return;
         isFetching = true;
-        // Remove optimistic messages (client-side placeholders) before loading real ones
+
         try {
             const now = Date.now();
             document.querySelectorAll('[data-optimistic="1"]').forEach(n => {
-                const ts = parseInt(n.dataset.optimisticTs || '0', 10);
-                // keep optimistic nodes for up to 5 seconds to avoid flicker; remove older ones
-                if (ts && (now - ts) > 5000) n.remove();
+                if ((now - parseInt(n.dataset.optimisticTs || 0)) > 5000) n.remove();
             });
         } catch (e) {}
 
-        // If we don't have the bot name yet, try fetching it so we can mark bot messages
-        if (!botName) {
-            try {
-                const r = await fetch('/api/botinfo');
-                if (r.ok) {
-                    const j = await r.json(); botName = j.name || null;
-                }
-            } catch (e) { /* ignore */ }
-        }
+        if (!botName) await fetchBotInfo();
 
         try {
-            // If initial, fetch full history; otherwise fetch only messages newer than lastMessageId
-            let res;
-            if (initial) {
-                res = await fetch(`/api/messages?channel_id=${encodeURIComponent(currentChannelId)}&limit=1000`);
+            let url = `/api/messages?channel_id=${encodeURIComponent(currentChannelId)}`;
+            if (!initial) {
+                const since = lastMessageId[currentChannelId] || '0';
+                url += `&since_id=${encodeURIComponent(since)}`;
             } else {
-                const since = encodeURIComponent(lastMessageId[currentChannelId] || 0);
-                res = await fetch(`/api/messages?channel_id=${encodeURIComponent(currentChannelId)}&since_id=${since}`);
+                url += `&limit=1000`;
             }
+
+            const res  = await fetch(url);
             const msgs = await res.json();
-            const isScrolledToBottom = (chatFeed.scrollHeight - chatFeed.scrollTop - chatFeed.clientHeight) < 150;
+            const nearBottom = (chatFeed.scrollHeight - chatFeed.scrollTop - chatFeed.clientHeight) < 150;
 
-            // Collect mention ids (users and roles) from messages to batch-resolve
-            const userIds = new Set();
-            const roleIds = new Set();
-            const mentionUserRe = /<@!?(\d+)>/g;
-            const mentionRoleRe = /<@&(\d+)>/g;
-            msgs.forEach(m => {
-                let m1; while ((m1 = mentionUserRe.exec(m.content || '')) !== null) userIds.add(m1[1]);
-                let m2; while ((m2 = mentionRoleRe.exec(m.content || '')) !== null) roleIds.add(m2[1]);
-            });
+            await resolveMentions(msgs);
 
-            // Request lookups for any ids not already cached
-            const usersToLookup = Array.from(userIds).filter(id => !mentionCache.users[id]);
-            const rolesToLookup = Array.from(roleIds).filter(id => !mentionCache.roles[id]);
-            if ((usersToLookup.length > 0 || rolesToLookup.length > 0) && (usersToLookup.length + rolesToLookup.length) <= 100) {
-                try {
-                    const r = await fetch('/api/mention_lookup', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ users: usersToLookup, roles: rolesToLookup })
-                    });
-                    if (r.ok) {
-                        const j = await r.json();
-                                        if (j.users) Object.assign(mentionCache.users, j.users);
-                                        if (j.roles) Object.assign(mentionCache.roles, j.roles);
-                    }
-                } catch (e) { console.warn('mention lookup failed', e); }
-            }
-
-            // If initial load, replace content; otherwise append messages
             if (initial) {
                 chatFeed.innerHTML = '';
-                if (!msgs || msgs.length === 0) {
+                if (!msgs.length) {
                     chatFeed.innerHTML = '<div class="feed-empty"><div class="feed-empty-icon">無</div><p class="feed-empty-title">No messages yet</p><p class="feed-empty-sub">信号なし</p></div>';
                 } else {
-                    msgs.forEach(msg => {
-                        const message = document.createElement('div');
-                        message.className = 'message';
-
-                        if (botName && msg.author_id && String(msg.author_id) === String((window._botId || ''))) message.classList.add('msg-me');
-                        else if (botName && msg.author_name === botName) message.classList.add('msg-me');
-
-                        const rendered = renderDiscordContent(msg.content || '');
-
-                        message.innerHTML = `
-                                <div class="msg-header"><div class="msg-time">${formatTimestamp(msg.timestamp || '')}</div>
-                                <div class="msg-author">${escapeHtml(msg.author_name || 'Unknown')}</div></div>
-                                <div class="msg-content">${rendered}</div>
-                            `;
-                        // Ensure visibility (prevent unexpected hidden styles)
-                        message.style.display = '';
-                        message.style.visibility = 'visible';
-                        // dedupe: skip if message with same id already present
-                        if (msg.message_id) {
-                            const existing = chatFeed.querySelector(`[data-msg-id="${msg.message_id}"]`);
-                            if (existing) return; // skip this message
-                            message.dataset.msgId = String(msg.message_id);
-                        }
-                        renderComponents(message, msg.components || null);
-                        decorateMessage(message);
-                        chatFeed.appendChild(message);
-
-                        if (msg.message_id) { const prev = lastMessageId[currentChannelId] || '0'; lastMessageId[currentChannelId] = BigInt(String(msg.message_id)) > BigInt(prev) ? String(msg.message_id) : prev; }
-                    });
+                    msgs.forEach(msg => appendMessage(msg, false));
                 }
-
-                if (isScrolledToBottom) chatFeed.scrollTop = chatFeed.scrollHeight;
+                chatFeed.scrollTop = chatFeed.scrollHeight;
             } else {
-                // incremental append
-                if (msgs && msgs.length > 0) {
-                    msgs.forEach(msg => {
-                        const message = document.createElement('div');
-                        message.className = 'message';
-
-                        if (botName && msg.author_id && String(msg.author_id) === String((window._botId || ''))) message.classList.add('msg-me');
-                        else if (botName && msg.author_name === botName) message.classList.add('msg-me');
-
-                        const rendered = renderDiscordContent(msg.content || '');
-                        message.innerHTML = `
-                            <div class="msg-header"><div class="msg-time">${formatTimestamp(msg.timestamp || '')}</div>
-                            <div class="msg-author">${escapeHtml(msg.author_name || 'Unknown')}</div></div>
-                            <div class="msg-content">${rendered}</div>
-                        `;
-                        message.style.display = '';
-                        message.style.visibility = 'visible';
-                        // dedupe before appending
-                        if (msg.message_id) {
-                            const existing = chatFeed.querySelector(`[data-msg-id="${msg.message_id}"]`);
-                            if (existing) return;
-                            message.dataset.msgId = String(msg.message_id);
-                        }
-                        renderComponents(message, msg.components || null);
-                        decorateMessage(message);
-                        chatFeed.appendChild(message);
-                        chatFeed.scrollTop = chatFeed.scrollHeight;
-                        // Subtle flash on the new message
-                        requestAnimationFrame(() => {
-                            message.style.setProperty('--flash', '1');
-                            setTimeout(() => message.style.removeProperty('--flash'), 600);
-                        });
-
-                        if (msg.message_id) { const prev = lastMessageId[currentChannelId] || '0'; lastMessageId[currentChannelId] = BigInt(String(msg.message_id)) > BigInt(prev) ? String(msg.message_id) : prev; }
-                    });
+                if (msgs.length) {
+                    msgs.forEach(msg => appendMessage(msg, true));
+                    chatFeed.scrollTop = chatFeed.scrollHeight;
                 }
             }
 
-            // After rendering messages, try to enrich any unresolved mentions shown as @123 or @role:123
-            try { enrichUnresolvedMentions(); } catch (e) { /* ignore */ }
-
-        } catch(e) { console.error(e); }
-        finally { isFetching = false; }
+            msgs.forEach(msg => {
+                if (msg.message_id) {
+                    const prev = lastMessageId[currentChannelId] || '0';
+                    if (BigInt(String(msg.message_id)) > BigInt(prev))
+                        lastMessageId[currentChannelId] = String(msg.message_id);
+                }
+            });
+        } catch (e) {
+            console.error('fetchMessages error', e);
+        } finally {
+            isFetching = false;
+        }
     }
 
-    function formatLinks(text) {
-        if (!text) return "";
-        return text.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>');
+    // ─── RESOLUCIÓN DE MENCIONES ──────────────────────────────────────────────
+    async function resolveMentions(msgs) {
+        const userIds = new Set(), roleIds = new Set();
+        const reU = /<@!?(\d+)>/g, reR = /<@&(\d+)>/g;
+        msgs.forEach(m => {
+            let x;
+            const c = m.content || '';
+            // Reset lastIndex before each use
+            reU.lastIndex = 0; reR.lastIndex = 0;
+            while ((x = reU.exec(c)) !== null) userIds.add(x[1]);
+            while ((x = reR.exec(c)) !== null) roleIds.add(x[1]);
+        });
+        const toU = Array.from(userIds).filter(id => !mentionCache.users[id]);
+        const toR = Array.from(roleIds).filter(id => !mentionCache.roles[id]);
+        if (!toU.length && !toR.length) return;
+        try {
+            const r = await fetch('/api/mention_lookup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ users: toU, roles: toR })
+            });
+            if (r.ok) {
+                const j = await r.json();
+                if (j.users) Object.assign(mentionCache.users, j.users);
+                if (j.roles) Object.assign(mentionCache.roles, j.roles);
+            }
+        } catch (e) {}
     }
 
-    // Simple HTML escape
+    // ─── RENDERIZADO DE CONTENIDO DISCORD ────────────────────────────────────
+    function renderDiscordContent(text) {
+        if (!text) return '';
+
+        // 1. Escapar todo HTML primero (previene XSS y el HTML en mensajes de spam)
+        let w = escapeHtml(text);
+
+        // 2. Menciones de usuario → span clickeable para deadline
+        w = w.replace(/&lt;@!?(\d+)&gt;/g, (_, id) => {
+            const cached = mentionCache.users[id];
+            let display;
+            if (cached && typeof cached === 'object') {
+                display = cached.display || cached.username || `@${id}`;
+            } else if (typeof cached === 'string') {
+                display = cached;
+            } else {
+                display = `@User_${id.substring(0, 4)}`;
+            }
+            return `<span class="mention mention-user" title="ID: ${id}" style="cursor:pointer;" onclick="promptDeadline('${id}')">${escapeHtml(display)}</span>`;
+        });
+
+        // 3. Menciones de rol
+        w = w.replace(/&lt;@&amp;(\d+)&gt;/g, (_, id) => {
+            const cached = mentionCache.roles[id];
+            let roleName = `role_${id}`, roleColor = '#a78bfa';
+            if (cached && typeof cached === 'object') {
+                roleName  = cached.name  || roleName;
+                roleColor = cached.color || roleColor;
+            } else if (typeof cached === 'string') {
+                roleName = cached;
+            }
+            return `<span class="mention mention-role" style="color:${roleColor};background:${roleColor}22">${escapeHtml(roleName)}</span>`;
+        });
+
+        // 4. Menciones de canal
+        w = w.replace(/&lt;#(\d+)&gt;/g, (_, id) => {
+            const name = channelMap[id];
+            return name
+                ? `<span class="mention mention-channel">#${escapeHtml(name)}</span>`
+                : `<span class="mention">#${id}</span>`;
+        });
+
+        // 5. Timestamps Discord <t:UNIX:R>
+        w = w.replace(/&lt;t:(\d+)(?::([tTdDfFR]))?&gt;/g, (_, ts, fmt) => {
+            try {
+                const d   = new Date(parseInt(ts) * 1000);
+                const now = Date.now();
+                const diff = Math.round((d.getTime() - now) / 1000);
+                let str;
+                if (fmt === 'R') {
+                    const abs = Math.abs(diff);
+                    const rel = abs < 60 ? `${abs}s` : abs < 3600 ? `${Math.floor(abs/60)}m` : abs < 86400 ? `${Math.floor(abs/3600)}h` : `${Math.floor(abs/86400)}d`;
+                    str = diff > 0 ? `in ${rel}` : `${rel} ago`;
+                } else {
+                    str = d.toLocaleString();
+                }
+                return `<span class="mention mention-ts" title="${d.toISOString()}">${str}</span>`;
+            } catch (e) { return `&lt;t:${ts}&gt;`; }
+        });
+
+        // 6. Links
+        w = w.replace(/(https?:\/\/[^\s<>"]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+
+        // 7. Markdown básico
+        w = w.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        w = w.replace(/\*(.+?)\*/g,     '<em>$1</em>');
+        w = w.replace(/`(.+?)`/g,       '<code>$1</code>');
+        w = w.replace(/\n/g,            '<br>');
+
+        return w;
+    }
+
+    // ─── APPEND MESSAGE ───────────────────────────────────────────────────────
+    function appendMessage(msg, isNew = false) {
+        if (chatFeed.querySelector(`[data-msg-id="${msg.message_id}"]`)) return;
+
+        const el = document.createElement('div');
+        el.className = 'message';
+        if (botName && ((msg.author_id && String(msg.author_id) === String(window._botId || '')) || msg.author_name === botName))
+            el.classList.add('msg-me');
+
+        el.dataset.msgId = String(msg.message_id);
+        const rendered = renderDiscordContent(msg.content || '');
+        el.innerHTML = `
+            <div class="msg-header">
+                <div class="msg-time">${formatTimestamp(msg.timestamp)}</div>
+                <div class="msg-author">${escapeHtml(msg.author_name || 'Unknown')}</div>
+            </div>
+            <div class="msg-content">${rendered}</div>`;
+        decorateMessage(el);
+        chatFeed.appendChild(el);
+
+        if (isNew) {
+            requestAnimationFrame(() => {
+                el.style.setProperty('--flash', '1');
+                setTimeout(() => el.style.removeProperty('--flash'), 600);
+            });
+        }
+    }
+
+    function formatTimestamp(ts) {
+        if (!ts) return '——';
+        try {
+            const d = new Date(ts.replace(' ', 'T'));
+            if (isNaN(d.getTime())) return ts.slice(0, 16) || '——';
+            const locale = navigator.language || 'es-ES';
+            const time   = d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false });
+            const sameDay = d.toDateString() === new Date().toDateString();
+            if (sameDay) return time;
+            return d.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' }) + ' ' + time;
+        } catch (e) { return '——'; }
+    }
+
     function escapeHtml(s) {
         return String(s)
             .replace(/&/g, '&amp;')
@@ -267,1652 +396,350 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/'/g, '&#039;');
     }
 
-    // Format ISO timestamp to "DD/MM HH:MM" in the browser's local timezone
-    function formatTimestamp(ts) {
-        if (!ts) return '——';
-        try {
-            // Discord/SQLite timestamps can arrive as "2024-01-15T20:30:00+00:00",
-            // "2024-01-15 20:30:00", or already as ISO strings.
-            // Normalise space-separated to T-separated so Date() parses correctly.
-            const normalised = ts.replace(' ', 'T');
-            const d = new Date(normalised);
-            if (isNaN(d.getTime())) return ts.slice(0, 16) || '——';
-
-            const now = new Date();
-            const isToday =
-                d.getDate()     === now.getDate()  &&
-                d.getMonth()    === now.getMonth() &&
-                d.getFullYear() === now.getFullYear();
-
-            const locale = navigator.language || 'es-ES';
-            const timeStr = d.toLocaleTimeString(locale, {
-                hour: '2-digit', minute: '2-digit', hour12: false
-            });
-
-            if (isToday) return timeStr;
-
-            const dateStr = d.toLocaleDateString(locale, {
-                day: '2-digit', month: '2-digit'
-            });
-            return `${dateStr} ${timeStr}`;
-        } catch (e) { return '——'; }
-    }
-
-    function stripHtml(html) {
-        const tmp = document.createElement('div');
-        tmp.innerHTML = html || '';
-        return tmp.textContent || tmp.innerText || '';
-    }
-
-    function normalizeText(s) {
-        return String(s || '').replace(/\s+/g, ' ').trim();
-    }
-
-    // Render a subset of Discord markdown and replace mentions
-    function renderDiscordContent(text) {
-        if (!text) return '';
-
-        // Preserve code blocks first
-        const codeBlockRe = /```([\s\S]*?)```/g;
-        const codeBlocks = [];
-        const textWithoutCode = text.replace(codeBlockRe, (m, p1) => {
-            const idx = codeBlocks.push(p1) - 1;
-            return `@@CODEBLOCK${idx}@@`;
-        });
-
-        // We'll replace mentions/channels/roles with placeholders first, then escape the whole string,
-        // then substitute placeholders with safe HTML. This avoids issues where escaping would hide <@...> tokens.
-        let working = textWithoutCode;
-
-        // channel mentions -> placeholder
-        working = working.replace(/<#(\d+)>/g, (m, id) => `@@CH_${id}@@`);
-        // user mentions
-        working = working.replace(/<@!?(\d+)>/g, (m, id) => `@@MU_${id}@@`);
-        // role mentions
-        working = working.replace(/<@&(\d+)>/g, (m, id) => `@@MR_${id}@@`);
-
-        // Now escape the rest
-        working = escapeHtml(working);
-
-        // Inline code
-        working = working.replace(/`([^`]+)`/g, '<code>$1</code>');
-        // Bold
-        working = working.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-        // Underline
-        working = working.replace(/__([^_]+)__/g, '<u>$1</u>');
-        // Italic
-        working = working.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-        working = working.replace(/_([^_]+)_/g, '<em>$1</em>');
-        // Strikethrough
-        working = working.replace(/~~([^~]+)~~/g, '<del>$1</del>');
-        // Spoiler
-        working = working.replace(/\|\|([^|]+)\|\|/g, '<span class="spoiler">$1</span>');
-        // Links
-        working = formatLinks(working);
-
-        // Restore placeholders with safe HTML
-        working = working.replace(/@@CH_(\d+)@@/g, (m, id) => {
-            const name = channelMap[id];
-            return name ? `<span class="mention mention-channel">#${escapeHtml(name)}</span>` : `<span class="mention">#${escapeHtml(id)}</span>`;
-        });
-
-        working = working.replace(/@@MU_(\d+)@@/g, (m, id) => {
-            const resolved = mentionCache.users[id];
-            if (resolved) {
-                const display = (typeof resolved === 'string') ? resolved : (resolved.display || `@${id}`);
-                const tag = (typeof resolved === 'string') ? null : (resolved.tag || null);
-                const title = tag ? ` title="${escapeHtml(tag)}"` : '';
-                return `<span class="mention mention-user"${title}>${escapeHtml(display)}</span>`;
-            }
-            return `<span class="mention">@${escapeHtml(id)}</span>`;
-        });
-
-        working = working.replace(/@@MR_(\d+)@@/g, (m, id) => {
-            const resolved = mentionCache.roles[id];
-            return resolved ? `<span class="mention mention-role">${escapeHtml(resolved)}</span>` : `<span class="mention">@role:${escapeHtml(id)}</span>`;
-        });
-
-        // Restore code blocks (escape inner HTML)
-        working = working.replace(/@@CODEBLOCK(\d+)@@/g, (m, idx) => {
-            const src = codeBlocks[Number(idx)] || '';
-            return `<pre><code>${escapeHtml(src)}</code></pre>`;
-        });
-
-        return working;
-    }
-
-    // Find unresolved mention placeholders in the DOM and batch-resolve them
-    async function enrichUnresolvedMentions() {
-        const unresolvedUsers = new Set();
-        const unresolvedRoles = new Set();
-        const els = Array.from(chatFeed.querySelectorAll('.mention'));
-
-        els.forEach(el => {
-            const t = el.textContent || '';
-            const mUser = t.match(/^@(\d+)$/);
-            const mRole = t.match(/^@role:(\d+)$/);
-            if (mUser) unresolvedUsers.add(mUser[1]);
-            else if (mRole) unresolvedRoles.add(mRole[1]);
-        });
-
-        const usersToLookup = Array.from(unresolvedUsers).filter(id => !mentionCache.users[id]);
-        const rolesToLookup = Array.from(unresolvedRoles).filter(id => !mentionCache.roles[id]);
-        if (usersToLookup.length === 0 && rolesToLookup.length === 0) return;
-
-        // Mark elements as loading
-        els.forEach(el => {
-            const t = el.textContent || '';
-            if (/^@\d+$/.test(t) || /^@role:\d+$/.test(t)) {
-                el.classList.add('mention-loading');
-                el.setAttribute('title', 'Resolving...');
-            }
-        });
-
-        try {
-            const r = await fetch('/api/mention_lookup', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ users: usersToLookup, roles: rolesToLookup })
-            });
-            if (!r.ok) return;
-            const j = await r.json();
-            if (j.users) Object.assign(mentionCache.users, j.users);
-            if (j.roles) Object.assign(mentionCache.roles, j.roles);
-
-            // Update DOM elements
-            els.forEach(el => {
-                const t = el.textContent || '';
-                const mUser = t.match(/^@(\d+)$/);
-                const mRole = t.match(/^@role:(\d+)$/);
-                if (mUser) {
-                    const id = mUser[1];
-                    const rp = mentionCache.users[id];
-                    if (rp) {
-                        const display = (typeof rp === 'string') ? rp : (rp.display || `@${id}`);
-                        const tag = (typeof rp === 'string') ? null : (rp.tag || null);
-                        if (tag) el.setAttribute('title', tag);
-                        else el.removeAttribute('title');
-                        el.textContent = display;
-                        el.classList.remove('mention-loading');
-                        el.classList.add('mention-user');
-                    } else {
-                        el.classList.remove('mention-loading');
-                        el.removeAttribute('title');
-                    }
-                } else if (mRole) {
-                    const id = mRole[1];
-                    const rp = mentionCache.roles[id];
-                    if (rp) {
-                        el.textContent = rp;
-                        el.classList.remove('mention-loading');
-                        el.classList.add('mention-role');
-                    } else {
-                        el.classList.remove('mention-loading');
-                        el.removeAttribute('title');
-                    }
-                }
-            });
-        } catch (e) {
-            console.warn('enrichUnresolvedMentions error', e);
-            els.forEach(el => el.classList.remove('mention-loading'));
-        }
-    }
-
-    // ═══════════════════════════════════════════════
-    // DISCORD COMPONENTS (buttons from bots)
-    // ═══════════════════════════════════════════════
-
-    // Style labels for button types
-    const BTN_STYLE = {
-        1: 'btn-primary',    // Blurple
-        2: 'btn-secondary',  // Grey
-        3: 'btn-success',    // Green
-        4: 'btn-danger',     // Red
-        5: 'btn-link',       // URL
-    };
-
-    function renderComponents(msgEl, componentsJson) {
-        if (!componentsJson) return;
-        let rows;
-        try { rows = JSON.parse(componentsJson); } catch(e) { return; }
-        if (!rows || !rows.length) return;
-
-        const container = document.createElement('div');
-        container.className = 'msg-components';
-
-        rows.forEach(row => {
-            if (!row.components || !row.components.length) return;
-            const rowEl = document.createElement('div');
-            rowEl.className = 'comp-row';
-
-            row.components.forEach(comp => {
-                if (comp.type !== 2) return; // only buttons for now
-
-                const btn = document.createElement('button');
-                const styleClass = BTN_STYLE[comp.style] || 'btn-secondary';
-                btn.className = 'comp-btn ' + styleClass;
-                if (comp.disabled) btn.disabled = true;
-
-                // Label + emoji
-                if (comp.emoji) {
-                    const em = document.createElement('span');
-                    em.className = 'comp-btn-emoji';
-                    em.textContent = comp.emoji.name || '';
-                    btn.appendChild(em);
-                }
-                if (comp.label) {
-                    const lbl = document.createElement('span');
-                    lbl.textContent = comp.label;
-                    btn.appendChild(lbl);
-                }
-
-                // Link button
-                if (comp.style === 5 && comp.url) {
-                    btn.onclick = () => window.open(comp.url, '_blank');
-                } else if (comp.custom_id) {
-                    btn.title = 'Pulsa este botón en Discord';
-                    btn.classList.add('comp-btn--readonly');
-                    btn.setAttribute('aria-disabled', 'true');
-                    btn.onclick = (e) => {
-                        e.preventDefault();
-                        showToast('Abre Discord para pulsar este botón', 'info');
-                    };
-                }
-                rowEl.appendChild(btn);
-            });
-
-            if (rowEl.children.length) container.appendChild(rowEl);
-        });
-
-        if (container.children.length) {
-            const contentEl = msgEl.querySelector('.msg-content');
-            if (contentEl) contentEl.after(container);
-            else msgEl.appendChild(container);
-        }
-    }
-
-    // ═══════════════════════════════════════════════
-    // MESSAGE ACTIONS: edit / delete / react
-    // ═══════════════════════════════════════════════
-
-    const EMOJI_LIST = [
-        '👍','👎','❤️','🔥','⚡','😂','😭','😤','💀','👀',
-        '✅','❌','🎯','⚔️','🛡️','🏆','💪','🤝','🫡','💯',
-        '🗡️','🔴','🔵','⭐','💥','🙏','😮','🤔','😈','🥶'
-    ];
-
-    let emojiPicker = null;
-    let emojiTargetMsgId = null;
-    let emojiTargetChannelId = null;
-
-    function getEmojiPicker() {
-        if (emojiPicker) return emojiPicker;
-        emojiPicker = document.createElement('div');
-        emojiPicker.id = 'emoji-picker';
-        const pickerHeader = document.createElement('div');
-        pickerHeader.className = 'emoji-picker-hdr';
-        pickerHeader.textContent = 'React';
-        emojiPicker.appendChild(pickerHeader);
-        const grid = document.createElement('div');
-        grid.className = 'emoji-grid';
-        emojiPicker.appendChild(grid);
-        EMOJI_LIST.forEach(emoji => {
-            const btn = document.createElement('button');
-            btn.className = 'emoji-btn';
-            btn.textContent = emoji;
-            btn.type = 'button';
-            btn.addEventListener('click', (ev) => {
-                ev.stopPropagation();
-                ev.preventDefault();
-                const targetId  = emojiTargetMsgId;
-                const targetCh  = emojiTargetChannelId;
-                closeEmojiPicker();
-                if (targetId && targetCh) doReact(targetId, targetCh, emoji, btn);
-            });
-            grid.appendChild(btn);
-        });
-        document.body.appendChild(emojiPicker);
-        // Close on outside click — use capture phase so it fires before anything else
-        document.addEventListener('click', (ev) => {
-            if (!emojiPicker || !emojiPicker.classList.contains('open')) return;
-            if (!emojiPicker.contains(ev.target) && !ev.target.closest('.msg-action-btn')) {
-                closeEmojiPicker();
-            }
-        }, true);
-        return emojiPicker;
-    }
-
-    function openEmojiPicker(msgId, channelId, anchorEl) {
-        emojiTargetMsgId     = msgId;
-        emojiTargetChannelId = channelId;
-        const picker = getEmojiPicker();
-
-        // Smart positioning: above or below the anchor
-        const rect    = anchorEl.getBoundingClientRect();
-        const pickerH = 220; // approx height
-        const pickerW = 280;
-        const spaceAbove = rect.top;
-        const spaceBelow = window.innerHeight - rect.bottom;
-
-        picker.style.left = Math.min(
-            Math.max(8, rect.left),
-            window.innerWidth - pickerW - 8
-        ) + 'px';
-
-        if (spaceAbove > pickerH || spaceAbove > spaceBelow) {
-            picker.style.top    = 'auto';
-            picker.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
-        } else {
-            picker.style.bottom = 'auto';
-            picker.style.top    = (rect.bottom + 6) + 'px';
-        }
-
-        picker.classList.add('open');
-    }
-
-    function closeEmojiPicker() {
-        if (emojiPicker) emojiPicker.classList.remove('open');
-        emojiTargetMsgId     = null;
-        emojiTargetChannelId = null;
-    }
-
-    async function doDelete(msgId, channelId, msgEl) {
-        msgEl.style.opacity = '0.4';
-        try {
-            const r = await fetch('/api/messages/' + msgId + '/delete', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ channel_id: channelId })
-            });
-            const j = await r.json();
-            if (r.ok) {
-                msgEl.style.transition = 'opacity 200ms, max-height 200ms, padding 200ms';
-                msgEl.style.opacity    = '0';
-                msgEl.style.maxHeight  = '0';
-                msgEl.style.overflow   = 'hidden';
-                msgEl.style.padding    = '0';
-                setTimeout(() => msgEl.remove(), 220);
-            } else {
-                msgEl.style.opacity = '1';
-                showMsgError(msgEl, j.error || 'Error al borrar');
-            }
-        } catch(e) { msgEl.style.opacity = '1'; showMsgError(msgEl, 'Error de red'); }
-    }
-
-    async function doEdit(msgId, channelId, msgEl, newContent) {
-        try {
-            const r = await fetch('/api/messages/' + msgId + '/edit', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ channel_id: channelId, content: newContent })
-            });
-            const j = await r.json();
-            if (r.ok) {
-                const contentEl = msgEl.querySelector('.msg-content');
-                if (contentEl) {
-                    contentEl.innerHTML = renderDiscordContent(newContent);
-                    if (!contentEl.querySelector('.msg-edited')) {
-                        const tag = document.createElement('span');
-                        tag.className = 'msg-edited';
-                        tag.textContent = ' (editado)';
-                        tag.style.cssText = 'font-size:0.63rem;color:var(--dim);font-family:var(--f-mono);';
-                        contentEl.appendChild(tag);
-                    }
-                }
-                cancelEdit(msgEl);
-            } else {
-                showMsgError(msgEl, j.error || 'Error al editar');
-            }
-        } catch(e) { showMsgError(msgEl, 'Error de red'); }
-    }
-
-    async function doReact(msgId, channelId, emoji, originBtn) {
-        // Flash the react button in the message
-        const msgEl = chatFeed.querySelector('[data-msg-id="' + msgId + '"]');
-        const reactBtn = msgEl ? msgEl.querySelector('.msg-action-btn') : null;
-        if (reactBtn) reactBtn.textContent = emoji;
-
-        try {
-            const r = await fetch('/api/messages/' + msgId + '/react', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ channel_id: channelId, emoji })
-            });
-            if (r.ok) {
-                if (reactBtn) {
-                    reactBtn.classList.add('react-sent');
-                    setTimeout(() => {
-                        reactBtn.textContent = '😊';
-                        reactBtn.classList.remove('react-sent');
-                    }, 1800);
-                }
-            } else {
-                const j = await r.json();
-                if (reactBtn) reactBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>';
-                showToast(j.error || 'Error al reaccionar', 'error');
-            }
-        } catch(e) {
-            if (reactBtn) reactBtn.textContent = '😊';
-            showToast('Error de red', 'error');
-        }
-    }
-
-    function openEdit(msgEl) {
-        if (msgEl.querySelector('.msg-edit-wrap')) return;
-        const contentEl = msgEl.querySelector('.msg-content');
-        if (!contentEl) return;
-        const rawText = contentEl.innerText || '';
-
-        const wrap    = document.createElement('div');
-        wrap.className = 'msg-edit-wrap';
-        const ta      = document.createElement('textarea');
-        ta.className   = 'msg-edit-input';
-        ta.value       = rawText.replace(' (editado)', '');
-        ta.rows        = Math.max(1, Math.min(6, (rawText.match(/\n/g) || []).length + 1));
-        const saveBtn  = document.createElement('button');
-        saveBtn.className = 'msg-edit-save';
-        saveBtn.textContent = 'SAVE';
-        const cancelBtn = document.createElement('button');
-        cancelBtn.className = 'msg-edit-cancel';
-        cancelBtn.textContent = 'ESC';
-
-        wrap.appendChild(ta);
-        wrap.appendChild(saveBtn);
-        wrap.appendChild(cancelBtn);
-        contentEl.after(wrap);
-        ta.focus();
-        ta.setSelectionRange(ta.value.length, ta.value.length);
-
-        const msgId = msgEl.dataset.msgId;
-        const chId  = currentChannelId;
-        saveBtn.onclick   = () => { const v = ta.value.trim(); if (v) doEdit(msgId, chId, msgEl, v); else cancelEdit(msgEl); };
-        cancelBtn.onclick = () => cancelEdit(msgEl);
-        ta.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveBtn.click(); }
-            else if (e.key === 'Escape') cancelEdit(msgEl);
-        });
-    }
-
-    function cancelEdit(msgEl) {
-        const w = msgEl.querySelector('.msg-edit-wrap');
-        if (w) w.remove();
-    }
-
-    function showMsgError(msgEl, text) {
-        let err = msgEl.querySelector('.msg-err');
-        if (!err) {
-            err = document.createElement('span');
-            err.className = 'msg-err';
-            err.style.cssText = 'font-size:0.63rem;color:var(--red);font-family:var(--f-mono);margin-top:2px;display:block;';
-            msgEl.appendChild(err);
-        }
-        err.textContent = text;
-        setTimeout(() => { if (err.parentNode) err.remove(); }, 3000);
-    }
-
-    // ── Toast notification ──
-    let _toastTimer = null;
-    function showToast(msg, type = 'info') {
-        let toast = document.getElementById('blz-toast');
-        if (!toast) {
-            toast = document.createElement('div');
-            toast.id = 'blz-toast';
-            document.body.appendChild(toast);
-        }
-        toast.textContent = msg;
-        toast.className = 'blz-toast blz-toast--' + type + ' blz-toast--show';
-        clearTimeout(_toastTimer);
-        _toastTimer = setTimeout(() => toast.classList.remove('blz-toast--show'), 2800);
-    }
-
-    // ── Custom delete confirm modal ──
-    let _deleteModal = null;
-    function showDeleteConfirm(msgId, channelId, msgEl) {
-        if (!_deleteModal) {
-            _deleteModal = document.createElement('div');
-            _deleteModal.id = 'delete-modal';
-            _deleteModal.innerHTML = `
-                <div class="del-modal-backdrop"></div>
-                <div class="del-modal-card">
-                    <div class="del-modal-icon">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--coral)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-                    </svg>
-                </div>
-                    <div class="del-modal-title">Borrar mensaje</div>
-                    <div class="del-modal-body">Esta acción es permanente y no se puede deshacer.</div>
-                    <div class="del-modal-actions">
-                        <button class="del-btn del-btn--cancel">Cancelar</button>
-                        <button class="del-btn del-btn--confirm">Borrar</button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(_deleteModal);
-            _deleteModal.querySelector('.del-modal-backdrop').addEventListener('click', hideDeleteConfirm);
-            _deleteModal.querySelector('.del-btn--cancel').addEventListener('click', hideDeleteConfirm);
-        }
-
-        // Store current target on the confirm button
-        const confirmBtn = _deleteModal.querySelector('.del-btn--confirm');
-        confirmBtn.onclick = () => {
-            hideDeleteConfirm();
-            doDelete(msgId, channelId, msgEl);
-        };
-
-        _deleteModal.classList.add('del-modal--open');
-        requestAnimationFrame(() => _deleteModal.classList.add('del-modal--visible'));
-    }
-
-    function hideDeleteConfirm() {
-        if (!_deleteModal) return;
-        _deleteModal.classList.remove('del-modal--visible');
-        setTimeout(() => _deleteModal.classList.remove('del-modal--open'), 220);
-    }
-
     function decorateMessage(msgEl) {
         if (!msgEl.dataset.msgId || msgEl.querySelector('.msg-actions')) return;
-        const isOwn = msgEl.classList.contains('msg-me');
+        const isOwn   = msgEl.classList.contains('msg-me');
         const actions = document.createElement('div');
         actions.className = 'msg-actions';
-
         const reactBtn = document.createElement('button');
-        reactBtn.className = 'msg-action-btn';
-        reactBtn.title     = 'Reaccionar';
-        reactBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>';
-        reactBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openEmojiPicker(msgEl.dataset.msgId, currentChannelId, reactBtn);
-        });
+        reactBtn.className = 'msg-action-btn'; reactBtn.innerHTML = '😊'; reactBtn.title = 'Reaccionar';
         actions.appendChild(reactBtn);
-
         if (isOwn) {
-            const editBtn = document.createElement('button');
-            editBtn.className = 'msg-action-btn';
-            editBtn.title     = 'Editar';
-            editBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-            editBtn.addEventListener('click', (e) => { e.stopPropagation(); openEdit(msgEl); });
-            actions.appendChild(editBtn);
-
             const delBtn = document.createElement('button');
-            delBtn.className = 'msg-action-btn del';
-            delBtn.title     = 'Borrar';
-            delBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
-            delBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                showDeleteConfirm(msgEl.dataset.msgId, currentChannelId, msgEl);
-            });
+            delBtn.className = 'msg-action-btn del'; delBtn.innerHTML = '🗑️'; delBtn.title = 'Borrar';
             actions.appendChild(delBtn);
         }
-
-        // Insert inside msg-header so they appear inline on the right
         const header = msgEl.querySelector('.msg-header');
-        if (header) {
-            header.appendChild(actions);
-        } else {
-            msgEl.appendChild(actions);
-        }
+        (header || msgEl).appendChild(actions);
     }
 
-    // ═══════════════════════════════════════════════
-    // @MENTION AUTOCOMPLETE
-    // ═══════════════════════════════════════════════
-    let acMembers = [];
-    let acRoles   = [];
-    let acLoaded  = false;
-
-    // Lazily fetch members+roles once
-    async function ensureAcData() {
-        // Don't re-fetch if we already have data
-        if (acLoaded && (acMembers.length > 0 || acRoles.length > 0)) return;
-        try {
-            const r = await fetch('/api/members');
-            if (!r.ok) return;
-            const j = await r.json();
-            acMembers = j.members || [];
-            acRoles   = j.roles   || [];
-            // Only mark loaded if we actually got data
-            acLoaded = acMembers.length > 0 || acRoles.length > 0;
-        } catch(e) { /* silent */ }
-    }
-
-    // Popup element (created once, reused)
-    let acBox = null;
-    let acItems = [];
-    let acIdx = -1;
-    let acTriggerPos = -1;   // caret position of the @ sign
-
+    // ─── AUTOCOMPLETADO @ ─────────────────────────────────────────────────────
     function getAcBox() {
         if (acBox) return acBox;
         acBox = document.createElement('div');
         acBox.id = 'ac-box';
         acBox.setAttribute('role', 'listbox');
-        // Prevent ANY mousedown inside the box from stealing focus from input
-        acBox.addEventListener('mousedown', (e) => e.preventDefault());
         document.body.appendChild(acBox);
         return acBox;
     }
-
     function hideAc() {
-        const box = getAcBox();
-        box.classList.remove('ac-open');
-        acItems = [];
-        acIdx   = -1;
-        acTriggerPos = -1;
+        getAcBox().classList.remove('ac-open');
+        acItems = []; acIdx = -1; acTriggerPos = -1;
     }
-
+    async function handleAcInput() {
+        const val   = msgInput.value;
+        const caret = msgInput.selectionStart;
+        // Buscar hacia atrás el @ más cercano sin espacios intermedios
+        let atPos = -1;
+        for (let i = caret - 1; i >= 0; i--) {
+            if (val[i] === '@') { atPos = i; break; }
+            // Solo rompemos si hay un espacio Y ya tenemos algún texto de query
+            // (permitimos @ solo, o @texto, pero no @ texto con espacio en medio)
+            if (val[i] === ' ' || val[i] === '\n') break;
+        }
+        if (atPos === -1) { hideAc(); return; }
+        const query = val.slice(atPos + 1, caret).toLowerCase();
+        // Si la query tiene un espacio interno (ej: "@foo bar"), cerrar
+        if (query.includes(' ')) { hideAc(); return; }
+        acTriggerPos = atPos;
+        await ensureAcData();
+        const roleMatches = acRoles
+            .filter(r => !query || r.name.toLowerCase().includes(query))
+            .slice(0, query ? 4 : 3).map(r => ({ ...r, type: 'role' }));
+        const memberMatches = acMembers
+            .filter(m => !query || m.display.toLowerCase().includes(query) || m.username.toLowerCase().includes(query))
+            .slice(0, 10 - roleMatches.length).map(m => ({ ...m, type: 'user' }));
+        const matches = [...roleMatches, ...memberMatches];
+        if (!matches.length) { hideAc(); return; }
+        renderAc(matches);
+    }
+    function handleAcKeydown(e) {
+        if (!acItems.length) return;
+        if (e.key === 'ArrowDown')  { e.preventDefault(); setAcIdx(Math.min(acIdx + 1, acItems.length - 1)); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); setAcIdx(Math.max(acIdx - 1, 0)); }
+        else if (e.key === 'Tab' || e.key === 'Enter') { e.preventDefault(); applyAc(acIdx >= 0 ? acIdx : 0); }
+        else if (e.key === 'Escape') hideAc();
+    }
     function renderAc(matches) {
         const box = getAcBox();
         box.innerHTML = '';
-        acItems = matches;
-        acIdx   = -1;
-        if (!matches.length) { box.classList.remove('ac-open'); return; }
-
+        acItems = matches; acIdx = -1;
         matches.forEach((item, i) => {
             const el = document.createElement('div');
             el.className = 'ac-item';
             el.dataset.index = i;
-
             if (item.type === 'user') {
-                const avatar = document.createElement('div');
-                avatar.className = 'ac-avatar';
+                const av = document.createElement('div'); av.className = 'ac-avatar';
                 if (item.avatar) {
                     const img = document.createElement('img');
-                    img.src = item.avatar;
-                    img.className = 'ac-avatar-img';
-                    avatar.appendChild(img);
+                    img.src = item.avatar; img.className = 'ac-avatar-img';
+                    av.appendChild(img);
                 } else {
-                    avatar.textContent = (item.display || item.username || '?')[0].toUpperCase();
+                    av.textContent = (item.display || item.username || '?')[0].toUpperCase();
                 }
-                const info = document.createElement('div');
-                info.className = 'ac-info';
-                const name = document.createElement('span');
-                name.className = 'ac-name';
-                name.textContent = item.display;
-                const handle = document.createElement('span');
-                handle.className = 'ac-handle';
-                handle.textContent = '@' + item.username;
-                info.appendChild(name);
-                info.appendChild(handle);
-                el.appendChild(avatar);
-                el.appendChild(info);
+                const info = document.createElement('div'); info.className = 'ac-info';
+                const nm   = document.createElement('span'); nm.className = 'ac-name'; nm.textContent = item.display;
+                const hd   = document.createElement('span'); hd.className = 'ac-handle'; hd.textContent = '@' + item.username;
+                info.appendChild(nm); info.appendChild(hd);
+                el.appendChild(av); el.appendChild(info);
             } else {
-                const dot = document.createElement('span');
-                dot.className = 'ac-role-dot';
-                dot.style.background = item.color;
-                dot.style.boxShadow = '0 0 6px ' + item.color + '88';
-                const label = document.createElement('span');
-                label.className = 'ac-role-name';
-                label.style.color = item.color;
-                label.textContent = '@' + item.name;
-                const tag = document.createElement('span');
-                tag.className = 'ac-role-tag';
-                tag.textContent = 'ROLE';
-                el.appendChild(dot);
-                el.appendChild(label);
-                el.appendChild(tag);
+                const dot   = document.createElement('span'); dot.className = 'ac-role-dot'; dot.style.background = item.color;
+                const label = document.createElement('span'); label.className = 'ac-role-name'; label.style.color = item.color; label.textContent = '@' + item.name;
+                const tag   = document.createElement('span'); tag.className = 'ac-role-tag'; tag.textContent = 'ROLE';
+                el.appendChild(dot); el.appendChild(label); el.appendChild(tag);
             }
-
             el.addEventListener('mouseenter', () => setAcIdx(i));
-            // Use both mousedown (prevents focus steal) AND click (reliable selection)
-            el.addEventListener('mousedown', (e) => {
-                e.preventDefault();  // MUST be first — stops blur before it fires
-                e.stopPropagation();
-            });
-            el.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                applyAc(i);
-            });
+            el.addEventListener('click', () => applyAc(i));
             box.appendChild(el);
         });
-
         box.classList.add('ac-open');
-
-        // Position above the composer — full width of composer
-        const inputRect = msgInput.getBoundingClientRect();
-        const boxW = Math.min(460, inputRect.width - 20);
-        box.style.width   = boxW + 'px';
-        box.style.bottom  = (window.innerHeight - inputRect.top + 10) + 'px';
-        box.style.left    = inputRect.left + 'px';
-        box.style.top     = 'auto';
+        const rect = msgInput.getBoundingClientRect();
+        box.style.width  = Math.min(460, rect.width - 20) + 'px';
+        box.style.bottom = (window.innerHeight - rect.top + 10) + 'px';
+        box.style.left   = rect.left + 'px';
     }
-
     function setAcIdx(i) {
-        const box = getAcBox();
-        const els = box.querySelectorAll('.ac-item');
+        const els = getAcBox().querySelectorAll('.ac-item');
         els.forEach(el => el.classList.remove('ac-item--active'));
         acIdx = i;
-        if (i >= 0 && i < els.length) {
-            els[i].classList.add('ac-item--active');
-            els[i].scrollIntoView({ block: 'nearest' });
-        }
+        if (i >= 0 && i < els.length) els[i].classList.add('ac-item--active');
     }
-
     function applyAc(i) {
         if (i < 0 || i >= acItems.length) return;
         const item = acItems[i];
         const val  = msgInput.value;
-        const tag  = item.type === 'user'
-            ? `<@${item.id}> `
-            : `<@&${item.id}> `;
-
-        // Replace from @ trigger pos to current caret
+        const tag  = item.type === 'user' ? `<@${item.id}> ` : `<@&${item.id}> `;
         const before = val.slice(0, acTriggerPos);
         const after  = val.slice(msgInput.selectionStart);
         msgInput.value = before + tag + after;
-
-        // Move caret after inserted tag
         const newPos = before.length + tag.length;
         msgInput.setSelectionRange(newPos, newPos);
-        hideAc();
-        msgInput.focus();
+        hideAc(); msgInput.focus();
+    }
+    async function ensureAcData() {
+        if (acLoaded) return;
+        try {
+            const r = await fetch('/api/members');
+            if (r.ok) {
+                const j = await r.json();
+                acMembers = j.members || [];
+                acRoles   = j.roles   || [];
+                acLoaded  = true;
+            }
+        } catch (e) {}
     }
 
-    // Wire up input events
-    msgInput.addEventListener('input', async () => {
-        const val    = msgInput.value;
-        const caret  = msgInput.selectionStart;
-
-        // Find nearest @ before caret that isn't preceded by a word char
-        let atPos = -1;
-        for (let i = caret - 1; i >= 0; i--) {
-            if (val[i] === '@') { atPos = i; break; }
-            if (val[i] === ' ' || val[i] === '\n') break;
-        }
-
-        if (atPos === -1) { hideAc(); return; }
-
-        const query = val.slice(atPos + 1, caret).toLowerCase();
-
-        // Don't show popup if query has a space (mention already complete)
-        if (query.includes(' ') && query.length > 0) { hideAc(); return; }
-
-        acTriggerPos = atPos;
-        await ensureAcData();
-
-        const MAX = 10;
-        let matches = [];
-
-        // When query is empty, show all (limited); when has query, filter
-        const roleMatches = acRoles
-            .filter(r => !query || r.name.toLowerCase().includes(query))
-            .slice(0, query ? 4 : 3)
-            .map(r => ({ ...r, type: 'role' }));
-
-        const memberMatches = acMembers
-            .filter(m =>
-                !query ||
-                m.display.toLowerCase().includes(query) ||
-                m.username.toLowerCase().includes(query)
-            )
-            .slice(0, MAX - roleMatches.length)
-            .map(m => ({ ...m, type: 'user' }));
-
-        matches = [...roleMatches, ...memberMatches];
-
-        // Only hide if truly no results
-        if (!matches.length && query.length > 0) { hideAc(); return; }
-        if (!matches.length) { hideAc(); return; }
-        renderAc(matches);
-    });
-
-    msgInput.addEventListener('keydown', (e) => {
-        if (!acItems.length) return;
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            setAcIdx(Math.min(acIdx + 1, acItems.length - 1));
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            setAcIdx(Math.max(acIdx - 1, 0));
-        } else if (e.key === 'Tab' || e.key === 'Enter') {
-            if (acItems.length) {
-                e.preventDefault();
-                applyAc(acIdx >= 0 ? acIdx : 0);
-            }
-        } else if (e.key === 'Escape') {
-            hideAc();
-        }
-    });
-
-    // Blur: only hide if focus went somewhere unrelated
-    msgInput.addEventListener('blur', () => {
-        // Do nothing here — close is handled by pointerdown outside or Escape
-    });
-
-    // NOTE: scroll listener removed — was closing popup on chat feed auto-scroll
-
-    // Close autocomplete on pointerdown outside the box and input
-    // pointerdown fires BEFORE blur, so this is safe
-    document.addEventListener('pointerdown', (e) => {
-        if (!acBox || !acBox.classList.contains('ac-open')) return;
-        if (acBox.contains(e.target)) return;   // inside box: mousedown preventDefault handles it
-        if (msgInput.contains(e.target)) return; // inside input: keep open
-        hideAc();                                 // clicked truly outside: close
-    });
-
-    window.sendMessage = async () => {
+    // ─── ENVÍO DE MENSAJES + COMANDOS / ──────────────────────────────────────
+    async function sendMessage() {
         const content = msgInput.value.trim();
         if (!content || !currentChannelId) return;
 
-        const originalPlaceholder = msgInput.placeholder;
-        // Create optimistic UI element so message appears immediately
+        // ── /done ─────────────────────────────────────────────────────────────
+        if (content === '/done') {
+            msgInput.value = '';
+            showToast('Registrando EP…', 'info');
+            try {
+                const res  = await fetch('/api/done', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        channel_id: currentChannelId,
+                        user_id: window._doneUserId || window._botId || '0'
+                    })
+                });
+                const data = await res.json();
+                if (data.error) showToast('❌ ' + data.error, 'error');
+                else showToast('✅ ' + (data.text || 'EP registrado'), 'success');
+                fetchMessages(false);
+            } catch (e) {
+                showToast('❌ Error: ' + e.message, 'error');
+            }
+            msgInput.disabled = false;
+            msgInput.focus();
+            return;
+        }
+
+        // ── /deadline ─────────────────────────────────────────────────────────
+        if (content.startsWith('/deadline ')) {
+            const rawTarget = content.slice('/deadline '.length).trim();
+            const targetId  = rawTarget.replace(/[<@!>]/g, '').trim();
+            if (targetId) {
+                window.triggerWebDeadline(targetId);
+                msgInput.value = '';
+            } else {
+                showToast('Uso: /deadline @Usuario o /deadline ID_USUARIO', 'warn');
+            }
+            return;
+        }
+
         let optimisticNode = null;
-        let optimisticClientId = String(Date.now()) + Math.floor(Math.random()*1000);
+        const optimisticClientId = String(Date.now()) + Math.floor(Math.random() * 1000);
         try {
-            const author = botName || 'BOT';
             optimisticNode = document.createElement('div');
             optimisticNode.className = 'message msg-me';
             optimisticNode.setAttribute('data-optimistic', '1');
-            optimisticNode.dataset.clientId = optimisticClientId;
+            optimisticNode.dataset.clientId     = optimisticClientId;
             optimisticNode.dataset.optimisticTs = String(Date.now());
             optimisticNode.innerHTML = `
-                <div class="msg-header"><div class="msg-time">——:——</div>
-                <div class="msg-author">${author}</div></div>
-                <div class="msg-content">${formatLinks(content)}</div>
-            `;
+                <div class="msg-header">
+                    <div class="msg-time">——:——</div>
+                    <div class="msg-author">${escapeHtml(botName || 'BOT')}</div>
+                </div>
+                <div class="msg-content">${renderDiscordContent(content)}</div>`;
             chatFeed.appendChild(optimisticNode);
             chatFeed.scrollTop = chatFeed.scrollHeight;
-        } catch (e) { optimisticNode = null; }
+        } catch (e) {}
 
         msgInput.value = '';
-        msgInput.placeholder = "送信中...";
         msgInput.disabled = true;
-
         try {
-            const res = await fetch('/api/send', {
+            const res  = await fetch('/api/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ channel_id: currentChannelId, content: content })
+                body: JSON.stringify({ channel_id: currentChannelId, content })
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Server Reject");
-            // If server returned message_id, replace optimistic node immediately to avoid duplication
-            if (data && data.message_id) {
-                try {
-                    const realMsg = {
-                        message_id: data.message_id,
-                        author_id: data.author_id,
-                        author_name: data.author_name,
-                        content: content,
-                        timestamp: data.timestamp
-                    };
-
-                    // find optimistic node by clientId and replace
-                    const opt = chatFeed.querySelector(`[data-optimistic="1"][data-client-id="${optimisticClientId}"]`);
-                    const message = document.createElement('div');
-                    message.className = 'message';
-                    if (botName && realMsg.author_id && String(realMsg.author_id) === String((window._botId || ''))) message.classList.add('msg-me');
-                    else if (botName && realMsg.author_name === botName) message.classList.add('msg-me');
-
-                    message.dataset.msgId = String(realMsg.message_id);
-                    message.innerHTML = `
-                        <div class="msg-header"><div class="msg-time">${formatTimestamp(realMsg.timestamp || '')}</div>
-                        <div class="msg-author">${escapeHtml(realMsg.author_name || 'Unknown')}</div></div>
-                        <div class="msg-content">${renderDiscordContent(realMsg.content || '')}</div>
-                    `;
-                    message.style.display = '';
-                    message.style.visibility = 'visible';
-
-                    decorateMessage(message);
-                    if (opt) opt.replaceWith(message);
-                    else chatFeed.appendChild(message);
-                    chatFeed.scrollTop = chatFeed.scrollHeight;
-                } catch (e) { /* ignore UI replace errors */ }
+            if (!res.ok) throw new Error(data.error || 'Server Reject');
+            if (data.message_id) {
+                chatFeed.querySelector(`[data-client-id="${optimisticClientId}"]`)?.remove();
+                fetchMessages(false);
             }
-            // also schedule a fetch to ensure DB-synced messages are present
-            setTimeout(() => fetchMessages(false), 200);
-        } catch(e) {
-            console.error("Send error:", e); msgInput.style.borderColor = "var(--red)"; setTimeout(() => msgInput.style.borderColor = "", 2000);
-            // remove optimistic node if exists and restore content
-            if (optimisticNode && optimisticNode.parentNode) optimisticNode.remove();
+        } catch (e) {
+            console.error('Send error:', e);
+            if (optimisticNode?.parentNode) optimisticNode.remove();
             msgInput.value = content;
+            showToast('Error al enviar: ' + e.message, 'error');
         } finally {
-            msgInput.placeholder = originalPlaceholder;
             msgInput.disabled = false;
             msgInput.focus();
         }
-    };
-
-    // --- ESTADÍSTICAS ---
-    window.generateStats = () => {
-        let type = 'offensive';
-        if (document.getElementById('dvg').value.trim() !== "") type = 'gk';
-
-        const inputs = type === 'offensive' ? ['sht', 'dbl', 'stl', 'psn', 'dfd'] : ['dvg', 'biq', 'rfx', 'dtg'];
-        let data = {}, sum = 0, count = 0;
-
-        inputs.forEach(id => {
-            let val = parseFloat(document.getElementById(id).value) || 0;
-            if (val > 10) val = 10; if (val < 0) val = 0;
-            data[id] = val; sum += val; count++;
-        });
-
-        const avg = count > 0 ? sum / count : 0;
-        let rank = type === 'offensive' ? getOffensiveRank(avg) : getGKRank(avg);
-
-        drawGraph(type, data, avg, rank);
-        
-        if(modal) modal.classList.add('active');
-        document.getElementById('stats-drawer').classList.remove('active');
-    };
-
-    function getOffensiveRank(s) {
-        if (s < 4.6) return "N/A";
-        if (s <= 4.8) return "ROOKIE 🥉 - ⭐";
-        if (s <= 5.1) return "ROOKIE 🥉 - ⭐⭐";
-        if (s <= 5.4) return "ROOKIE 🥉 - ⭐⭐⭐";
-        if (s <= 5.7) return "AMATEUR ⚽ - ⭐";
-        if (s <= 6.0) return "AMATEUR ⚽ - ⭐⭐";
-        if (s <= 6.3) return "AMATEUR ⚽ - ⭐⭐⭐";
-        if (s <= 6.6) return "ELITE ⚡ - ⭐";
-        if (s <= 6.9) return "ELITE ⚡ - ⭐⭐";
-        if (s <= 7.2) return "ELITE ⚡ - ⭐⭐⭐";
-        if (s <= 7.5) return "PRODIGY 🏅 - ⭐";
-        if (s <= 7.8) return "PRODIGY 🏅 - ⭐⭐";
-        if (s <= 8.1) return "PRODIGY 🏅 - ⭐⭐⭐";
-        if (s <= 8.4) return "NEW GEN XI - ⭐";
-        if (s <= 8.7) return "NEW GEN XI - ⭐⭐";
-        if (s <= 9.0) return "NEW GEN XI - ⭐⭐⭐";
-        if (s <= 9.3) return "WORLD CLASS 👑 - ⭐";
-        if (s <= 9.6) return "WORLD CLASS 👑 - ⭐⭐";
-        return "WORLD CLASS 👑 - ⭐⭐⭐";
     }
 
-    function getGKRank(s) {
-        if (s <= 6.9) return "D TIER";
-        if (s <= 7.9) return "C TIER";
-        if (s <= 8.4) return "B TIER";
-        if (s <= 8.9) return "A TIER";
-        if (s <= 9.4) return "S TIER";
-        return "S+ TIER";
-    }
-
-    function drawGraph(type, data, avg, rank) {
-        const W = 500, H = 500;
-        ctx.clearRect(0, 0, W, H);
-
-        // Background
-        ctx.fillStyle = '#0F0E17';
-        ctx.fillRect(0, 0, W, H);
-
-        // Soft radial glow in center
-        const isGK = type === 'gk';
-        const mainCol  = isGK ? '#A78BFA' : '#F5A623';
-        const fillCol  = isGK ? 'rgba(167,139,250,0.25)' : 'rgba(245,166,35,0.22)';
-        const glowCol  = isGK ? 'rgba(167,139,250,0.55)' : 'rgba(245,166,35,0.50)';
-        const secCol   = isGK ? '#26C9B8' : '#FF6B6B';
-
-        const CX = 250, CY = 248, R = 132;
-        const grd = ctx.createRadialGradient(CX, CY, 0, CX, CY, R * 1.3);
-        grd.addColorStop(0, isGK ? 'rgba(167,139,250,0.06)' : 'rgba(245,166,35,0.06)');
-        grd.addColorStop(1, 'transparent');
-        ctx.fillStyle = grd;
-        ctx.fillRect(0, 0, W, H);
-
-        // Scanlines subtle
-        ctx.save();
-        for (let y = 0; y < H; y += 3) {
-            ctx.fillStyle = 'rgba(0,0,0,0.08)';
-            ctx.fillRect(0, y, W, 1);
-        }
-        ctx.restore();
-
-        const keys = Object.keys(data);
-        const total = keys.length;
-        const step = (Math.PI * 2) / total;
-
-        // Grid rings
-        for (let l = 1; l <= 4; l++) {
-            const rad = (R / 4) * l;
-            const alpha = l === 4 ? 0.30 : 0.08;
-            ctx.beginPath();
-            if (isGK) {
-                ctx.arc(CX, CY, rad, 0, Math.PI * 2);
-            } else {
-                for (let i = 0; i <= total; i++) {
-                    const a = i * step - Math.PI / 2;
-                    i === 0
-                        ? ctx.moveTo(CX + Math.cos(a) * rad, CY + Math.sin(a) * rad)
-                        : ctx.lineTo(CX + Math.cos(a) * rad, CY + Math.sin(a) * rad);
-                }
-            }
-            ctx.strokeStyle = isGK ? `rgba(167,139,250,${alpha})` : `rgba(245,166,35,${alpha})`;
-            ctx.lineWidth = l === 4 ? 1.5 : 0.8;
-            ctx.stroke();
-        }
-
-        // Spokes
-        if (!isGK) {
-            keys.forEach((_, i) => {
-                const a = i * step - Math.PI / 2;
-                ctx.beginPath();
-                ctx.moveTo(CX, CY);
-                ctx.lineTo(CX + Math.cos(a) * R, CY + Math.sin(a) * R);
-                ctx.strokeStyle = isGK ? 'rgba(167,139,250,0.10)' : 'rgba(245,166,35,0.10)';
-                ctx.lineWidth = 0.8;
-                ctx.stroke();
-            });
-        }
-
-        // Data polygon
-        ctx.beginPath();
-        keys.forEach((k, i) => {
-            const rad = (data[k] / 10) * R;
-            const a = i * step - Math.PI / 2;
-            i === 0
-                ? ctx.moveTo(CX + Math.cos(a) * rad, CY + Math.sin(a) * rad)
-                : ctx.lineTo(CX + Math.cos(a) * rad, CY + Math.sin(a) * rad);
-        });
-        ctx.closePath();
-        ctx.shadowBlur = 22; ctx.shadowColor = glowCol;
-        ctx.fillStyle = fillCol; ctx.fill();
-        ctx.strokeStyle = mainCol; ctx.lineWidth = 2.5; ctx.stroke();
-        ctx.shadowBlur = 0;
-
-        // Vertex dots
-        keys.forEach((k, i) => {
-            const rad = (data[k] / 10) * R;
-            const a = i * step - Math.PI / 2;
-            const x = CX + Math.cos(a) * rad, y = CY + Math.sin(a) * rad;
-            ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2);
-            ctx.shadowBlur = 10; ctx.shadowColor = glowCol;
-            ctx.fillStyle = mainCol + 'CC'; ctx.fill();
-            ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2);
-            ctx.fillStyle = '#FFFFFF'; ctx.fill();
-            ctx.shadowBlur = 0;
-        });
-
-        // Labels
-        keys.forEach((k, i) => {
-            const a = i * step - Math.PI / 2;
-            const lx = CX + Math.cos(a) * (R + 36);
-            const ly = CY + Math.sin(a) * (R + 36);
-            ctx.save();
-            ctx.font = "700 15px 'Sora', sans-serif";
-            ctx.fillStyle = mainCol;
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.shadowBlur = 6; ctx.shadowColor = glowCol;
-            ctx.fillText(k.toUpperCase(), lx, ly);
-            ctx.restore();
-        });
-
-        // Divider
-        const grad = ctx.createLinearGradient(60, 0, 440, 0);
-        grad.addColorStop(0, 'transparent');
-        grad.addColorStop(0.3, mainCol + '66');
-        grad.addColorStop(0.7, secCol + '66');
-        grad.addColorStop(1, 'transparent');
-        ctx.beginPath(); ctx.moveTo(60, 432); ctx.lineTo(440, 432);
-        ctx.strokeStyle = grad; ctx.lineWidth = 1; ctx.stroke();
-
-        // AVG
-        ctx.save();
-        ctx.font = "400 12px 'JetBrains Mono', monospace";
-        ctx.fillStyle = '#6B6480'; ctx.textAlign = 'center';
-        ctx.fillText('AVG  ' + avg.toFixed(2) + '  /  10', CX, 449);
-        ctx.restore();
-
-        // Rank
-        ctx.save();
-        ctx.shadowBlur = 20; ctx.shadowColor = glowCol;
-        ctx.font = "800 24px 'Sora', sans-serif";
-        ctx.fillStyle = mainCol; ctx.textAlign = 'center';
-        ctx.fillText(rank, CX, 482);
-        ctx.restore();
-
-        try { window.latestStatsRank = String(rank || ''); } catch(e) {}
-    }
-
-    const closeBtn = document.getElementById('close-modal');
-    if(closeBtn) closeBtn.onclick = () => {
-        modal.classList.remove('active');
-        document.getElementById('stats-drawer').classList.add('active');
+    // ─── DEADLINE ─────────────────────────────────────────────────────────────
+    window.promptDeadline = function (targetId) {
+        const cached = mentionCache.users[targetId];
+        const name   = (cached && typeof cached === 'object') ? cached.display : `ID ${targetId}`;
+        if (confirm(`¿Enviar DEADLINE de 24h a ${name}?`))
+            window.triggerWebDeadline(targetId);
     };
 
-    const copyBtn = document.getElementById('copy-stats-btn');
-    if(copyBtn) copyBtn.onclick = () => {
-        canvas.toBlob(blob => {
-            try {
-                const item = new ClipboardItem({ "image/png": blob });
-                navigator.clipboard.write([item]).then(() => {
-                    const p = copyBtn.innerText; copyBtn.innerText = "SEALED";
-                    setTimeout(() => copyBtn.innerText = p, 2000);
-                });
-            } catch (e) { alert("Right click to save"); }
-        });
-    };
-
-    const copyRankBtn = document.getElementById('copy-rank-btn');
-    if (copyRankBtn) copyRankBtn.onclick = async () => {
-        try {
-            const rankText = window.latestStatsRank || '';
-            if (!rankText) {
-                copyRankBtn.innerText = 'NO RANK';
-                setTimeout(() => copyRankBtn.innerText = 'COPY RANK', 1400);
-                return;
-            }
-            await navigator.clipboard.writeText(rankText);
-            const prev = copyRankBtn.innerText;
-            copyRankBtn.innerText = 'COPIED';
-            setTimeout(() => copyRankBtn.innerText = prev, 1400);
-        } catch (e) {
-            alert('Copy failed: ' + (e && e.message ? e.message : e));
-        }
-    };
-
-    // Close stats drawer or stats modal with Escape key
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' || e.key === 'Esc') {
-            const drawer = document.getElementById('stats-drawer');
-            const modalElem = document.getElementById('stats-modal');
-
-            if (modalElem && modalElem.classList.contains('active')) {
-                modalElem.classList.remove('active');
-                if (drawer) drawer.classList.remove('active');
-                return;
-            }
-
-            if (drawer && drawer.classList.contains('active')) {
-                drawer.classList.remove('active');
-            }
-        }
-    });
-
-    // ════════════════════════════════════
-    // COMMANDS PANEL — inside DOMContentLoaded
-    // (needs access to ensureAcData, acMembers, showToast, currentChannelId)
-    // ════════════════════════════════════
-
-    window.toggleCommands = function () {
-        document.getElementById('commands-panel')?.classList.toggle('active');
-    };
-
-    let deadlineUser = null;
-    const deadlineInput   = document.getElementById('deadline-user');
-    const deadlineAc      = document.getElementById('deadline-ac');
-    const deadlinePreview = document.getElementById('deadline-preview');
-
-    function updateDeadlinePreview() {
-        if (!deadlinePreview) return;
-        const name = deadlineUser
-            ? (deadlineUser.display || deadlineUser.username || deadlineUser.name)
-            : '...';
-        deadlinePreview.innerHTML = '<code>!deadline <span class="cmd-preview-user">' + name + '</span></code>';
-    }
-
-    function buildCmdAcItem(item) {
-        const el = document.createElement('div');
-        el.className = 'ac-item';
-        if (item.type === 'user') {
-            const av = document.createElement('div');
-            av.className = 'ac-avatar';
-            if (item.avatar) {
-                const img = document.createElement('img');
-                img.src = item.avatar; img.className = 'ac-avatar-img';
-                av.appendChild(img);
-            } else {
-                av.textContent = (item.display || item.username || '?')[0].toUpperCase();
-            }
-            const info = document.createElement('div');
-            info.className = 'ac-info';
-            const n = document.createElement('span'); n.className = 'ac-name'; n.textContent = item.display;
-            const h = document.createElement('span'); h.className = 'ac-handle'; h.textContent = '@' + item.username;
-            info.appendChild(n); info.appendChild(h);
-            el.appendChild(av); el.appendChild(info);
-        }
-        return el;
-    }
-
-    if (deadlineInput && deadlineAc) {
-        deadlineAc.addEventListener('mousedown', e => e.preventDefault());
-
-        deadlineInput.addEventListener('input', async () => {
-            const q = deadlineInput.value.trim().toLowerCase();
-            deadlineUser = null;
-            updateDeadlinePreview();
-
-            if (!q) { deadlineAc.classList.remove('open'); deadlineAc.innerHTML = ''; return; }
-
-            await ensureAcData();
-            const matches = acMembers
-                .filter(m => m.display.toLowerCase().includes(q) || m.username.toLowerCase().includes(q))
-                .slice(0, 8)
-                .map(m => ({ ...m, type: 'user' }));
-
-            deadlineAc.innerHTML = '';
-            if (!matches.length) { deadlineAc.classList.remove('open'); return; }
-
-            matches.forEach(item => {
-                const el = buildCmdAcItem(item);
-                el.addEventListener('mousedown', e => e.preventDefault());
-                el.addEventListener('click', () => {
-                    deadlineUser = item;
-                    deadlineInput.value = item.display || item.username;
-                    deadlineAc.classList.remove('open');
-                    deadlineAc.innerHTML = '';
-                    updateDeadlinePreview();
-                    deadlineInput.focus();
-                });
-                deadlineAc.appendChild(el);
-            });
-            deadlineAc.classList.add('open');
-        });
-
-        deadlineInput.addEventListener('blur', () => {
-            setTimeout(() => deadlineAc.classList.remove('open'), 180);
-        });
-    }
-
-    window.sendDeadlineCommand = async function () {
+    window.triggerWebDeadline = function (targetId) {
         if (!currentChannelId) {
-            showToast('Selecciona un canal primero', 'error'); return;
+            showToast('Selecciona un canal primero', 'warn');
+            return;
         }
-        const username = deadlineUser
-            ? (deadlineUser.username || deadlineUser.display)
-            : (deadlineInput?.value?.trim());
+        // Resolver nombre si está en caché
+        const cached = mentionCache.users[targetId];
+        const name   = (cached && typeof cached === 'object') ? cached.display : targetId;
 
-        if (!username) {
-            showToast('Selecciona un usuario', 'error'); return;
+        fetch('/api/deadline', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target_id: targetId, channel_id: currentChannelId })
+        })
+        .then(r => r.json())
+        .then(d => {
+            showToast(`✅ Deadline enviado a ${name}`, 'success');
+            fetchMessages(false);
+        })
+        .catch(err => showToast('Error: ' + err, 'error'));
+    };
+
+    // ─── LOGS PANEL ───────────────────────────────────────────────────────────
+    let logsInterval = null;
+    let logsUnlocked = false;
+
+    function openLogs() {
+        const panel = document.getElementById('logs-panel');
+        if (!panel) return;
+        panel.classList.add('active');
+        if (!logsUnlocked) {
+            document.getElementById('logs-auth').style.display  = 'flex';
+            document.getElementById('logs-viewer').style.display = 'none';
+            document.getElementById('logs-user').value = '';
+            document.getElementById('logs-pass').value = '';
+            document.getElementById('logs-error').textContent = '';
+        } else {
+            fetchLogs();
         }
+    }
 
-        const btn = document.getElementById('deadline-send');
-        if (btn) btn.disabled = true;
+    window.openLogs  = openLogs;
+    window.fetchLogs = fetchLogs;   // expuesto para el onchange del input de líneas
 
+    window.closeLogs = function () {
+        document.getElementById('logs-panel')?.classList.remove('active');
+        clearInterval(logsInterval);
+    };
+
+    window.authLogs = function () {
+        const user = document.getElementById('logs-user').value;
+        const pass = document.getElementById('logs-pass').value;
+        if (user === 'ogmhabas' && pass === 'blz-tadmin') {
+            logsUnlocked = true;
+            document.getElementById('logs-auth').style.display   = 'none';
+            document.getElementById('logs-viewer').style.display = 'block';
+            fetchLogs();
+            clearInterval(logsInterval);
+            logsInterval = setInterval(() => {
+                if (document.getElementById('logs-panel')?.classList.contains('active'))
+                    fetchLogs();
+                else clearInterval(logsInterval);
+            }, 3000);
+        } else {
+            document.getElementById('logs-error').textContent = '❌ Credenciales incorrectas';
+        }
+    };
+
+    async function fetchLogs() {
         try {
-            const res = await fetch('/api/deadline', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ channel_id: currentChannelId, username: username })
-            });
-            const data = await res.json();
-            if (res.ok) {
-                showToast('Deadline enviado', 'success');
-                document.getElementById('commands-panel')?.classList.remove('active');
-                if (deadlineInput) deadlineInput.value = '';
-                deadlineUser = null;
-                updateDeadlinePreview();
-            } else {
-                showToast(data.error || 'Error al enviar', 'error');
+            const linesInput = document.getElementById('logs-lines-input');
+            const lines = linesInput ? (parseInt(linesInput.value) || 200) : 200;
+            const res   = await fetch(`/api/logs?lines=${lines}`);
+            const text  = await res.text();
+            const pre   = document.getElementById('logs-content');
+            if (pre) {
+                pre.innerHTML = colorizeLogs(escapeHtml(text));
+                const viewer = document.getElementById('logs-viewer');
+                if (viewer) viewer.scrollTop = viewer.scrollHeight;
             }
-        } catch(e) {
-            showToast('Error de red', 'error');
-        } finally {
-            if (btn) btn.disabled = false;
+        } catch (e) {
+            const pre = document.getElementById('logs-content');
+            if (pre) pre.textContent = 'Error cargando logs: ' + e.message;
         }
-    };
-
-});
-
-/* ════════════════════════════════════
-   CUSTOM CURSOR — follows system cursor state
-   ════════════════════════════════════ */
-(function () {
-    const cur = document.createElement('div');
-    cur.id = 'custom-cursor';
-    document.body.appendChild(cur);
-
-    // Determine cursor type by inspecting the element itself,
-    // NOT via getComputedStyle — that returns 'none' because we override it.
-    function getCursorType(el) {
-        if (!el) return 'default';
-
-        // Walk up the DOM tree to find the meaningful element
-        let node = el;
-        while (node && node !== document.body) {
-            const tag = node.tagName;
-
-            // Text inputs
-            if (tag === 'INPUT' || tag === 'TEXTAREA' || node.isContentEditable) {
-                return 'text';
-            }
-
-            // Disabled
-            if (node.disabled || node.hasAttribute('disabled')) {
-                return 'not-allowed';
-            }
-
-            // Clickable
-            if (
-                tag === 'BUTTON' || tag === 'A' || tag === 'LABEL' ||
-                node.getAttribute('role') === 'button' ||
-                node.getAttribute('tabindex') !== null && node.getAttribute('tabindex') >= 0 ||
-                node.classList.contains('channel-item') ||
-                node.classList.contains('metrics-pill') ||
-                node.classList.contains('comp-btn') ||
-                node.classList.contains('emoji-btn') ||
-                node.classList.contains('ac-item') ||
-                node.classList.contains('stats-btn') ||
-                node.classList.contains('del-btn') ||
-                node.classList.contains('modal-submit') ||
-                node.classList.contains('brand-orb') ||
-                node.classList.contains('msg-action-btn') ||
-                node.classList.contains('modal-close') ||
-                node.classList.contains('stats-close') ||
-                node.classList.contains('mp-close') ||
-                node.classList.contains('composer-send') ||
-                node.classList.contains('settings-btn') ||
-                node.classList.contains('cursor-upload-btn') ||
-                node.classList.contains('cursor-reset-btn') ||
-                node.classList.contains('quality-btn') ||
-                node.classList.contains('settings-close')
-            ) {
-                return 'pointer';
-            }
-
-            node = node.parentElement;
-        }
-        return 'default';
     }
 
-    document.addEventListener('mousemove', (e) => {
-        cur.style.left = e.clientX + 'px';
-        cur.style.top  = e.clientY + 'px';
-
-        const el   = document.elementFromPoint(e.clientX, e.clientY);
-        const type = getCursorType(el);
-
-        cur.classList.remove('is-pointer', 'is-text', 'is-notallowed');
-        if (type === 'pointer')     cur.classList.add('is-pointer');
-        else if (type === 'text')        cur.classList.add('is-text');
-        else if (type === 'not-allowed') cur.classList.add('is-notallowed');
-    });
-
-    document.addEventListener('mouseleave', () => { cur.style.opacity = '0'; });
-    document.addEventListener('mouseenter', () => { cur.style.opacity = '1'; });
-})();
-
-/* ════════════════════════════════════
-   SETTINGS PANEL — quality + cursors
-   ════════════════════════════════════ */
-(function () {
-
-    const STORAGE_KEY = 'blzt_settings';
-
-    // ── Load saved settings ──
-    function loadSettings() {
-        try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
-        catch(e) { return {}; }
-    }
-    function saveSettings(data) {
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
-        catch(e) {}
+    // Coloriza líneas según nivel de log
+    function colorizeLogs(escapedText) {
+        return escapedText.split('\n').map(line => {
+            if (line.includes('[ERROR]') || line.includes('!!!'))
+                return `<span style="color:#ff6b6b">${line}</span>`;
+            if (line.includes('[WARNING]') || line.includes('[WARN]'))
+                return `<span style="color:#f5a623">${line}</span>`;
+            if (line.includes('[AUTOMOD]') || line.includes('AUTOMOD') || line.includes('SPAM'))
+                return `<span style="color:#a78bfa">${line}</span>`;
+            if (line.includes('[SLASH]') || line.includes('[DEADLINE]') || line.includes('>>>'))
+                return `<span style="color:#26c9b8">${line}</span>`;
+            if (line.includes('[HISTORY]') || line.includes('[SHEETS]'))
+                return `<span style="color:#f5a623aa">${line}</span>`;
+            return `<span style="color:#5a5575">${line}</span>`;
+        }).join('\n');
     }
 
-    // ── Apply quality ──
-    function applyQuality(q) {
-        document.documentElement.classList.remove('q-low', 'q-medium', 'q-high');
-        document.documentElement.classList.add('q-' + q);
-        document.querySelectorAll('.quality-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.q === q);
-        });
-    }
-
-    // ── Apply cursor from dataURL ──
-    const CURSOR_TYPES = { normal: 'default', pointer: 'pointer', text: 'text' };
-
-    function applyCursors(cursors) {
-        // Build a <style> block with the custom cursors
-        let css = '';
-        if (cursors.normal) {
-            css += `* { cursor: url('${cursors.normal}') 0 0, auto !important; }\n`;
-        }
-        if (cursors.pointer) {
-            css += `button:not([disabled]), a, label, [role="button"],
-                .channel-item, .metrics-pill, .comp-btn:not([disabled]),
-                .emoji-btn, .ac-item, .stats-btn, .del-btn, .del-btn--cancel,
-                .del-btn--confirm, .modal-submit, .brand-orb, .msg-action-btn,
-                .modal-close, .stats-close, .mp-close, .composer-send,
-                .settings-btn, .cursor-upload-btn, .cursor-reset-btn, .quality-btn {
-                    cursor: url('${cursors.pointer}') 0 0, pointer !important;
-                }\n`;
-        }
-        if (cursors.text) {
-            // Use high-specificity selector to beat * { cursor: none !important }
-            css += `html body input, html body textarea, html body [contenteditable] {
-                cursor: url('${cursors.text}') 0 0, text !important;
-            }\n`;
-        }
-        if (cursors.pointer || cursors.normal) {
-            // Update the #custom-cursor dot to be invisible when custom images are set
-            css += `#custom-cursor { display: none !important; }\n`;
-        }
-
-        let styleEl = document.getElementById('blzt-cursor-style');
-        if (!styleEl) {
-            styleEl = document.createElement('style');
-            styleEl.id = 'blzt-cursor-style';
-            document.head.appendChild(styleEl);
-        }
-        styleEl.textContent = css;
-    }
-
-    function updatePreview(type, dataUrl) {
-        const prev = document.getElementById('prev-' + type);
-        if (!prev) return;
-        prev.innerHTML = dataUrl
-            ? `<img src="${dataUrl}" alt="cursor">`
-            : `<span class="cursor-upload-placeholder">${type === 'normal' ? '↖' : type === 'pointer' ? '☝' : 'I'}</span>`;
-    }
-
-    // ── Convert any image format to PNG via canvas ──
-    // Browsers render ICO/CUR poorly — normalizing to PNG fixes color + size
-    function normalizeImageToPng(file, size) {
-        return new Promise((resolve, reject) => {
-            const url = URL.createObjectURL(file);
-            const img = new Image();
-
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width  = size;
-                canvas.height = size;
-                const ctx = canvas.getContext('2d');
-
-                // Draw image scaled to desired size, preserving aspect ratio centered
-                const scale = Math.min(size / img.naturalWidth, size / img.naturalHeight);
-                const w = img.naturalWidth  * scale;
-                const h = img.naturalHeight * scale;
-                const x = (size - w) / 2;
-                const y = (size - h) / 2;
-
-                ctx.clearRect(0, 0, size, size);
-                ctx.drawImage(img, x, y, w, h);
-
-                URL.revokeObjectURL(url);
-                resolve(canvas.toDataURL('image/png'));
-            };
-
-            img.onerror = () => {
-                URL.revokeObjectURL(url);
-                reject(new Error('Image load failed'));
-            };
-
-            img.src = url;
-        });
-    }
-
-    // ── Init on DOM ready ──
-    function init() {
-        const s = loadSettings();
-
-        // Apply quality (default: high)
-        applyQuality(s.quality || 'high');
-
-        // Apply saved cursors
-        if (s.cursors && Object.keys(s.cursors).length) {
-            applyCursors(s.cursors);
-            Object.entries(s.cursors).forEach(([type, url]) => updatePreview(type, url));
-        }
-
-        // Quality buttons
-        document.querySelectorAll('.quality-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const q = btn.dataset.q;
-                applyQuality(q);
-                const s = loadSettings();
-                s.quality = q;
-                saveSettings(s);
-            });
-        });
-
-        // Cursor file inputs
-        ['normal', 'pointer', 'text'].forEach(type => {
-            const input = document.getElementById('cursor-' + type);
-            if (!input) return;
-            input.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-
-                // Convert any format (ICO, CUR, PNG, SVG) to PNG via canvas
-                // This ensures consistent color and size across all browsers
-                normalizeImageToPng(file, 64).then(pngDataUrl => {
-                    const s = loadSettings();
-                    s.cursors = s.cursors || {};
-                    s.cursors[type] = pngDataUrl;
-                    saveSettings(s);
-                    applyCursors(s.cursors);
-                    updatePreview(type, pngDataUrl);
-                }).catch(err => {
-                    console.warn('Cursor conversion failed:', err);
-                    showToast('Could not read cursor file', 'error');
-                });
-
-                input.value = '';
-            });
-        });
-
-        // Reset buttons
-        document.querySelectorAll('.cursor-reset-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const type = btn.dataset.type;
-                const s = loadSettings();
-                s.cursors = s.cursors || {};
-                delete s.cursors[type];
-                saveSettings(s);
-                applyCursors(s.cursors);
-                updatePreview(type, null);
-            });
-        });
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
-    }
-
-    // Toggle function
-    window.toggleSettings = function() {
-        document.getElementById('settings-panel').classList.toggle('active');
-    };
-
-    // Close on Escape
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            document.getElementById('settings-panel')?.classList.remove('active');
-        }
-    });
-
-})();
-
-/* ════════════════════════════════════
-   MOBILE CHANNEL DRAWER
-   ════════════════════════════════════ */
-window.toggleChannelDrawer = function () {
-    const drawer = document.getElementById('channel-drawer');
-    if (!drawer) return;
-    const isOpen = drawer.classList.toggle('open');
-
-    // When opening, populate the drawer list from the main list
-    if (isOpen) {
-        const drawerList = document.getElementById('channel-drawer-list');
-        const mainList   = document.getElementById('channel-list');
-        if (!drawerList || !mainList) return;
-
-        drawerList.innerHTML = '';
-        mainList.querySelectorAll('.channel-item').forEach(item => {
-            const el = document.createElement('div');
-            el.className = 'channel-item' + (item.classList.contains('active') ? ' active' : '');
-            el.setAttribute('data-index', item.getAttribute('data-index') || '');
-
-            const nameSpan = document.createElement('span');
-            nameSpan.className = 'ch-name';
-            nameSpan.textContent = item.querySelector('.ch-name')?.textContent || '';
-            el.appendChild(nameSpan);
-
-            el.addEventListener('click', () => {
-                drawer.classList.remove('open');
-                item.click();   // trigger original logic
-            });
-            drawerList.appendChild(el);
-        });
-    }
-};
-
-// Swipe down to close drawer
-(function() {
-    let startY = 0;
-    document.addEventListener('touchstart', e => {
-        const sheet = document.querySelector('.channel-drawer-sheet');
-        if (sheet && sheet.contains(e.target)) startY = e.touches[0].clientY;
-    }, { passive: true });
-    document.addEventListener('touchend', e => {
-        if (!startY) return;
-        if (e.changedTouches[0].clientY - startY > 60) {
-            document.getElementById('channel-drawer')?.classList.remove('open');
-        }
-        startY = 0;
-    }, { passive: true });
-})();
-
-
-
-// ════════════════════════════════════
-// LOGIN + MOD PANEL
-// ════════════════════════════════════
-(function () {
-
-    // ── Credentials (will be set via env or config later) ──
-    // For now stored as hashed in localStorage after first login
-    // Temporary hardcoded — replace with real auth later
-    const MOD_CREDENTIALS = [
-        { user: 'admin', pass: 'blzt2024' }  // CHANGE THIS
-    ];
-
-    let modGuildId = null;
-
-    // ── Login ──
-    window.toggleLogin = function () {
-        const modal = document.getElementById('login-modal');
-        if (!modal) return;
-        const isLoggedIn = localStorage.getItem('blzt_mod') === '1';
-        if (isLoggedIn) {
-            // Logout
-            localStorage.removeItem('blzt_mod');
-            applyLoginState(false);
-        } else {
-            modal.classList.toggle('active');
-        }
-    };
-
+    // ─── LOGIN ────────────────────────────────────────────────────────────────
+    window.toggleLogin = function () { document.getElementById('login-modal')?.classList.toggle('active'); };
     window.doLogin = function () {
-        const user  = document.getElementById('login-user')?.value.trim();
-        const pass  = document.getElementById('login-pass')?.value;
-        const errEl = document.getElementById('login-error');
-        const ok    = MOD_CREDENTIALS.some(c => c.user === user && c.pass === pass);
-        if (ok) {
+        const user = document.getElementById('login-user')?.value.trim();
+        const pass = document.getElementById('login-pass')?.value;
+        if (user === 'admin' && pass === 'blzt2024') {
             localStorage.setItem('blzt_mod', '1');
-            document.getElementById('login-modal')?.classList.remove('active');
-            if (errEl) errEl.textContent = '';
             applyLoginState(true);
+            toggleLogin();
+            showToast('Sesión iniciada ✅', 'success');
         } else {
-            if (errEl) errEl.textContent = 'Invalid credentials';
-            document.getElementById('login-pass').value = '';
+            document.getElementById('login-error').textContent = '❌ Credenciales incorrectas';
         }
     };
-
-    document.getElementById('login-pass')?.addEventListener('keydown', e => {
-        if (e.key === 'Enter') window.doLogin();
-    });
-
     function applyLoginState(loggedIn) {
         const btn  = document.getElementById('login-btn');
         const lbl  = document.getElementById('login-btn-label');
@@ -1923,320 +750,312 @@ window.toggleChannelDrawer = function () {
         if (!loggedIn) document.getElementById('mod-panel')?.classList.remove('active');
     }
 
-    // Apply on load
-    applyLoginState(localStorage.getItem('blzt_mod') === '1');
-
-    // ── Mod Panel ──
+    // ─── MOD PANEL ────────────────────────────────────────────────────────────
     window.toggleMod = function () {
-        const panel = document.getElementById('mod-panel');
+        const panel   = document.getElementById('mod-panel');
         if (!panel) return;
         const opening = !panel.classList.contains('active');
         panel.classList.toggle('active');
-        if (opening) loadModPanel();
+        if (opening) { loadModPanel('warned'); loadModStats(); }
     };
-
     window.switchModTab = function (tab) {
         document.querySelectorAll('.mod-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
         loadModPanel(tab);
     };
 
+    async function loadModStats() {
+        try {
+            const r = await fetch('/api/stats');
+            if (!r.ok) return;
+            const s = await r.json();
+            const el = document.getElementById('mod-stats-bar');
+            if (el) el.innerHTML = `
+                <span class="mod-stat">💬 ${s.total_messages} msgs</span>
+                <span class="mod-stat">⚠ ${s.total_warnings} warns</span>
+                <span class="mod-stat">👤 ${s.unique_warned_users} sancionados</span>
+                <span class="mod-stat">🔨 ${s.total_mod_actions} acciones</span>`;
+        } catch (e) {}
+    }
+
     async function loadModPanel(tab = 'warned') {
         const body = document.getElementById('mod-body');
         if (!body) return;
-        body.innerHTML = '<div class="mod-loading">Loading...</div>';
-
+        body.innerHTML = '<div class="mod-loading">Cargando...</div>';
         try {
             if (tab === 'warned') {
                 const res  = await fetch('/api/mod/users');
                 const data = await res.json();
+                if (data.error) throw new Error(data.error);
                 renderWarnedUsers(data, body);
             } else {
                 const res  = await fetch('/api/mod/action_log');
                 const data = await res.json();
+                if (data.error) throw new Error(data.error);
                 renderActionLog(data, body);
             }
-        } catch(e) {
-            body.innerHTML = '<div class="mod-empty">Error loading data</div>';
+        } catch (e) {
+            body.innerHTML = `<div class="mod-empty">❌ Error: ${escapeHtml(e.message)}</div>`;
         }
     }
 
     function renderWarnedUsers(users, container) {
         if (!users.length) {
-            container.innerHTML = '<div class="mod-empty">No warned users</div>';
+            container.innerHTML = '<div class="mod-empty">✅ Sin usuarios sancionados</div>';
             return;
         }
         container.innerHTML = '';
         users.forEach(u => {
-            const card = document.createElement('div');
+            const card    = document.createElement('div');
             card.className = 'mod-user-card';
-
             const initial = (u.user_name || '?')[0].toUpperCase();
-            const lastAction = u.last_action ? u.last_action.action.toUpperCase() : null;
+            const lastAct = u.last_action ? u.last_action.action.toUpperCase() : null;
+
+            // Últimas warns con mensaje que las activó — siempre escapeHtml en contenido del mensaje
+            const recentHtml = (u.recent_warnings || []).slice(0, 2).map(w => {
+                const reason  = escapeHtml(w.reason || '—');
+                const msgContent = w.message_content
+                    ? `<div class="warn-msg-preview">
+                           <span class="warn-msg-label">💬</span>
+                           <span class="warn-msg-text">${escapeHtml(w.message_content).substring(0, 100)}${w.message_content.length > 100 ? '…' : ''}</span>
+                       </div>`
+                    : '';
+                const link = w.message_link
+                    ? `<a class="warn-msg-link" href="${escapeHtml(w.message_link)}" target="_blank">🔗</a>`
+                    : '';
+                return `<div class="warn-entry">
+                    <span class="warn-entry-reason">${reason}</span>${link}
+                    ${msgContent}
+                </div>`;
+            }).join('');
 
             card.innerHTML = `
                 <div class="mod-user-avatar">${initial}</div>
-                <div class="mod-user-info" style="cursor:pointer" onclick="showWarnHistory(this, ${JSON.stringify(u).split('</').join('<\\/')})">
-                    <div class="mod-user-name">${escHtml(u.user_name || 'Unknown')}</div>
-                    <div class="mod-user-meta">${escHtml(u.user_id)}</div>
+                <div class="mod-user-info">
+                    <div class="mod-user-name">${escapeHtml(u.user_name || 'Unknown')}</div>
+                    <div class="mod-user-meta">ID: ${escapeHtml(u.user_id)}</div>
                     <div class="warn-badges">
                         <span class="warn-badge warn-badge-count">⚠ ${u.warn_count} warn${u.warn_count !== 1 ? 's' : ''}</span>
-                        ${lastAction ? `<span class="warn-badge warn-badge-action">${lastAction}</span>` : ''}
-                        <span class="warn-badge warn-badge-history">📋 History</span>
+                        ${lastAct ? `<span class="warn-badge warn-badge-action">${lastAct}</span>` : ''}
                     </div>
+                    ${recentHtml}
+                    <button class="warn-history-btn" onclick="showWarnHistory('${escapeHtml(u.user_id)}','${escapeHtml(u.user_name||'Unknown')}')">
+                        📋 Historial completo (${u.warn_count})
+                    </button>
                 </div>
                 <div class="mod-user-actions">
-                    <button class="mod-action-btn warn"    onclick="modAction('warn','${u.user_id}','${escHtml(u.user_name)}','${u.guild_id}',this)">Warn</button>
-                    <button class="mod-action-btn timeout" onclick="modAction('timeout','${u.user_id}','${escHtml(u.user_name)}','${u.guild_id}',this)">Timeout</button>
-                    <button class="mod-action-btn kick"    onclick="modAction('kick','${u.user_id}','${escHtml(u.user_name)}','${u.guild_id}',this)">Kick</button>
-                    <button class="mod-action-btn ban"     onclick="modAction('ban','${u.user_id}','${escHtml(u.user_name)}','${u.guild_id}',this)">Ban</button>
-                    <button class="mod-action-btn clear"   onclick="modAction('clear','${u.user_id}','${escHtml(u.user_name)}','${u.guild_id}',this)">Clear Warns</button>
-                </div>
-                <div class="timeout-picker" id="tp-${u.user_id}">
-                    <div class="timeout-presets">
-                        <button class="timeout-preset" data-s="3600">1h</button>
-                        <button class="timeout-preset" data-s="21600">6h</button>
-                        <button class="timeout-preset" data-s="86400">1d</button>
-                        <button class="timeout-preset" data-s="259200">3d</button>
-                        <button class="timeout-preset" data-s="604800">7d</button>
-                    </div>
-                    <div class="timeout-custom-row">
-                        <input type="number" class="timeout-custom-input" placeholder="min" min="1" id="tc-${u.user_id}"/>
-                        <button class="timeout-confirm-btn" onclick="applyTimeout('${u.user_id}','${u.guild_id}')">Apply</button>
-                    </div>
-                </div>
-            `;
-
-            // Preset click
-            card.querySelectorAll('.timeout-preset').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    card.querySelectorAll('.timeout-preset').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    const inp = document.getElementById('tc-' + u.user_id);
-                    if (inp) inp.value = Math.round(parseInt(btn.dataset.s) / 60);
-                });
-            });
-
+                    <button class="mod-action-btn warn"    onclick="modAction('warn','${escapeHtml(u.user_id)}','${escapeHtml(u.user_name||'')}','${escapeHtml(u.guild_id||'')}',this)">Warn</button>
+                    <button class="mod-action-btn timeout" onclick="modAction('timeout','${escapeHtml(u.user_id)}','${escapeHtml(u.user_name||'')}','${escapeHtml(u.guild_id||'')}',this)">Timeout</button>
+                    <button class="mod-action-btn kick"    onclick="modAction('kick','${escapeHtml(u.user_id)}','${escapeHtml(u.user_name||'')}','${escapeHtml(u.guild_id||'')}',this)">Kick</button>
+                    <button class="mod-action-btn ban"     onclick="modAction('ban','${escapeHtml(u.user_id)}','${escapeHtml(u.user_name||'')}','${escapeHtml(u.guild_id||'')}',this)">Ban</button>
+                    <button class="mod-action-btn clear"   onclick="modAction('clear','${escapeHtml(u.user_id)}','${escapeHtml(u.user_name||'')}','${escapeHtml(u.guild_id||'')}',this)">Clear</button>
+                </div>`;
             container.appendChild(card);
         });
     }
 
     function renderActionLog(actions, container) {
-        if (!actions || !actions.length) {
-            container.innerHTML = '<div class="mod-empty">No actions yet</div>';
+        if (!actions.length) {
+            container.innerHTML = '<div class="mod-empty">Sin acciones registradas</div>';
             return;
         }
         const table = document.createElement('table');
         table.className = 'mod-log-table';
         table.innerHTML = `
             <thead><tr>
-                <th>User</th><th>Action</th><th>Reason</th><th>Moderator</th><th>Date</th>
+                <th>Usuario</th><th>Acción</th><th>Razón</th><th>Moderador</th><th>Fecha</th>
             </tr></thead>
-            <tbody>
-            ${actions.map(a => `
+            <tbody>${actions.map(a => `
                 <tr>
-                    <td>${escHtml(a.user_name || a.user_id)}</td>
-                    <td><span class="log-action-badge ${a.action}">${{
-                        warn:'⚠ WARN', kick:'👢 KICK', ban:'🔨 BAN',
-                        timeout:'⏱ TIMEOUT', clear_warns:'🧹 CLEAR',
-                        ai_automod:'🤖 IA', ai_flagged_log:'🔍 IA LOG',
-                    }[a.action] || a.action.toUpperCase()}</span></td>
-                    <td>${escHtml(a.reason || '—')}</td>
-                    <td>${escHtml(a.moderator_name || '—')}</td>
-                    <td style="font-family:var(--f-mono);font-size:0.68rem">${a.timestamp ? a.timestamp.slice(0,16) : '—'}</td>
+                    <td>${escapeHtml(a.user_name || a.user_id)}</td>
+                    <td><span class="log-action-badge ${escapeHtml(a.action)}">${escapeHtml(a.action)}</span></td>
+                    <td title="${escapeHtml(a.reason||'')}">${escapeHtml((a.reason||'—').substring(0,60))}${(a.reason||'').length>60?'…':''}</td>
+                    <td>${escapeHtml(a.moderator_name || '—')}</td>
+                    <td>${a.timestamp ? a.timestamp.slice(0,16) : '—'}</td>
                 </tr>`).join('')}
             </tbody>`;
         container.innerHTML = '';
         container.appendChild(table);
     }
 
-    function escHtml(s) {
-        return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    }
+    // ─── WARN HISTORY MODAL ───────────────────────────────────────────────────
+    window.showWarnHistory = async function (userId, userName) {
+        const modal = document.getElementById('warn-history-modal');
+        if (!modal) return;
+        modal.classList.add('active');
+        const title   = document.getElementById('wh-title');
+        const content = document.getElementById('wh-content');
+        if (title)   title.textContent = `📋 Historial: ${userName}`;
+        if (content) content.innerHTML = '<div class="mod-loading">Cargando...</div>';
 
-    // ── Warn History Modal ──────────────────────────────────────────────────
-    let _warnHistoryModal = null;
-
-    window.showWarnHistory = function(el, userData) {
-        if (!_warnHistoryModal) {
-            _warnHistoryModal = document.createElement('div');
-            _warnHistoryModal.id = 'warn-history-modal';
-            _warnHistoryModal.innerHTML = `
-                <div class="wh-backdrop"></div>
-                <div class="wh-card">
-                    <div class="wh-header">
-                        <div class="wh-title" id="wh-title"></div>
-                        <button class="wh-close" id="wh-close">✕</button>
+        try {
+            const r    = await fetch(`/api/mod/warn_history/${encodeURIComponent(userId)}`);
+            const data = await r.json();
+            if (data.error) throw new Error(data.error);
+            if (!data.length) {
+                content.innerHTML = '<div class="mod-empty">Sin advertencias registradas</div>';
+                return;
+            }
+            content.innerHTML = data.map((w, i) => {
+                // CRÍTICO: escapeHtml en message_content para evitar XSS y renderizado HTML no deseado
+                const msgBlock = w.message_content
+                    ? `<div class="wh-msg-content">
+                           <span class="wh-msg-label">💬 Mensaje que activó la sanción:</span>
+                           <pre class="wh-msg-pre">${escapeHtml(w.message_content)}</pre>
+                       </div>`
+                    : '<div class="wh-msg-content"><em style="color:var(--t2)">Sin mensaje guardado</em></div>';
+                const link = w.message_link
+                    ? `<a class="warn-msg-link" href="${escapeHtml(w.message_link)}" target="_blank" rel="noopener">🔗 Ver en Discord</a>`
+                    : '';
+                return `<div class="wh-entry">
+                    <div class="wh-entry-header">
+                        <span class="wh-num">#${data.length - i}</span>
+                        <span class="wh-reason">${escapeHtml(w.reason || '—')}</span>
+                        <span class="wh-mod">por ${escapeHtml(w.moderator_name || 'AutoMod')}</span>
+                        <span class="wh-ts">${w.timestamp ? w.timestamp.slice(0,16) : '—'}</span>
                     </div>
-                    <div class="wh-body" id="wh-body"></div>
-                </div>
-            `;
-            document.body.appendChild(_warnHistoryModal);
-            _warnHistoryModal.querySelector('.wh-backdrop').addEventListener('click', closeWarnHistory);
-            _warnHistoryModal.querySelector('#wh-close').addEventListener('click', closeWarnHistory);
-            document.addEventListener('keydown', e => { if (e.key === 'Escape') closeWarnHistory(); });
-        }
-
-        const u = typeof userData === 'string' ? JSON.parse(userData) : userData;
-        _warnHistoryModal.querySelector('#wh-title').textContent =
-            `${u.user_name || 'Unknown'} — ${u.warn_count} warning${u.warn_count !== 1 ? 's' : ''}`;
-
-        const body = _warnHistoryModal.querySelector('#wh-body');
-        if (!u.warnings || !u.warnings.length) {
-            body.innerHTML = '<div class="wh-empty">No warnings on record</div>';
-        } else {
-            body.innerHTML = u.warnings.map((w, i) => {
-                const ts = w.timestamp ? new Date(w.timestamp.replace(' ', 'T') + 'Z').toLocaleString() : '—';
-                const hasMsg = w.message_content != null && String(w.message_content).trim() !== '';
-                const hasLink = w.message_link != null && String(w.message_link).trim() !== '';
-                return `
-                <div class="wh-warn-item">
-                    <div class="wh-warn-num">#${u.warnings.length - i}</div>
-                    <div class="wh-warn-body">
-                        <div class="wh-warn-reason">${escHtml(w.reason || 'No reason')}</div>
-                        ${hasMsg ? `<div class="wh-warn-message">${escHtml(w.message_content)}</div>` : ''}
-                        <div class="wh-warn-meta">
-                            <span class="wh-warn-mod">by ${escHtml(w.moderator_name || 'AutoMod')}</span>
-                            <span class="wh-warn-time">${ts}</span>
-                            ${hasLink ? `<a class="wh-warn-link" href="${escHtml(w.message_link)}" target="_blank" rel="noopener">↗ Jump to message</a>` : '<span class="wh-warn-link wh-warn-link--deleted">Message deleted</span>'}
-                        </div>
-                    </div>
+                    ${msgBlock}${link}
                 </div>`;
             }).join('');
+        } catch (e) {
+            if (content) content.innerHTML = `<div class="mod-empty">❌ Error: ${escapeHtml(e.message)}</div>`;
         }
-
-        _warnHistoryModal.classList.add('wh-open');
-        requestAnimationFrame(() => _warnHistoryModal.classList.add('wh-visible'));
     };
 
-    function closeWarnHistory() {
-        if (!_warnHistoryModal) return;
-        _warnHistoryModal.classList.remove('wh-visible');
-        setTimeout(() => _warnHistoryModal?.classList.remove('wh-open'), 220);
-    }
+    window.closeWarnHistory = function () {
+        document.getElementById('warn-history-modal')?.classList.remove('active');
+    };
 
-    // ── Mod confirm modal ──
-    let _modConfirmModal = null;
-
-    function showModConfirm({ icon, message, confirmLabel, confirmClass, onConfirm }) {
-        if (!_modConfirmModal) {
-            _modConfirmModal = document.createElement('div');
-            _modConfirmModal.id = 'mod-confirm-modal';
-            _modConfirmModal.innerHTML = `
-                <div class="mod-confirm-backdrop"></div>
-                <div class="mod-confirm-card">
-                    <div class="mod-confirm-icon" id="mc-icon"></div>
-                    <div class="mod-confirm-msg" id="mc-msg"></div>
-                    <div class="mod-confirm-actions">
-                        <button class="mod-confirm-btn mod-confirm-cancel" id="mc-cancel">Cancel</button>
-                        <button class="mod-confirm-btn mod-confirm-ok" id="mc-ok"></button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(_modConfirmModal);
-            _modConfirmModal.querySelector('.mod-confirm-backdrop').addEventListener('click', hideModConfirm);
-            _modConfirmModal.querySelector('#mc-cancel').addEventListener('click', hideModConfirm);
-            document.addEventListener('keydown', e => {
-                if (e.key === 'Escape') hideModConfirm();
-            });
-        }
-
-        _modConfirmModal.querySelector('#mc-icon').textContent = icon;
-        _modConfirmModal.querySelector('#mc-msg').innerHTML    = message;
-        const okBtn = _modConfirmModal.querySelector('#mc-ok');
-        okBtn.textContent = confirmLabel;
-        okBtn.className   = 'mod-confirm-btn mod-confirm-ok ' + (confirmClass || '');
-        okBtn.onclick     = () => { hideModConfirm(); onConfirm(); };
-
-        _modConfirmModal.classList.add('mc-open');
-        requestAnimationFrame(() => _modConfirmModal.classList.add('mc-visible'));
-    }
-
-    function hideModConfirm() {
-        if (!_modConfirmModal) return;
-        _modConfirmModal.classList.remove('mc-visible');
-        setTimeout(() => _modConfirmModal?.classList.remove('mc-open'), 220);
-    }
-
+    // ─── ACCIONES DE MOD ──────────────────────────────────────────────────────
     window.modAction = async function (action, uid, uname, gid, btn) {
-        if (action === 'timeout') {
-            // Toggle the timeout picker
-            const picker = document.getElementById('tp-' + uid);
-            if (picker) picker.classList.toggle('open');
-            return;
+        const labels = {
+            warn:'advertir a', timeout:'silenciar 24h a', kick:'expulsar a',
+            ban:'banear a', clear:'limpiar warns de'
+        };
+        if (!confirm(`¿${labels[action] || action} ${uname}?`)) return;
+
+        let reason = 'Manual action from web panel';
+        if (action !== 'clear') {
+            const input = prompt(`Razón para ${action} a ${uname}:`, reason);
+            if (input === null) return;
+            reason = input.trim() || reason;
         }
 
-        const ACTION_CONFIG = {
-            warn:  { msg: `Add a warning to <strong>${uname}</strong>?`,           icon: '⚠️', confirmLabel: 'Warn',          confirmClass: 'mod-confirm-warn',  endpoint: '/api/mod/warn'        },
-            kick:  { msg: `Kick <strong>${uname}</strong> from the server?`,        icon: '👢', confirmLabel: 'Kick',          confirmClass: 'mod-confirm-kick',  endpoint: '/api/mod/kick'        },
-            ban:   { msg: `Permanently ban <strong>${uname}</strong>?<br><small>This action cannot be undone.</small>`, icon: '🔨', confirmLabel: 'Ban', confirmClass: 'mod-confirm-ban', endpoint: '/api/mod/ban' },
-            clear: { msg: `Clear all warnings for <strong>${uname}</strong>?`,      icon: '🧹', confirmLabel: 'Clear',         confirmClass: 'mod-confirm-clear', endpoint: '/api/mod/clear_warns' },
-        };
-
-        const cfg = ACTION_CONFIG[action];
-        if (!cfg) return;
-
-        showModConfirm({
-            icon:         cfg.icon,
-            message:      cfg.msg,
-            confirmLabel: cfg.confirmLabel,
-            confirmClass: cfg.confirmClass,
-            onConfirm: async () => {
-                btn.disabled = true;
-                try {
-                    const r = await fetch(cfg.endpoint, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ user_id: uid, user_name: uname, guild_id: gid, reason: 'Web mod action' })
-                    });
-                    const d = await r.json();
-                    if (r.ok) {
-                        showToast(action === 'clear' ? 'Warnings cleared' : cfg.confirmLabel + ' applied', 'success');
-                        await loadModPanel('warned');
-                    } else {
-                        showToast(d.error || 'Error', 'error');
-                    }
-                } catch(e) {
-                    showToast('Network error', 'error');
-                } finally {
-                    btn.disabled = false;
-                }
-            }
-        });
-    };
-
-    window.applyTimeout = async function (uid, gid) {
-        const inp = document.getElementById('tc-' + uid);
-        const minutes = parseInt(inp?.value || '0');
-        if (!minutes || minutes < 1) { showToast('Enter duration in minutes', 'error'); return; }
-        const seconds = minutes * 60;
+        if (btn) { btn.disabled = true; btn.textContent = '…'; }
         try {
-            const r = await fetch('/api/mod/timeout', {
+            const res  = await fetch('/api/mod/action', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: uid, guild_id: gid, duration_seconds: seconds, reason: 'Web timeout' })
+                body: JSON.stringify({ action, user_id: uid, user_name: uname, guild_id: gid, reason })
             });
-            const d = await r.json();
-            if (r.ok) {
-                showToast(`Timeout applied (${minutes}min)`, 'success');
-                document.getElementById('tp-' + uid)?.classList.remove('open');
-                await loadModPanel('warned');
-            } else {
-                showToast(d.error || 'Error', 'error');
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+            showToast(`✅ ${action.toUpperCase()} aplicado a ${uname}`, 'success');
+            setTimeout(() => { loadModPanel('warned'); loadModStats(); }, 600);
+        } catch (e) {
+            showToast(`❌ Error: ${e.message}`, 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                const btnLabels = { warn:'Warn', timeout:'Timeout', kick:'Kick', ban:'Ban', clear:'Clear' };
+                btn.textContent = btnLabels[action] || action;
             }
-        } catch(e) {
-            showToast('Network error', 'error');
         }
     };
 
-    // Close on Escape
-    document.addEventListener('keydown', e => {
-        if (e.key === 'Escape') {
-            document.getElementById('mod-panel')?.classList.remove('active');
-            document.getElementById('login-modal')?.classList.remove('active');
+    // ─── TOAST ────────────────────────────────────────────────────────────────
+    function showToast(message, type = 'info') {
+        let container = document.getElementById('toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toast-container';
+            container.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
+            document.body.appendChild(container);
         }
-    });
+        const toast = document.createElement('div');
+        const colors = { success:'#26c9b8', error:'#ff6b6b', warn:'#f5a623', info:'#a78bfa' };
+        const c = colors[type] || colors.info;
+        toast.style.cssText = `background:rgba(20,18,31,0.95);border:1px solid ${c};color:${c};padding:10px 16px;border-radius:8px;font-size:13px;font-family:var(--f-display,sans-serif);backdrop-filter:blur(10px);pointer-events:auto;max-width:320px;box-shadow:0 4px 20px rgba(0,0,0,0.4);transition:opacity 0.3s;`;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3500);
+    }
 
-    // Refresh mod panel on channel switch
-    document.getElementById('mod-panel')?.addEventListener('click', () => {});
+    // ─── STATS ────────────────────────────────────────────────────────────────
+    window.generateStats = function () {
+        let type = 'offensive';
+        if (document.getElementById('dvg')?.value.trim() !== '') type = 'gk';
+        const inputs = type === 'offensive' ? ['sht','dbl','stl','psn','dfd'] : ['dvg','biq','rfx','dtg'];
+        let data = {}, sum = 0;
+        inputs.forEach(id => {
+            let val = parseFloat(document.getElementById(id)?.value) || 0;
+            val = Math.min(10, Math.max(0, val));
+            data[id] = val; sum += val;
+        });
+        const avg  = sum / inputs.length;
+        const rank = type === 'offensive' ? getOffensiveRank(avg) : getGKRank(avg);
+        drawGraph(type, data, avg, rank);
+        document.getElementById('stats-modal')?.classList.add('active');
+        document.getElementById('stats-drawer')?.classList.remove('active');
+    };
 
+    function getOffensiveRank(s) {
+        if (s < 4.6) return 'N/A';
+        const ranks = [
+            [4.8,'ROOKIE 🥉 - ⭐'],[5.1,'ROOKIE 🥉 - ⭐⭐'],[5.4,'ROOKIE 🥉 - ⭐⭐⭐'],
+            [5.7,'AMATEUR ⚽ - ⭐'],[6.0,'AMATEUR ⚽ - ⭐⭐'],[6.3,'AMATEUR ⚽ - ⭐⭐⭐'],
+            [6.6,'ELITE ⚡ - ⭐'],[6.9,'ELITE ⚡ - ⭐⭐'],[7.2,'ELITE ⚡ - ⭐⭐⭐'],
+            [7.5,'PRODIGY 🏅 - ⭐'],[7.8,'PRODIGY 🏅 - ⭐⭐'],[8.1,'PRODIGY 🏅 - ⭐⭐⭐'],
+            [8.4,'NEW GEN XI - ⭐'],[8.7,'NEW GEN XI - ⭐⭐'],[9.0,'NEW GEN XI - ⭐⭐⭐'],
+            [9.3,'WORLD CLASS 👑 - ⭐'],[9.6,'WORLD CLASS 👑 - ⭐⭐'],[Infinity,'WORLD CLASS 👑 - ⭐⭐⭐']
+        ];
+        return (ranks.find(([max]) => s <= max) || ranks[ranks.length-1])[1];
+    }
+    function getGKRank(s) {
+        if (s <= 6.9) return 'D TIER'; if (s <= 7.9) return 'C TIER';
+        if (s <= 8.4) return 'B TIER'; if (s <= 8.9) return 'A TIER';
+        if (s <= 9.4) return 'S TIER'; return 'S+ TIER';
+    }
+    function drawGraph(type, data, avg, rank) {
+        if (!ctx) return;
+        const W=500,H=500,CX=250,CY=248,R=132;
+        const isGK=type==='gk', mainCol=isGK?'#A78BFA':'#F5A623',
+              fillCol=isGK?'rgba(167,139,250,0.25)':'rgba(245,166,35,0.22)',
+              glowCol=isGK?'rgba(167,139,250,0.55)':'rgba(245,166,35,0.50)';
+        ctx.clearRect(0,0,W,H); ctx.fillStyle='#0F0E17'; ctx.fillRect(0,0,W,H);
+        const grd=ctx.createRadialGradient(CX,CY,0,CX,CY,R*1.3);
+        grd.addColorStop(0,isGK?'rgba(167,139,250,0.06)':'rgba(245,166,35,0.06)');
+        grd.addColorStop(1,'transparent'); ctx.fillStyle=grd; ctx.fillRect(0,0,W,H);
+        const keys=Object.keys(data),total=keys.length,step=(Math.PI*2)/total;
+        for(let l=1;l<=4;l++){
+            const rad=(R/4)*l; ctx.beginPath();
+            if(isGK) ctx.arc(CX,CY,rad,0,Math.PI*2);
+            else keys.forEach((_,i)=>{const a=i*step-Math.PI/2; i===0?ctx.moveTo(CX+Math.cos(a)*rad,CY+Math.sin(a)*rad):ctx.lineTo(CX+Math.cos(a)*rad,CY+Math.sin(a)*rad);});
+            ctx.strokeStyle=isGK?`rgba(167,139,250,${l===4?0.3:0.08})`:`rgba(245,166,35,${l===4?0.3:0.08})`;
+            ctx.lineWidth=l===4?1.5:0.8; ctx.stroke();
+        }
+        ctx.beginPath();
+        keys.forEach((k,i)=>{const rad=(data[k]/10)*R,a=i*step-Math.PI/2; i===0?ctx.moveTo(CX+Math.cos(a)*rad,CY+Math.sin(a)*rad):ctx.lineTo(CX+Math.cos(a)*rad,CY+Math.sin(a)*rad);});
+        ctx.closePath(); ctx.shadowBlur=22; ctx.shadowColor=glowCol;
+        ctx.fillStyle=fillCol; ctx.fill(); ctx.strokeStyle=mainCol; ctx.lineWidth=2.5; ctx.stroke(); ctx.shadowBlur=0;
+        keys.forEach((k,i)=>{const rad=(data[k]/10)*R,a=i*step-Math.PI/2,x=CX+Math.cos(a)*rad,y=CY+Math.sin(a)*rad;
+            ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);ctx.shadowBlur=10;ctx.shadowColor=glowCol;ctx.fillStyle=mainCol+'CC';ctx.fill();
+            ctx.beginPath();ctx.arc(x,y,2.5,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.shadowBlur=0;});
+        keys.forEach((k,i)=>{const a=i*step-Math.PI/2,lx=CX+Math.cos(a)*(R+36),ly=CY+Math.sin(a)*(R+36);
+            ctx.font="700 15px 'Sora',sans-serif";ctx.fillStyle=mainCol;ctx.textAlign='center';ctx.textBaseline='middle';
+            ctx.shadowBlur=6;ctx.shadowColor=glowCol;ctx.fillText(k.toUpperCase(),lx,ly);ctx.shadowBlur=0;});
+        ctx.font="400 12px 'JetBrains Mono',monospace";ctx.fillStyle='#6B6480';ctx.textAlign='center';
+        ctx.fillText('AVG  '+avg.toFixed(2)+'  /  10',CX,449);
+        ctx.shadowBlur=20;ctx.shadowColor=glowCol;ctx.font="800 24px 'Sora',sans-serif";ctx.fillStyle=mainCol;
+        ctx.fillText(rank,CX,482);ctx.shadowBlur=0;
+    }
+
+    // ─── SHORTCUTS GLOBALES ───────────────────────────────────────────────────
+    window.toggleDrawer        = () => document.getElementById('stats-drawer')?.classList.toggle('active');
+    window.toggleCommands      = () => document.getElementById('commands-panel')?.classList.toggle('active');
+    window.toggleSettings      = () => document.getElementById('settings-panel')?.classList.toggle('active');
+    window.toggleChannelDrawer = () => document.getElementById('channel-drawer')?.classList.toggle('open');
+
+    // ─── ARRANQUE ─────────────────────────────────────────────────────────────
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
 })();
