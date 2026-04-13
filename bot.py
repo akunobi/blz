@@ -1,4 +1,4 @@
-# bot.py - BLZ-T Bot con Flask, AutoMod, Slash Commands y Panel de Logs
+# bot.py - BLZ-T Bot completo con AutoMod, Slash Commands, Panel de Logs y todas las APIs necesarias
 import discord
 from discord.ext import commands
 import sqlite3
@@ -68,7 +68,7 @@ def _gs_get_token():
     if _gs_token_cache["token"] and now < _gs_token_cache["exp"] - 60:
         return _gs_token_cache["token"]
     if not SHEETS_CREDS_JSON:
-        raise RuntimeError("GOOGLE_SHEETS_CREDENTIALS no está configurado en Render")
+        raise RuntimeError("GOOGLE_SHEETS_CREDENTIALS no está configurado")
     try:
         info = _json_mod.loads(SHEETS_CREDS_JSON)
     except Exception as e:
@@ -179,7 +179,6 @@ intents.reactions = True
 client = commands.Bot(command_prefix='!', intents=intents)
 
 bot_ready_event = threading.Event()
-deadline_tasks = {}
 
 # --- BASE DE DATOS ---
 def get_db_connection():
@@ -291,7 +290,7 @@ async def on_ready():
     except Exception as e:
         logger.error(f"!!! [HISTORY ERROR ON READY]: {e}")
 
-# --- AUTO MODERACIÓN (mejorada) ---
+# --- AUTO MODERACIÓN ---
 _LEET_DIGITS = str.maketrans({
     '0': 'o', '1': 'i', '3': 'e', '4': 'a',
     '5': 's', '6': 'g', '7': 't', '8': 'b', '9': 'g',
@@ -407,8 +406,6 @@ _spam_cache = collections.defaultdict(lambda: collections.defaultdict(collection
 SPAM_WINDOW = 10
 SPAM_MAX_SAME = 3
 WARN_TIMEOUT_AT = 3
-WARN_BAN_3D_AT = 1
-WARN_PERMA_AT = 1
 
 def add_warning(user_id, user_name, guild_id, reason, mod_id='BOT', mod_name='AutoMod',
                 message_content=None, message_link=None):
@@ -459,7 +456,6 @@ async def _notify_warn_admins(member, guild, warn_count):
             logger.error(f"!!! [WARN DM] Failed to DM admin {admin_id}: {e}")
 
 async def escalate_user(member, guild, warn_count, reason):
-    import datetime
     uid = str(member.id)
     gid = str(guild.id)
     name = member.name
@@ -496,7 +492,6 @@ async def escalate_user(member, guild, warn_count, reason):
 async def handle_deadline_interaction(interaction: discord.Interaction, user: discord.Member):
     await interaction.response.defer(ephemeral=False)
     channel = interaction.channel
-    guild = interaction.guild
     mention_str = user.mention
     deadline_dt = datetime.datetime.utcnow() + datetime.timedelta(hours=24)
     unix_ts = int(deadline_dt.timestamp())
@@ -573,6 +568,7 @@ async def slash_deadline(interaction: discord.Interaction, user: discord.Member)
         return
     await handle_deadline_interaction(interaction, user)
 
+# Comandos de prefijo !done y !deadline (compatibilidad)
 @client.event
 async def on_message(message):
     if message.author.bot:
@@ -588,10 +584,8 @@ async def on_message(message):
     if guild and message.content:
         found_word = contains_bad_word(message.content)
         if found_word:
-            deleted = False
             try:
                 await message.delete()
-                deleted = True
             except Exception as e:
                 logger.error(f'!!! [AUTOMOD DELETE ERROR]: {e}')
             _msg_link = f"https://discord.com/channels/{guild.id}/{message.channel.id}/{message.id}"
@@ -612,6 +606,7 @@ async def on_message(message):
                 await escalate_user(member, guild, warn_count, f'Bad word: {found_word}')
             return
 
+        # Spam detection
         now = _time_gs.time()
         gid = str(guild.id)
         uid = str(message.author.id)
@@ -1018,7 +1013,164 @@ def get_logs():
     except FileNotFoundError:
         return "No log file yet.", 404
 
-# --- MOD API ---
+# --- NUEVAS RUTAS: MIEMBROS Y MENCIONES ---
+@app.route('/api/members')
+def get_members():
+    if not bot_ready_event.is_set():
+        return jsonify({"members": [], "roles": []}), 503
+    async def fetch():
+        cat = client.get_channel(TARGET_CATEGORY_ID) or await client.fetch_channel(TARGET_CATEGORY_ID)
+        if not cat or not cat.guild:
+            return {"members": [], "roles": []}
+        guild = cat.guild
+        members = []
+        async for member in guild.fetch_members(limit=1000):
+            members.append({
+                "id": str(member.id),
+                "display": member.display_name,
+                "username": member.name,
+                "avatar": str(member.avatar.url) if member.avatar else None
+            })
+        roles = [{"id": str(r.id), "name": r.name, "color": f"#{r.color.value:06x}" if r.color.value else "#888888"}
+                 for r in guild.roles if r.name != "@everyone"]
+        return {"members": members, "roles": roles}
+    future = asyncio.run_coroutine_threadsafe(fetch(), client.loop)
+    try:
+        return jsonify(future.result(timeout=10))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/mention_lookup', methods=['POST'])
+def mention_lookup():
+    if not bot_ready_event.is_set():
+        return jsonify({"error": "Bot not ready"}), 503
+    data = request.get_json(force=True) or {}
+    user_ids = data.get('users', [])
+    role_ids = data.get('roles', [])
+    async def lookup():
+        cat = client.get_channel(TARGET_CATEGORY_ID) or await client.fetch_channel(TARGET_CATEGORY_ID)
+        guild = cat.guild if cat else None
+        result = {"users": {}, "roles": {}}
+        for uid in set(user_ids):
+            try:
+                uid_int = int(uid)
+            except:
+                continue
+            member = guild.get_member(uid_int) if guild else None
+            if not member and guild:
+                try:
+                    member = await guild.fetch_member(uid_int)
+                except:
+                    pass
+            if member:
+                result["users"][str(uid)] = {
+                    "display": f"@{member.display_name}",
+                    "tag": f"{member.name}#{member.discriminator}"
+                }
+            else:
+                user = client.get_user(uid_int) or await client.fetch_user(uid_int)
+                if user:
+                    result["users"][str(uid)] = {
+                        "display": f"@{user.name}",
+                        "tag": f"{user.name}#{user.discriminator}"
+                    }
+        if guild:
+            for rid in set(role_ids):
+                try:
+                    rid_int = int(rid)
+                except:
+                    continue
+                role = guild.get_role(rid_int)
+                if role:
+                    result["roles"][str(rid)] = f"@{role.name}"
+        return result
+    future = asyncio.run_coroutine_threadsafe(lookup(), client.loop)
+    try:
+        return jsonify(future.result(timeout=10))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# --- RUTAS PARA EDITAR, ELIMINAR, REACCIONAR ---
+@app.route('/api/messages/<int:message_id>/delete', methods=['POST'])
+def delete_message(message_id):
+    data = request.json or {}
+    channel_id = data.get('channel_id')
+    if not channel_id:
+        return jsonify({'error': 'channel_id required'}), 400
+    if not bot_ready_event.is_set():
+        return jsonify({'error': 'Bot desconectado'}), 503
+    async def _delete():
+        try:
+            channel = await client.fetch_channel(int(channel_id))
+            msg = await channel.fetch_message(message_id)
+            await msg.delete()
+            conn = get_db_connection()
+            conn.execute('DELETE FROM messages WHERE message_id = ?', (message_id,))
+            conn.commit()
+            conn.close()
+            return {'success': True}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    future = asyncio.run_coroutine_threadsafe(_delete(), client.loop)
+    try:
+        res = future.result(timeout=10)
+        return jsonify(res if res['success'] else {'error': res['error']}), (200 if res['success'] else 400)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/messages/<int:message_id>/edit', methods=['POST'])
+def edit_message(message_id):
+    data = request.json or {}
+    channel_id = data.get('channel_id')
+    new_content = data.get('content', '').strip()
+    if not channel_id or not new_content:
+        return jsonify({'error': 'channel_id and content required'}), 400
+    if not bot_ready_event.is_set():
+        return jsonify({'error': 'Bot desconectado'}), 503
+    async def _edit():
+        try:
+            channel = await client.fetch_channel(int(channel_id))
+            msg = await channel.fetch_message(message_id)
+            await msg.edit(content=new_content)
+            conn = get_db_connection()
+            conn.execute('UPDATE messages SET content = ? WHERE message_id = ?', (new_content, message_id))
+            conn.commit()
+            conn.close()
+            return {'success': True}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    future = asyncio.run_coroutine_threadsafe(_edit(), client.loop)
+    try:
+        res = future.result(timeout=10)
+        return jsonify(res if res['success'] else {'error': res['error']}), (200 if res['success'] else 400)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/messages/<int:message_id>/react', methods=['POST'])
+def react_message(message_id):
+    data = request.json or {}
+    channel_id = data.get('channel_id')
+    emoji = data.get('emoji', '')
+    if not channel_id or not emoji:
+        return jsonify({'error': 'channel_id and emoji required'}), 400
+    if not bot_ready_event.is_set():
+        return jsonify({'error': 'Bot desconectado'}), 503
+    async def _react():
+        try:
+            channel = await client.fetch_channel(int(channel_id))
+            msg = await channel.fetch_message(message_id)
+            await msg.add_reaction(emoji)
+            return {'success': True}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    future = asyncio.run_coroutine_threadsafe(_react(), client.loop)
+    try:
+        res = future.result(timeout=10)
+        return jsonify(res if res['success'] else {'error': res['error']}), (200 if res['success'] else 400)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# --- MOD PANEL API ---
 @app.route('/api/mod/users')
 def mod_users():
     conn = get_db_connection()
@@ -1084,7 +1236,6 @@ def mod_timeout():
     if not bot_ready_event.is_set():
         return jsonify({'error': 'Bot desconectado'}), 503
     async def _do():
-        import datetime
         try:
             guild = await client.fetch_guild(int(gid))
             member = guild.get_member(int(uid)) or await guild.fetch_member(int(uid))
@@ -1094,8 +1245,9 @@ def mod_timeout():
             return {'success': True}
         except Exception as e:
             return {'success': False, 'error': str(e)}
+    future = asyncio.run_coroutine_threadsafe(_do(), client.loop)
     try:
-        r = asyncio.run_coroutine_threadsafe(_do(), client.loop).result(timeout=10)
+        r = future.result(timeout=10)
         return jsonify(r) if r['success'] else jsonify({'error': r['error']}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1119,8 +1271,9 @@ def mod_kick():
             return {'success': True}
         except Exception as e:
             return {'success': False, 'error': str(e)}
+    future = asyncio.run_coroutine_threadsafe(_do(), client.loop)
     try:
-        r = asyncio.run_coroutine_threadsafe(_do(), client.loop).result(timeout=10)
+        r = future.result(timeout=10)
         return jsonify(r) if r['success'] else jsonify({'error': r['error']}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1145,8 +1298,9 @@ def mod_ban():
             return {'success': True}
         except Exception as e:
             return {'success': False, 'error': str(e)}
+    future = asyncio.run_coroutine_threadsafe(_do(), client.loop)
     try:
-        r = asyncio.run_coroutine_threadsafe(_do(), client.loop).result(timeout=10)
+        r = future.result(timeout=10)
         return jsonify(r) if r['success'] else jsonify({'error': r['error']}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
