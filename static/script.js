@@ -1,4 +1,4 @@
-// static/script.js - BLZ-T Frontend Completo (Corregido)
+// static/script.js - BLZ-T Frontend Completo (Corregido y Mejorado)
 
 (function() {
     "use strict";
@@ -363,29 +363,37 @@
         } catch (e) { return '——'; }
     }
 
+    // AQUI ESTA LA MAGIA PARA QUE NO SE ROMPA EL HTML EN LOS MENSAJES Y MENCIONES
     function renderDiscordContent(text) {
         if (!text) return '';
-        let working = escapeHtml(text);
+        let working = escapeHtml(text); // Escapamos etiquetas maliciosas primero
+        
+        // Reemplazar menciones de usuario por span clickeable para Deadline
         working = working.replace(/&lt;@!?(\d+)&gt;/g, (m, id) => {
             const resolved = mentionCache.users[id];
-            if (resolved) {
-                const display = (typeof resolved === 'string') ? resolved : (resolved.display || `@${id}`);
-                return `<span class="mention mention-user">${escapeHtml(display)}</span>`;
-            }
-            return `<span class="mention">@${id}</span>`;
+            const display = resolved ? ((typeof resolved === 'string') ? resolved : (resolved.display || `@${id}`)) : `@Usuario_${id.substring(0,4)}`;
+            // Agregado cursor y evento onclick para disparar el prompt del deadline
+            return `<span class="mention mention-user" style="cursor: pointer;" onclick="promptDeadline('${id}')" title="Click para lanzar Deadline">${escapeHtml(display)}</span>`;
         });
+        
+        // Menciones de rol
         working = working.replace(/&lt;@&amp;(\d+)&gt;/g, (m, id) => {
             const resolved = mentionCache.roles[id];
             return resolved ? `<span class="mention mention-role">${escapeHtml(resolved)}</span>` : `<span class="mention">@role:${id}</span>`;
         });
+        
+        // Menciones de canal
         working = working.replace(/&lt;#(\d+)&gt;/g, (m, id) => {
             const name = channelMap[id];
             return name ? `<span class="mention mention-channel">#${escapeHtml(name)}</span>` : `<span class="mention">#${id}</span>`;
         });
+        
         working = formatLinks(working);
         working = working.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
         working = working.replace(/\*(.+?)\*/g, '<em>$1</em>');
         working = working.replace(/`(.+?)`/g, '<code>$1</code>');
+        working = working.replace(/\n/g, "<br>"); // Saltos de linea
+        
         return working;
     }
 
@@ -550,10 +558,23 @@
         } catch (e) {}
     }
 
-    // ---------- ENVÍO DE MENSAJES ----------
+    // ---------- ENVÍO DE MENSAJES Y COMANDOS DESDE LA WEB ----------
     async function sendMessage() {
         const content = msgInput.value.trim();
         if (!content || !currentChannelId) return;
+        
+        // INTERCEPTAR COMANDO /deadline DESDE LA WEB
+        if (content.startsWith("/deadline ")) {
+            const args = content.split(" ");
+            const targetId = args[1];
+            if(targetId) {
+                // Limpia el formato de mencion a puro numero si lo hay
+                window.triggerWebDeadline(targetId.replace(/[<@!>]/g, "")); 
+                msgInput.value = '';
+                return;
+            }
+        }
+
         const originalPlaceholder = msgInput.placeholder;
         let optimisticNode = null;
         let optimisticClientId = String(Date.now()) + Math.floor(Math.random()*1000);
@@ -563,7 +584,7 @@
             optimisticNode.setAttribute('data-optimistic', '1');
             optimisticNode.dataset.clientId = optimisticClientId;
             optimisticNode.dataset.optimisticTs = String(Date.now());
-            optimisticNode.innerHTML = `<div class="msg-header"><div class="msg-time">——:——</div><div class="msg-author">${botName || 'BOT'}</div></div><div class="msg-content">${formatLinks(content)}</div>`;
+            optimisticNode.innerHTML = `<div class="msg-header"><div class="msg-time">——:——</div><div class="msg-author">${botName || 'BOT'}</div></div><div class="msg-content">${formatLinks(escapeHtml(content))}</div>`;
             chatFeed.appendChild(optimisticNode);
             chatFeed.scrollTop = chatFeed.scrollHeight;
         } catch (e) {}
@@ -594,6 +615,35 @@
         }
     }
 
+    // ---------- DEADLINE API (NUEVO) ----------
+    window.promptDeadline = function(targetId) {
+        if(confirm(`¿Quieres enviar un DEADLINE de 24h al usuario con ID: ${targetId}?`)) {
+            window.triggerWebDeadline(targetId);
+        }
+    };
+
+    window.triggerWebDeadline = function(targetId) {
+        if(!currentChannelId) {
+            alert("Selecciona un canal de ticket primero para mandar el deadline.");
+            return;
+        }
+        
+        fetch('/api/deadline', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target_id: targetId, channel_id: currentChannelId })
+        })
+        .then(res => res.json())
+        .then(data => {
+            alert(data.status || "Comando procesado exitosamente");
+            fetchMessages(false); // Refresca el chat
+        })
+        .catch(err => {
+            alert("Error al ejecutar deadline: " + err);
+        });
+    };
+
+
     // ---------- PANEL DE LOGS ----------
     function openLogs() {
         const panel = document.getElementById('logs-panel');
@@ -623,9 +673,10 @@
         try {
             const res = await fetch('/api/logs?lines=200');
             const text = await res.text();
+            // textContent previene inyecciones maliciosas de tags HTML!
             document.getElementById('logs-content').textContent = text;
         } catch (e) {
-            document.getElementById('logs-content').textContent = 'Error al cargar logs';
+            document.getElementById('logs-content').textContent = 'Error al cargar logs del sistema';
         }
     }
 
@@ -864,9 +915,18 @@
     window.toggleCommands = () => document.getElementById('commands-panel')?.classList.toggle('active');
     window.toggleSettings = () => document.getElementById('settings-panel')?.classList.toggle('active');
     window.toggleChannelDrawer = () => document.getElementById('channel-drawer')?.classList.toggle('open');
-    window.sendDeadlineCommand = async () => { /* implementación simplificada */ };
-    window.modAction = async (action, uid, uname, gid, btn) => { /* implementación */ };
-    window.showWarnHistory = (el, userData) => { alert('History: ' + userData); };
+    
+    // Mejorado para no mostrar object object ni json roto, muestra datos en texto plano
+    window.showWarnHistory = (el, userDataStr) => { 
+        try {
+            const u = JSON.parse(userDataStr);
+            alert(`HISTORIAL MODERACIÓN - ${u.user_name}\n\nTotal Advertencias: ${u.warn_count}\nÚltima Acción: ${u.last_action ? u.last_action.action : 'Ninguna'}\n\n(Revisa la base de datos para el historial completo)`);
+        } catch(e) {
+            alert('Error leyendo historial: ' + e);
+        }
+    };
+    
+    window.modAction = async (action, uid, uname, gid, btn) => { /* implementación pendiente tuya */ };
 
     // Iniciar
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
