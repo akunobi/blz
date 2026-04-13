@@ -15,7 +15,6 @@
 
     <div class="app">
 
-        <!-- ═══ TOP NAV ═══ -->
         <nav class="topnav">
             <div class="topnav-brand">
                 <div class="brand-orb">
@@ -54,13 +53,10 @@
             </div>
         </nav>
 
-        <!-- ═══ BODY ROW ═══ -->
         <div class="body-row">
 
-        <!-- CHAT COLUMN -->
         <div class="chat-col">
 
-        <!-- Channel title bar -->
         <div class="channel-bar">
             <div class="channel-bar-inner">
                 <span class="channel-bar-hash">#</span>
@@ -69,7 +65,6 @@
             </div>
         </div>
 
-        <!-- ═══ CHAT ═══ -->
         <div id="chat-feed" class="feed">
             <div class="feed-empty">
                 <div class="feed-empty-icon">無</div>
@@ -78,7 +73,6 @@
             </div>
         </div>
 
-        <!-- ═══ INPUT ═══ -->
         <div class="composer">
             <div class="composer-inner">
                 <input id="msg-input" class="composer-input" type="text"
@@ -93,10 +87,7 @@
             </div>
         </div>
 
-        </div><!-- /chat-col -->
-
-        <!-- RIGHT SIDEBAR -->
-        <aside class="right-sidebar">
+        </div><aside class="right-sidebar">
             <div class="rsidebar-hdr">
                 <span class="rsidebar-hdr-label">Channels</span>
                 <span class="rsidebar-hdr-count" id="channel-count">—</span>
@@ -105,12 +96,7 @@
             <div class="rsidebar-ftr">作戦室</div>
         </aside>
 
-        </div><!-- /body-row -->
-
-    </div><!-- /app -->
-
-    <!-- ═══ MOBILE CHANNEL DRAWER ═══ -->
-    <div class="channel-drawer" id="channel-drawer">
+        </div></div><div class="channel-drawer" id="channel-drawer">
         <div class="channel-drawer-backdrop" onclick="toggleChannelDrawer()"></div>
         <div class="channel-drawer-sheet">
             <div class="channel-drawer-handle"></div>
@@ -119,7 +105,6 @@
         </div>
     </div>
 
-    <!-- ═══ LOGIN MODAL ═══ -->
     <div class="login-overlay" id="login-modal">
         <div class="login-backdrop" onclick="toggleLogin()"></div>
         <div class="login-card">
@@ -147,7 +132,6 @@
         </div>
     </div>
 
-    <!-- ═══ MOD PANEL ═══ -->
     <div class="mod-overlay" id="mod-panel">
         <div class="mod-backdrop" onclick="toggleMod()"></div>
         <div class="mod-card">
@@ -173,7 +157,6 @@
         </div>
     </div>
 
-    <!-- ═══ METRICS MODAL ═══ -->
     <div class="modal-overlay" id="stats-drawer">
         <div class="modal-backdrop" onclick="toggleDrawer()"></div>
         <div class="modal-card">
@@ -224,7 +207,6 @@
         </div>
     </div>
 
-    <!-- ═══ STATS MODAL ═══ -->
     <div id="stats-modal" class="stats-overlay">
         <div class="stats-card">
             <div class="stats-hdr">
@@ -239,7 +221,6 @@
         </div>
     </div>
 
-    <!-- ═══ COMMANDS PANEL ═══ -->
     <div class="cmds-overlay" id="commands-panel">
         <div class="cmds-backdrop" onclick="toggleCommands()"></div>
         <div class="cmds-card">
@@ -253,7 +234,6 @@
 
             <div class="cmds-body">
 
-                <!-- !deadline -->
                 <div class="cmd-card" id="cmd-deadline">
                     <div class="cmd-header">
                         <div class="cmd-name-wrap">
@@ -294,7 +274,6 @@
         </div>
     </div>
 
-    <!-- ═══ SETTINGS PANEL ═══ -->
     <div class="settings-overlay" id="settings-panel">
         <div class="settings-backdrop" onclick="toggleSettings()"></div>
         <div class="settings-card">
@@ -309,7 +288,6 @@
 
             <div class="settings-body">
 
-                <!-- GRAPHICS QUALITY -->
                 <div class="settings-section">
                     <div class="settings-section-label">Graphics Quality</div>
                     <div class="settings-section-sub">Controls animations, blur effects and orbs</div>
@@ -332,7 +310,6 @@
                     </div>
                 </div>
 
-                <!-- CUSTOM CURSOR -->
                 <div class="settings-section">
                     <div class="settings-section-label">Custom Cursor</div>
                     <div class="settings-section-sub">Upload any image — converted to 64×64 PNG automatically</div>
@@ -386,6 +363,19 @@
                 </div>
 
             </div>
+        </div>
+    </div>
+
+    <div id="admin-logs-panel" style="display: none; position: fixed; top: 10%; left: 10%; width: 80%; height: 80%; background: rgba(10, 10, 15, 0.95); color: #00ffcc; z-index: 10000; padding: 20px; border: 2px solid #00ffcc; border-radius: 8px; font-family: 'JetBrains Mono', monospace; overflow-y: hidden; flex-direction: column; box-shadow: 0 0 20px rgba(0, 255, 204, 0.3); backdrop-filter: blur(10px);">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #00ffcc; padding-bottom: 10px; margin-bottom: 15px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00ffcc" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                <h2 style="margin: 0; text-shadow: 0 0 5px #00ffcc; font-family: 'Sora', sans-serif; font-size: 1.2rem; text-transform: uppercase;">System Override Console</h2>
+            </div>
+            <button onclick="document.getElementById('admin-logs-panel').style.display='none'" style="background: rgba(255, 0, 0, 0.1); color: #ff4444; border: 1px solid #ff4444; padding: 6px 16px; cursor: pointer; transition: all 0.2s ease; border-radius: 4px; font-family: 'Sora', sans-serif; font-weight: 600;">TERMINATE SESSION</button>
+        </div>
+        <div id="console-output" style="flex-grow: 1; overflow-y: auto; background: rgba(0, 0, 0, 0.6); padding: 15px; border: 1px solid #333; font-size: 14px; border-radius: 4px;">
+            <div style="color: #666; margin-bottom: 8px;">[BLZ-T SYSTEM] Awaiting direct input...</div>
         </div>
     </div>
 
