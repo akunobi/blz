@@ -1249,6 +1249,118 @@ def api_stats():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ─── BORRAR MENSAJE ──────────────────────────────────────────────────────────
+@app.route("/api/delete", methods=["POST"])
+def delete_message():
+    data = request.json or {}
+    channel_id = data.get("channel_id")
+    message_id = data.get("message_id")
+    if not channel_id or not message_id:
+        return jsonify({"error": "Faltan channel_id y message_id"}), 400
+    if not bot_ready_event.is_set():
+        return jsonify({"error": "Bot no listo"}), 503
+
+    async def do_delete():
+        try:
+            channel = client.get_channel(int(channel_id))
+            if not channel:
+                channel = await client.fetch_channel(int(channel_id))
+            msg = await channel.fetch_message(int(message_id))
+            await msg.delete()
+            # Borrar de la base de datos también
+            conn = get_db_connection()
+            conn.execute("DELETE FROM messages WHERE message_id=?", (str(message_id),))
+            conn.commit()
+            conn.close()
+            return {"success": True}
+        except discord.NotFound:
+            return {"error": "Mensaje no encontrado"}
+        except discord.Forbidden:
+            return {"error": "Sin permiso para borrar este mensaje"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    try:
+        future = asyncio.run_coroutine_threadsafe(do_delete(), client.loop)
+        return jsonify(future.result(timeout=10))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ─── EDITAR MENSAJE ──────────────────────────────────────────────────────────
+@app.route("/api/edit", methods=["POST"])
+def edit_message():
+    data = request.json or {}
+    channel_id  = data.get("channel_id")
+    message_id  = data.get("message_id")
+    new_content = data.get("content", "").strip()
+    if not channel_id or not message_id or not new_content:
+        return jsonify({"error": "Faltan channel_id, message_id o content"}), 400
+    if not bot_ready_event.is_set():
+        return jsonify({"error": "Bot no listo"}), 503
+
+    async def do_edit():
+        try:
+            channel = client.get_channel(int(channel_id))
+            if not channel:
+                channel = await client.fetch_channel(int(channel_id))
+            msg = await channel.fetch_message(int(message_id))
+            await msg.edit(content=new_content)
+            # Actualizar en base de datos
+            conn = get_db_connection()
+            conn.execute("UPDATE messages SET content=? WHERE message_id=?",
+                         (new_content, str(message_id)))
+            conn.commit()
+            conn.close()
+            return {"success": True}
+        except discord.NotFound:
+            return {"error": "Mensaje no encontrado"}
+        except discord.Forbidden:
+            return {"error": "Solo puedes editar mensajes del bot"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    try:
+        future = asyncio.run_coroutine_threadsafe(do_edit(), client.loop)
+        return jsonify(future.result(timeout=10))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ─── REACCIONAR A MENSAJE ────────────────────────────────────────────────────
+@app.route("/api/react", methods=["POST"])
+def react_message():
+    data = request.json or {}
+    channel_id = data.get("channel_id")
+    message_id = data.get("message_id")
+    emoji      = data.get("emoji", "👍")
+    if not channel_id or not message_id:
+        return jsonify({"error": "Faltan channel_id y message_id"}), 400
+    if not bot_ready_event.is_set():
+        return jsonify({"error": "Bot no listo"}), 503
+
+    async def do_react():
+        try:
+            channel = client.get_channel(int(channel_id))
+            if not channel:
+                channel = await client.fetch_channel(int(channel_id))
+            msg = await channel.fetch_message(int(message_id))
+            await msg.add_reaction(emoji)
+            return {"success": True}
+        except discord.NotFound:
+            return {"error": "Mensaje no encontrado"}
+        except discord.HTTPException as e:
+            return {"error": f"Emoji inválido o error HTTP: {e}"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    try:
+        future = asyncio.run_coroutine_threadsafe(do_react(), client.loop)
+        return jsonify(future.result(timeout=10))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 def run_flask():
     app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
 
