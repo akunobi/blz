@@ -26,7 +26,8 @@
     let mentionCache    = { users: {}, roles: {} };
     let lastMessageId   = {};
     let timerInterval   = null;
-    let acMembers = [], acRoles = [], acLoaded = false;
+    let acMembers = [], acRoles = [], acLoaded = false, acLoadedAt = 0;
+    const AC_CACHE_MS = 180000; // refresh member/role list every 3 min
     let acBox = null, acItems = [], acIdx = -1, acTriggerPos = -1;
 
     // ─── INIT ─────────────────────────────────────────────────────────────────
@@ -39,6 +40,34 @@
         setInterval(() => {
             if (!isFetching && currentChannelId) fetchMessages(false);
         }, 500);
+        // Copy stats buttons
+        document.getElementById('copy-stats-btn')?.addEventListener('click', function () {
+            if (!canvas) { showToast('No stats generated yet', 'warn'); return; }
+            if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+                canvas.toBlob(blob => {
+                    if (!blob) return;
+                    navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+                        .then(() => showToast('✅ Image copied to clipboard!', 'success'))
+                        .catch(() => downloadCanvasImage());
+                });
+            } else {
+                downloadCanvasImage();
+            }
+        });
+        document.getElementById('copy-rank-btn')?.addEventListener('click', function () {
+            const rank = window._lastRank;
+            if (!rank) { showToast('Generate stats first', 'warn'); return; }
+            navigator.clipboard?.writeText(rank)
+                .then(() => showToast('✅ Rank copied: ' + rank, 'success'))
+                .catch(() => showToast('❌ Copy failed — try again', 'error'));
+        });
+        function downloadCanvasImage() {
+            const a = document.createElement('a');
+            a.download = 'blzt-stats.png';
+            a.href = canvas.toDataURL('image/png');
+            a.click();
+            showToast('📥 Stats image downloaded!', 'info');
+        }
         applyLoginState(localStorage.getItem('blzt_mod') === '1');
     }
 
@@ -119,8 +148,11 @@
 
     function closeAllModals() {
         ['stats-drawer','stats-modal','commands-panel','settings-panel',
-         'mod-panel','login-modal','logs-panel','warn-history-modal']
+         'mod-panel','login-modal','logs-panel']
             .forEach(id => document.getElementById(id)?.classList.remove('active'));
+        // warn-history-modal uses different classes
+        const whModal = document.getElementById('warn-history-modal');
+        if (whModal) whModal.classList.remove('wh-visible', 'wh-open');
     }
 
     // ─── CANALES ──────────────────────────────────────────────────────────────
@@ -516,17 +548,24 @@
         msgInput.setSelectionRange(newPos, newPos);
         hideAc(); msgInput.focus();
     }
-    async function ensureAcData() {
-        if (acLoaded) return;
+    async function ensureAcData(forceRefresh = false) {
+        const now = Date.now();
+        if (acLoaded && !forceRefresh && (now - acLoadedAt) < AC_CACHE_MS) return;
         try {
             const r = await fetch('/api/members');
             if (r.ok) {
                 const j = await r.json();
                 acMembers = j.members || [];
                 acRoles   = j.roles   || [];
-                acLoaded  = true;
+                // Only mark loaded if we got actual data (retry if empty)
+                if (acMembers.length > 0 || acRoles.length > 0) {
+                    acLoaded   = true;
+                    acLoadedAt = now;
+                } else {
+                    acLoaded = false; // will retry next keystroke
+                }
             }
-        } catch (e) {}
+        } catch (e) { console.warn('ensureAcData error', e); }
     }
 
     // ─── ENVÍO DE MENSAJES + COMANDOS / ──────────────────────────────────────
@@ -810,7 +849,6 @@
             const initial = (u.user_name || '?')[0].toUpperCase();
             const lastAct = u.last_action ? u.last_action.action.toUpperCase() : null;
 
-            // Últimas warns con mensaje que las activó — siempre escapeHtml en contenido del mensaje
             const recentHtml = (u.recent_warnings || []).slice(0, 2).map(w => {
                 const reason  = escapeHtml(w.reason || '—');
                 const msgContent = w.message_content
@@ -828,6 +866,8 @@
                 </div>`;
             }).join('');
 
+            // NOTE: No inline onclick attributes — all events attached programmatically below
+            //       to avoid HTML-escaping bugs with special chars in user names
             card.innerHTML = `
                 <div class="mod-user-avatar">${initial}</div>
                 <div class="mod-user-info">
@@ -838,17 +878,28 @@
                         ${lastAct ? `<span class="warn-badge warn-badge-action">${lastAct}</span>` : ''}
                     </div>
                     ${recentHtml}
-                    <button class="warn-history-btn" onclick="showWarnHistory('${escapeHtml(u.user_id)}','${escapeHtml(u.user_name||'Unknown')}')">
+                    <button class="warn-history-btn js-warn-hist">
                         📋 Historial completo (${u.warn_count})
                     </button>
                 </div>
                 <div class="mod-user-actions">
-                    <button class="mod-action-btn warn"    onclick="modAction('warn','${escapeHtml(u.user_id)}','${escapeHtml(u.user_name||'')}','${escapeHtml(u.guild_id||'')}',this)">Warn</button>
-                    <button class="mod-action-btn timeout" onclick="modAction('timeout','${escapeHtml(u.user_id)}','${escapeHtml(u.user_name||'')}','${escapeHtml(u.guild_id||'')}',this)">Timeout</button>
-                    <button class="mod-action-btn kick"    onclick="modAction('kick','${escapeHtml(u.user_id)}','${escapeHtml(u.user_name||'')}','${escapeHtml(u.guild_id||'')}',this)">Kick</button>
-                    <button class="mod-action-btn ban"     onclick="modAction('ban','${escapeHtml(u.user_id)}','${escapeHtml(u.user_name||'')}','${escapeHtml(u.guild_id||'')}',this)">Ban</button>
-                    <button class="mod-action-btn clear"   onclick="modAction('clear','${escapeHtml(u.user_id)}','${escapeHtml(u.user_name||'')}','${escapeHtml(u.guild_id||'')}',this)">Clear</button>
+                    <button class="mod-action-btn warn"    data-action="warn">Warn</button>
+                    <button class="mod-action-btn timeout" data-action="timeout">Timeout</button>
+                    <button class="mod-action-btn kick"    data-action="kick">Kick</button>
+                    <button class="mod-action-btn ban"     data-action="ban">Ban</button>
+                    <button class="mod-action-btn clear"   data-action="clear">Clear</button>
                 </div>`;
+
+            // Attach events safely via closure — no string encoding needed
+            card.querySelector('.js-warn-hist').addEventListener('click', () => {
+                showWarnHistory(u.user_id, u.user_name || 'Unknown');
+            });
+            card.querySelectorAll('.mod-action-btn[data-action]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    modAction(btn.dataset.action, u.user_id, u.user_name || '', u.guild_id || '', btn);
+                });
+            });
+
             container.appendChild(card);
         });
     }
@@ -881,7 +932,9 @@
     window.showWarnHistory = async function (userId, userName) {
         const modal = document.getElementById('warn-history-modal');
         if (!modal) return;
-        modal.classList.add('active');
+        // CSS requires wh-open (display:flex) + wh-visible (opacity/transform)
+        modal.classList.add('wh-open');
+        requestAnimationFrame(() => modal.classList.add('wh-visible'));
         const title   = document.getElementById('wh-title');
         const content = document.getElementById('wh-content');
         if (title)   title.textContent = `📋 Historial: ${userName}`;
@@ -922,7 +975,10 @@
     };
 
     window.closeWarnHistory = function () {
-        document.getElementById('warn-history-modal')?.classList.remove('active');
+        const modal = document.getElementById('warn-history-modal');
+        if (!modal) return;
+        modal.classList.remove('wh-visible');
+        setTimeout(() => modal.classList.remove('wh-open'), 280);
     };
 
     // ─── ACCIONES DE MOD ──────────────────────────────────────────────────────
@@ -993,6 +1049,7 @@
         });
         const avg  = sum / inputs.length;
         const rank = type === 'offensive' ? getOffensiveRank(avg) : getGKRank(avg);
+        window._lastRank = rank;
         drawGraph(type, data, avg, rank);
         document.getElementById('stats-modal')?.classList.add('active');
         document.getElementById('stats-drawer')?.classList.remove('active');
