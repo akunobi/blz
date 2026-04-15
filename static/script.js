@@ -37,6 +37,7 @@
         fetchChannels();
         startTimer();
         setupEventListeners();
+        initSettings();
         setInterval(() => {
             if (!isFetching && currentChannelId) fetchMessages(false);
         }, 500);
@@ -435,105 +436,160 @@
         const actions = document.createElement('div');
         actions.className = 'msg-actions';
 
-        // ── Reaccionar ──────────────────────────────────────────────────────
+        // ── Reaccionar — visible en TODOS los mensajes ───────────────────────
         const reactBtn = document.createElement('button');
-        reactBtn.className = 'msg-action-btn'; reactBtn.innerHTML = '😊'; reactBtn.title = 'Reaccionar';
-        reactBtn.addEventListener('click', () => {
-            const EMOJIS = ['👍','❤️','😂','😮','😢','🔥','✅','👀'];
-            const picker = document.createElement('div');
-            picker.style.cssText = 'position:absolute;z-index:9999;background:var(--bg2);border:1px solid var(--border-hi);border-radius:12px;padding:8px;display:flex;gap:6px;flex-wrap:wrap;max-width:200px;box-shadow:0 8px 30px rgba(0,0,0,0.5);';
-            EMOJIS.forEach(em => {
-                const btn2 = document.createElement('button');
-                btn2.textContent = em;
-                btn2.style.cssText = 'background:none;border:none;cursor:pointer;font-size:1.25rem;border-radius:6px;padding:4px;transition:background 100ms;';
-                btn2.addEventListener('mouseenter', () => { btn2.style.background = 'var(--lift)'; });
-                btn2.addEventListener('mouseleave', () => { btn2.style.background = 'none'; });
-                btn2.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    picker.remove();
-                    sendReaction(msgId, em);
-                });
-                picker.appendChild(btn2);
-            });
-            // position near button
-            const rect = reactBtn.getBoundingClientRect();
-            picker.style.position = 'fixed';
-            picker.style.bottom   = (window.innerHeight - rect.top + 6) + 'px';
-            picker.style.left     = rect.left + 'px';
-            document.body.appendChild(picker);
-            const dismiss = (e) => { if (!picker.contains(e.target)) { picker.remove(); document.removeEventListener('pointerdown', dismiss); } };
-            setTimeout(() => document.addEventListener('pointerdown', dismiss), 0);
+        reactBtn.className = 'msg-action-btn';
+        reactBtn.innerHTML = '😊';
+        reactBtn.title = 'Reaccionar';
+        reactBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openEmojiPicker(reactBtn, msgId);
         });
         actions.appendChild(reactBtn);
 
-        // ── Editar (solo mensajes propios) ───────────────────────────────────
+        // ── Editar — solo mensajes propios ───────────────────────────────────
         if (isOwn) {
             const editBtn = document.createElement('button');
-            editBtn.className = 'msg-action-btn'; editBtn.innerHTML = '✏️'; editBtn.title = 'Editar';
+            editBtn.className = 'msg-action-btn';
+            editBtn.innerHTML = '✏️';
+            editBtn.title = 'Editar';
             editBtn.addEventListener('click', () => startInlineEdit(msgEl, msgId));
             actions.appendChild(editBtn);
-
-            // ── Borrar ───────────────────────────────────────────────────────
-            const delBtn = document.createElement('button');
-            delBtn.className = 'msg-action-btn del'; delBtn.innerHTML = '🗑️'; delBtn.title = 'Borrar';
-            delBtn.addEventListener('click', () => {
-                if (!confirm('¿Borrar este mensaje?')) return;
-                delBtn.disabled = true; delBtn.textContent = '…';
-                fetch('/api/delete', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ channel_id: currentChannelId, message_id: msgId })
-                })
-                .then(r => r.json())
-                .then(d => {
-                    if (d.success) { msgEl.style.opacity = '0'; setTimeout(() => msgEl.remove(), 200); }
-                    else { showToast('❌ ' + (d.error || 'Error al borrar'), 'error'); delBtn.disabled = false; delBtn.innerHTML = '🗑️'; }
-                })
-                .catch(e => { showToast('❌ ' + e.message, 'error'); delBtn.disabled = false; delBtn.innerHTML = '🗑️'; });
-            });
-            actions.appendChild(delBtn);
         }
+
+        // ── Borrar — visible en TODOS (bot tiene manage messages) ────────────
+        const delBtn = document.createElement('button');
+        delBtn.className = 'msg-action-btn del';
+        delBtn.innerHTML = '🗑️';
+        delBtn.title = 'Borrar';
+        delBtn.addEventListener('click', () => {
+            if (!confirm('¿Borrar este mensaje?')) return;
+            delBtn.disabled = true;
+            delBtn.textContent = '…';
+            fetch('/api/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ channel_id: currentChannelId, message_id: msgId })
+            })
+            .then(r => r.json())
+            .then(d => {
+                if (d.success) {
+                    msgEl.style.transition = 'opacity 200ms';
+                    msgEl.style.opacity = '0';
+                    setTimeout(() => msgEl.remove(), 210);
+                    showToast('🗑️ Mensaje borrado', 'success');
+                } else {
+                    showToast('❌ ' + (d.error || 'Error al borrar'), 'error');
+                    delBtn.disabled = false;
+                    delBtn.innerHTML = '🗑️';
+                }
+            })
+            .catch(err => {
+                showToast('❌ ' + err.message, 'error');
+                delBtn.disabled = false;
+                delBtn.innerHTML = '🗑️';
+            });
+        });
+        actions.appendChild(delBtn);
 
         const header = msgEl.querySelector('.msg-header');
         (header || msgEl).appendChild(actions);
     }
 
-    function sendReaction(msgId, emoji) {
-        fetch('/api/react', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ channel_id: currentChannelId, message_id: msgId, emoji })
-        })
-        .then(r => r.json())
-        .then(d => {
-            if (d.success) showToast('✅ Reacción ' + emoji + ' añadida', 'success');
-            else showToast('❌ ' + (d.error || 'Error al reaccionar'), 'error');
-        })
-        .catch(e => showToast('❌ ' + e.message, 'error'));
+    // ── Emoji picker ─────────────────────────────────────────────────────────
+    function openEmojiPicker(anchor, msgId) {
+        // Remove existing picker if open
+        document.getElementById('emoji-picker-popup')?.remove();
+
+        const EMOJIS = ['👍','❤️','😂','😮','😢','🔥','✅','👀','💯','🎉','🤔','😎'];
+        const picker = document.createElement('div');
+        picker.id = 'emoji-picker-popup';
+        picker.style.cssText = [
+            'position:fixed;z-index:9999',
+            'background:var(--bg2)',
+            'border:1px solid var(--border-hi)',
+            'border-radius:14px',
+            'padding:10px',
+            'display:flex;gap:4px;flex-wrap:wrap;max-width:220px',
+            'box-shadow:0 12px 40px rgba(0,0,0,0.6)'
+        ].join(';');
+
+        EMOJIS.forEach(em => {
+            const btn = document.createElement('button');
+            btn.textContent = em;
+            btn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:1.3rem;border-radius:8px;padding:5px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;transition:background 100ms;';
+            btn.addEventListener('mouseover',  () => { btn.style.background = 'var(--lift)'; });
+            btn.addEventListener('mouseout',   () => { btn.style.background = 'none'; });
+            btn.addEventListener('mousedown', (e) => {
+                e.preventDefault(); // prevent blur before click
+                e.stopPropagation();
+                picker.remove();
+                document.removeEventListener('pointerdown', dismiss, true);
+                fetch('/api/react', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ channel_id: currentChannelId, message_id: msgId, emoji: em })
+                })
+                .then(r => r.json())
+                .then(d => {
+                    if (d.success) showToast('✅ Reacción ' + em + ' enviada', 'success');
+                    else showToast('❌ ' + (d.error || 'Error'), 'error');
+                })
+                .catch(err => showToast('❌ ' + err.message, 'error'));
+            });
+            picker.appendChild(btn);
+        });
+
+        document.body.appendChild(picker);
+
+        // Position above anchor
+        const rect = anchor.getBoundingClientRect();
+        const ph   = picker.offsetHeight || 100;
+        picker.style.left   = Math.min(rect.left, window.innerWidth - 230) + 'px';
+        picker.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
+
+        const dismiss = (e) => {
+            if (!picker.contains(e.target) && e.target !== anchor) {
+                picker.remove();
+                document.removeEventListener('pointerdown', dismiss, true);
+            }
+        };
+        // Delay so this click doesn't dismiss immediately
+        requestAnimationFrame(() => {
+            document.addEventListener('pointerdown', dismiss, true);
+        });
     }
 
+    // ── Inline edit ──────────────────────────────────────────────────────────
     function startInlineEdit(msgEl, msgId) {
-        if (msgEl.querySelector('.msg-edit-wrap')) return; // ya abierto
+        if (msgEl.querySelector('.msg-edit-wrap')) return;
         const contentDiv = msgEl.querySelector('.msg-content');
         if (!contentDiv) return;
-        const originalText = contentDiv.dataset.rawContent || contentDiv.textContent;
+        const originalText = contentDiv.dataset.rawContent || contentDiv.innerText || '';
 
         const wrap = document.createElement('div');
         wrap.className = 'msg-edit-wrap';
+
         const input = document.createElement('textarea');
         input.className = 'msg-edit-input';
         input.value = originalText;
-        input.rows = Math.min(5, (originalText.match(/\n/g) || []).length + 1) || 1;
+
         const saveBtn = document.createElement('button');
-        saveBtn.className = 'msg-edit-save'; saveBtn.textContent = 'Guardar';
+        saveBtn.className = 'msg-edit-save';
+        saveBtn.textContent = 'Guardar';
+
         const cancelBtn = document.createElement('button');
-        cancelBtn.className = 'msg-edit-cancel'; cancelBtn.textContent = 'Cancelar';
+        cancelBtn.className = 'msg-edit-cancel';
+        cancelBtn.textContent = 'Cancelar';
 
         cancelBtn.addEventListener('click', () => wrap.remove());
+
         saveBtn.addEventListener('click', () => {
             const newContent = input.value.trim();
-            if (!newContent || newContent === originalText) { wrap.remove(); return; }
-            saveBtn.disabled = true; saveBtn.textContent = '…';
+            if (!newContent) { showToast('⚠ El mensaje no puede estar vacío', 'warn'); return; }
+            if (newContent === originalText) { wrap.remove(); return; }
+            saveBtn.disabled = true;
+            saveBtn.textContent = '…';
             fetch('/api/edit', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -548,18 +604,28 @@
                     showToast('✅ Mensaje editado', 'success');
                 } else {
                     showToast('❌ ' + (d.error || 'Error al editar'), 'error');
-                    saveBtn.disabled = false; saveBtn.textContent = 'Guardar';
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Guardar';
                 }
             })
-            .catch(e => { showToast('❌ ' + e.message, 'error'); saveBtn.disabled = false; saveBtn.textContent = 'Guardar'; });
+            .catch(err => {
+                showToast('❌ ' + err.message, 'error');
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Guardar';
+            });
         });
+
         input.addEventListener('keydown', e => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveBtn.click(); }
             if (e.key === 'Escape') cancelBtn.click();
         });
-        wrap.appendChild(input); wrap.appendChild(saveBtn); wrap.appendChild(cancelBtn);
+
+        wrap.appendChild(input);
+        wrap.appendChild(saveBtn);
+        wrap.appendChild(cancelBtn);
         msgEl.appendChild(wrap);
-        input.focus(); input.setSelectionRange(input.value.length, input.value.length);
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
     }
 
     // ─── AUTOCOMPLETADO @ ─────────────────────────────────────────────────────
@@ -685,7 +751,11 @@
     // ─── ENVÍO DE MENSAJES + COMANDOS / ──────────────────────────────────────
     async function sendMessage() {
         const content = msgInput.value.trim();
-        if (!content || !currentChannelId) return;
+        if (!content) return;
+        if (!currentChannelId) {
+            showToast('⚠ Selecciona un canal primero', 'warn');
+            return;
+        }
 
         // ── /done ─────────────────────────────────────────────────────────────
         if (content === '/done') {
@@ -1229,8 +1299,64 @@
     // ─── SHORTCUTS GLOBALES ───────────────────────────────────────────────────
     window.toggleDrawer        = () => document.getElementById('stats-drawer')?.classList.toggle('active');
     window.toggleCommands      = () => document.getElementById('commands-panel')?.classList.toggle('active');
-    window.toggleSettings      = () => document.getElementById('settings-panel')?.classList.toggle('active');
     window.toggleChannelDrawer = () => document.getElementById('channel-drawer')?.classList.toggle('open');
+
+    // ─── SETTINGS ─────────────────────────────────────────────────────────────
+    const QUALITY_KEY = 'blzt_quality';
+
+    function applyQuality(q) {
+        document.body.dataset.quality = q;
+        localStorage.setItem(QUALITY_KEY, q);
+        document.querySelectorAll('.quality-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.q === q);
+        });
+    }
+
+    function initSettings() {
+        // Apply saved quality on load
+        const saved = localStorage.getItem(QUALITY_KEY) || 'high';
+        applyQuality(saved);
+
+        // Wire up quality buttons
+        document.querySelectorAll('.quality-btn').forEach(btn => {
+            btn.addEventListener('click', () => applyQuality(btn.dataset.q));
+        });
+
+        // Compact mode toggle
+        const compactToggle = document.getElementById('settings-compact');
+        if (compactToggle) {
+            compactToggle.checked = localStorage.getItem('blzt_compact') === '1';
+            applyCompact(compactToggle.checked);
+            compactToggle.addEventListener('change', () => {
+                applyCompact(compactToggle.checked);
+                localStorage.setItem('blzt_compact', compactToggle.checked ? '1' : '0');
+            });
+        }
+
+        // Timestamps toggle
+        const tsToggle = document.getElementById('settings-timestamps');
+        if (tsToggle) {
+            tsToggle.checked = localStorage.getItem('blzt_ts') !== '0';
+            applyTimestamps(tsToggle.checked);
+            tsToggle.addEventListener('change', () => {
+                applyTimestamps(tsToggle.checked);
+                localStorage.setItem('blzt_ts', tsToggle.checked ? '1' : '0');
+            });
+        }
+    }
+
+    function applyCompact(on) {
+        document.body.classList.toggle('compact-mode', on);
+    }
+    function applyTimestamps(on) {
+        document.body.classList.toggle('hide-timestamps', on === false);
+    }
+
+    window.toggleSettings = function () {
+        const panel = document.getElementById('settings-panel');
+        if (!panel) return;
+        panel.classList.toggle('active');
+    };
 
     // ─── ARRANQUE ─────────────────────────────────────────────────────────────
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
