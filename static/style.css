@@ -3388,3 +3388,21 @@ html.q-medium .composer                   { backdrop-filter: blur(8px) !importan
 .log-action-badge.ban_3d       { background: rgba(255,80,80,0.15);   color: #ff6060; }
 .log-action-badge.ban_permanent{ background: rgba(180,0,0,0.2);      color: #ff0000; }
 .log-action-badge.clear_warns  { background: rgba(38,201,184,0.12);  color: var(--teal); }
+
+/* ════════════════════════════════════
+   GRAPHICS QUALITY MODES
+   Applied via body[data-quality="low|medium|high"]
+   ════════════════════════════════════ */
+body[data-quality="low"] .orb { display: none; }
+body[data-quality="low"] * { animation: none !important; transition: none !important; }
+body[data-quality="low"] .topnav,
+body[data-quality="low"] .composer,
+body[data-quality="low"] .mod-backdrop,
+body[data-quality="low"] .modal-backdrop,
+body[data-quality="low"] .settings-backdrop,
+body[data-quality="low"] .cmds-backdrop { backdrop-filter: none !important; }
+
+body[data-quality="medium"] .orb { opacity: 0.4; filter: blur(100px); animation: none; }
+body[data-quality="medium"] .orb-1,
+body[data-quality="medium"] .orb-2,
+body[data-quality="medium"] .orb-3 { animation: none !important; }
