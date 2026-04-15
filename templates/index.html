@@ -341,12 +341,12 @@
     </div>
 
     <!-- WARN HISTORY MODAL -->
-    <div class="mod-overlay" id="warn-history-modal" style="z-index:1100;">
-        <div class="mod-backdrop" onclick="closeWarnHistory()"></div>
-        <div class="mod-card" style="max-width:620px;max-height:80vh;display:flex;flex-direction:column;">
-            <div class="mod-hdr">
-                <div class="mod-title" id="wh-title">Historial de Advertencias</div>
-                <button class="mod-close" onclick="closeWarnHistory()">✕</button>
+    <div id="warn-history-modal">
+        <div class="wh-backdrop" onclick="closeWarnHistory()"></div>
+        <div class="wh-card">
+            <div class="wh-header">
+                <div class="wh-title" id="wh-title">Historial de Advertencias</div>
+                <button class="wh-close" onclick="closeWarnHistory()">✕</button>
             </div>
             <div id="wh-content" style="flex:1;overflow-y:auto;padding:16px;"></div>
         </div>
