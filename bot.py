@@ -843,6 +843,9 @@ def send_message():
             c_id = int(channel_id)
             channel = await client.fetch_channel(c_id)
             sent = await channel.send(content)
+            # Bot messages are skipped by on_message (author.bot check),
+            # so we must manually save them to the DB here.
+            await save_message_to_db(sent)
             return {
                 "success": True, 
                 "message_id": str(sent.id), 
