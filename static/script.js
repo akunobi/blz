@@ -1,4 +1,4 @@
-// static/script.js — BLZ-T Frontend v2 (Bugs fixed + mejoras)
+// static/script.js — BLZ-T Frontend v3
 (function () {
     "use strict";
 
@@ -13,21 +13,21 @@
     const canvas          = document.getElementById('stats-canvas');
     const ctx             = canvas ? canvas.getContext('2d') : null;
 
-    // ─── ESTADO ──────────────────────────────────────────────────────────────
+    // ─── STATE ────────────────────────────────────────────────────────────────
     window._currentChannelId = null;
     Object.defineProperty(window, 'currentChannelId', {
         get: () => window._currentChannelId,
         set: v => { window._currentChannelId = v; }
     });
 
-    let isFetching      = false;
-    let botName         = null;
-    let channelMap      = {};
-    let mentionCache    = { users: {}, roles: {} };
-    let lastMessageId   = {};
-    let timerInterval   = null;
+    let isFetching    = false;
+    let botName       = null;
+    let channelMap    = {};
+    let mentionCache  = { users: {}, roles: {} };
+    let lastMessageId = {};
+    let timerInterval = null;
     let acMembers = [], acRoles = [], acLoaded = false, acLoadedAt = 0;
-    const AC_CACHE_MS = 180000; // refresh member/role list every 3 min
+    const AC_CACHE_MS = 180000;
     let acBox = null, acItems = [], acIdx = -1, acTriggerPos = -1;
 
     // ─── INIT ─────────────────────────────────────────────────────────────────
@@ -41,26 +41,23 @@
         setInterval(() => {
             if (!isFetching && currentChannelId) fetchMessages(false);
         }, 500);
-        // Copy stats buttons
         document.getElementById('copy-stats-btn')?.addEventListener('click', function () {
             if (!canvas) { showToast('No stats generated yet', 'warn'); return; }
             if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
                 canvas.toBlob(blob => {
                     if (!blob) return;
                     navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
-                        .then(() => showToast('✅ Image copied to clipboard!', 'success'))
+                        .then(() => showToast('✅ Image copied!', 'success'))
                         .catch(() => downloadCanvasImage());
                 });
-            } else {
-                downloadCanvasImage();
-            }
+            } else { downloadCanvasImage(); }
         });
         document.getElementById('copy-rank-btn')?.addEventListener('click', function () {
             const rank = window._lastRank;
             if (!rank) { showToast('Generate stats first', 'warn'); return; }
             navigator.clipboard?.writeText(rank)
                 .then(() => showToast('✅ Rank copied: ' + rank, 'success'))
-                .catch(() => showToast('❌ Copy failed — try again', 'error'));
+                .catch(() => showToast('❌ Copy failed', 'error'));
         });
         function downloadCanvasImage() {
             const a = document.createElement('a');
@@ -102,9 +99,8 @@
                 node.getAttribute('role') === 'button' ||
                 ['channel-item','metrics-pill','comp-btn','emoji-btn','ac-item',
                  'stats-btn','del-btn','modal-submit','brand-orb','msg-action-btn',
-                 'modal-close','composer-send','settings-btn','cursor-upload-btn',
-                 'cursor-reset-btn','quality-btn','mod-action-btn','cmd-send-btn',
-                 'warn-badge-history','warn-history-btn'].some(c => node.classList.contains(c)))
+                 'modal-close','composer-send','settings-btn','warn-history-btn',
+                 'cursor-reset-btn','quality-btn','mod-action-btn','cmd-send-btn'].some(c => node.classList.contains(c)))
                 return 'pointer';
             node = node.parentElement;
         }
@@ -118,12 +114,12 @@
             if (r.ok) {
                 const j = await r.json();
                 botName       = j.name || null;
-                window._botId = j.id  || null;
+                window._botId = j.id   || null;
             }
         } catch (e) { console.warn('botinfo fetch failed', e); }
     }
 
-    // ─── EVENTOS ──────────────────────────────────────────────────────────────
+    // ─── EVENTS ───────────────────────────────────────────────────────────────
     function setupEventListeners() {
         if (msgInput) {
             msgInput.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage(); });
@@ -131,16 +127,10 @@
             msgInput.addEventListener('keydown',  handleAcKeydown);
         }
         if (sendBtn) sendBtn.onclick = sendMessage;
-
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape') closeAllModals();
-            // AltGr + 0 abre consola de logs
-            if (e.code === 'Digit0' && e.getModifierState('AltGraph')) {
-                e.preventDefault();
-                openLogs();
-            }
+            if (e.code === 'Digit0' && e.getModifierState('AltGraph')) { e.preventDefault(); openLogs(); }
         });
-
         document.addEventListener('pointerdown', e => {
             if (!acBox || !acBox.classList.contains('ac-open')) return;
             if (!acBox.contains(e.target) && !msgInput?.contains(e.target)) hideAc();
@@ -148,25 +138,21 @@
     }
 
     function closeAllModals() {
-        ['stats-drawer','stats-modal','commands-panel','settings-panel',
-         'mod-panel','login-modal','logs-panel']
+        ['stats-drawer','stats-modal','commands-panel','settings-panel','mod-panel','login-modal','logs-panel']
             .forEach(id => document.getElementById(id)?.classList.remove('active'));
-        // warn-history-modal uses different classes
-        const whModal = document.getElementById('warn-history-modal');
-        if (whModal) whModal.classList.remove('wh-visible', 'wh-open');
+        const wh = document.getElementById('warn-history-modal');
+        if (wh) wh.classList.remove('wh-visible', 'wh-open');
     }
 
-    // ─── CANALES ──────────────────────────────────────────────────────────────
+    // ─── CHANNELS ─────────────────────────────────────────────────────────────
     async function fetchChannels() {
         try {
-            const res      = await fetch('/api/channels');
+            const res = await fetch('/api/channels');
             const channels = await res.json();
             if (!Array.isArray(channels) || !channels.length) return;
-
             channelList.innerHTML = '';
             const drawerList = document.getElementById('channel-drawer-list');
             if (drawerList) drawerList.innerHTML = '';
-
             channels.forEach((ch, idx) => {
                 const cName = ch.name || 'Unknown';
                 const cId   = ch.id;
@@ -174,25 +160,23 @@
                 channelList.appendChild(createChannelElement(cName, cId, idx));
                 if (drawerList) drawerList.appendChild(createChannelElement(cName, cId, idx, true));
             });
-
             if (channelCount) channelCount.textContent = channels.length;
         } catch (e) { console.error('fetchChannels error', e); }
     }
 
     function createChannelElement(name, id, idx, forDrawer = false) {
-        const div  = document.createElement('div');
+        const div = document.createElement('div');
         div.className = 'channel-item';
         div.setAttribute('data-index', String(idx + 1).padStart(2, '0'));
         const span = document.createElement('span');
-        span.className   = 'ch-name';
+        span.className = 'ch-name';
         span.textContent = name.toUpperCase();
         div.appendChild(span);
         div.onclick = () => {
             currentChannelId = id;
             document.querySelectorAll('.channel-item').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.channel-item').forEach(b => {
-                if (b.querySelector('.ch-name')?.textContent === name.toUpperCase())
-                    b.classList.add('active');
+                if (b.querySelector('.ch-name')?.textContent === name.toUpperCase()) b.classList.add('active');
             });
             if (chatChannelName) chatChannelName.innerText = name.toUpperCase();
             resetTimer();
@@ -214,41 +198,32 @@
             const m = Math.floor(seconds / 60).toString().padStart(2, '0');
             const s = (seconds % 60).toString().padStart(2, '0');
             if (chatUptime) {
-                chatUptime.innerText = `${m}:${s}`;
+                chatUptime.innerText = m + ':' + s;
                 chatUptime.style.color = seconds < 300 ? 'var(--teal)' : seconds < 900 ? 'var(--amber)' : 'var(--coral)';
             }
         }, 1000);
     }
 
-    // ─── MENSAJES ─────────────────────────────────────────────────────────────
-    async function fetchMessages(initial = false) {
+    // ─── MESSAGES ─────────────────────────────────────────────────────────────
+    async function fetchMessages(initial) {
         if (!currentChannelId) return;
         isFetching = true;
-
         try {
-            const now = Date.now();
             document.querySelectorAll('[data-optimistic="1"]').forEach(n => {
-                if ((now - parseInt(n.dataset.optimisticTs || 0)) > 5000) n.remove();
+                if ((Date.now() - parseInt(n.dataset.optimisticTs || 0)) > 5000) n.remove();
             });
         } catch (e) {}
-
         if (!botName) await fetchBotInfo();
-
         try {
-            let url = `/api/messages?channel_id=${encodeURIComponent(currentChannelId)}`;
+            let url = '/api/messages?channel_id=' + encodeURIComponent(currentChannelId);
             if (!initial) {
-                const since = lastMessageId[currentChannelId] || '0';
-                url += `&since_id=${encodeURIComponent(since)}`;
+                url += '&since_id=' + encodeURIComponent(lastMessageId[currentChannelId] || '0');
             } else {
-                url += `&limit=1000`;
+                url += '&limit=1000';
             }
-
             const res  = await fetch(url);
             const msgs = await res.json();
-            const nearBottom = (chatFeed.scrollHeight - chatFeed.scrollTop - chatFeed.clientHeight) < 150;
-
             await resolveMentions(msgs);
-
             if (initial) {
                 chatFeed.innerHTML = '';
                 if (!msgs.length) {
@@ -257,13 +232,10 @@
                     msgs.forEach(msg => appendMessage(msg, false));
                 }
                 chatFeed.scrollTop = chatFeed.scrollHeight;
-            } else {
-                if (msgs.length) {
-                    msgs.forEach(msg => appendMessage(msg, true));
-                    chatFeed.scrollTop = chatFeed.scrollHeight;
-                }
+            } else if (msgs.length) {
+                msgs.forEach(msg => appendMessage(msg, true));
+                chatFeed.scrollTop = chatFeed.scrollHeight;
             }
-
             msgs.forEach(msg => {
                 if (msg.message_id) {
                     const prev = lastMessageId[currentChannelId] || '0';
@@ -271,21 +243,16 @@
                         lastMessageId[currentChannelId] = String(msg.message_id);
                 }
             });
-        } catch (e) {
-            console.error('fetchMessages error', e);
-        } finally {
-            isFetching = false;
-        }
+        } catch (e) { console.error('fetchMessages error', e); }
+        finally { isFetching = false; }
     }
 
-    // ─── RESOLUCIÓN DE MENCIONES ──────────────────────────────────────────────
+    // ─── MENTION RESOLUTION ───────────────────────────────────────────────────
     async function resolveMentions(msgs) {
         const userIds = new Set(), roleIds = new Set();
         const reU = /<@!?(\d+)>/g, reR = /<@&(\d+)>/g;
         msgs.forEach(m => {
-            let x;
-            const c = m.content || '';
-            // Reset lastIndex before each use
+            let x; const c = m.content || '';
             reU.lastIndex = 0; reR.lastIndex = 0;
             while ((x = reU.exec(c)) !== null) userIds.add(x[1]);
             while ((x = reR.exec(c)) !== null) roleIds.add(x[1]);
@@ -295,8 +262,7 @@
         if (!toU.length && !toR.length) return;
         try {
             const r = await fetch('/api/mention_lookup', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ users: toU, roles: toR })
             });
             if (r.ok) {
@@ -307,95 +273,73 @@
         } catch (e) {}
     }
 
-    // ─── RENDERIZADO DE CONTENIDO DISCORD ────────────────────────────────────
+    // ─── DISCORD CONTENT RENDERING ────────────────────────────────────────────
     function renderDiscordContent(text) {
         if (!text) return '';
-
-        // 1. Escapar todo HTML primero (previene XSS y el HTML en mensajes de spam)
         let w = escapeHtml(text);
-
-        // 2. Menciones de usuario → span clickeable para deadline
+        // User mentions
         w = w.replace(/&lt;@!?(\d+)&gt;/g, (_, id) => {
-            const cached = mentionCache.users[id];
-            let display;
-            if (cached && typeof cached === 'object') {
-                display = cached.display || cached.username || `@${id}`;
-            } else if (typeof cached === 'string') {
-                display = cached;
-            } else {
-                display = `@User_${id.substring(0, 4)}`;
-            }
-            return `<span class="mention mention-user" title="ID: ${id}" style="cursor:pointer;" onclick="promptDeadline('${id}')">${escapeHtml(display)}</span>`;
+            const c = mentionCache.users[id];
+            const display = (c && typeof c === 'object') ? (c.display || c.username || '@' + id) : (typeof c === 'string' ? c : '@User_' + id.substring(0, 4));
+            return '<span class="mention mention-user" title="ID: ' + id + '" style="cursor:pointer;" onclick="promptDeadline(\'' + id + '\')">' + escapeHtml(display) + '</span>';
         });
-
-        // 3. Menciones de rol
+        // Role mentions
         w = w.replace(/&lt;@&amp;(\d+)&gt;/g, (_, id) => {
-            const cached = mentionCache.roles[id];
-            let roleName = `role_${id}`, roleColor = '#a78bfa';
-            if (cached && typeof cached === 'object') {
-                roleName  = cached.name  || roleName;
-                roleColor = cached.color || roleColor;
-            } else if (typeof cached === 'string') {
-                roleName = cached;
-            }
-            return `<span class="mention mention-role" style="color:${roleColor};background:${roleColor}22">${escapeHtml(roleName)}</span>`;
+            const c = mentionCache.roles[id];
+            const roleName  = (c && typeof c === 'object') ? (c.name  || 'role_' + id) : 'role_' + id;
+            const roleColor = (c && typeof c === 'object') ? (c.color || '#a78bfa') : '#a78bfa';
+            return '<span class="mention mention-role" style="color:' + roleColor + ';background:' + roleColor + '22">' + escapeHtml(roleName) + '</span>';
         });
-
-        // 4. Menciones de canal
+        // Channel mentions
         w = w.replace(/&lt;#(\d+)&gt;/g, (_, id) => {
             const name = channelMap[id];
-            return name
-                ? `<span class="mention mention-channel">#${escapeHtml(name)}</span>`
-                : `<span class="mention">#${id}</span>`;
+            return name ? '<span class="mention mention-channel">#' + escapeHtml(name) + '</span>' : '<span class="mention">#' + id + '</span>';
         });
-
-        // 5. Timestamps Discord <t:UNIX:R>
+        // Discord timestamps
         w = w.replace(/&lt;t:(\d+)(?::([tTdDfFR]))?&gt;/g, (_, ts, fmt) => {
             try {
-                const d   = new Date(parseInt(ts) * 1000);
-                const now = Date.now();
-                const diff = Math.round((d.getTime() - now) / 1000);
+                const d = new Date(parseInt(ts) * 1000);
+                const diff = Math.round((d.getTime() - Date.now()) / 1000);
                 let str;
                 if (fmt === 'R') {
                     const abs = Math.abs(diff);
-                    const rel = abs < 60 ? `${abs}s` : abs < 3600 ? `${Math.floor(abs/60)}m` : abs < 86400 ? `${Math.floor(abs/3600)}h` : `${Math.floor(abs/86400)}d`;
-                    str = diff > 0 ? `in ${rel}` : `${rel} ago`;
-                } else {
-                    str = d.toLocaleString();
-                }
-                return `<span class="mention mention-ts" title="${d.toISOString()}">${str}</span>`;
-            } catch (e) { return `&lt;t:${ts}&gt;`; }
+                    const rel = abs < 60 ? abs + 's' : abs < 3600 ? Math.floor(abs/60) + 'm' : abs < 86400 ? Math.floor(abs/3600) + 'h' : Math.floor(abs/86400) + 'd';
+                    str = diff > 0 ? 'in ' + rel : rel + ' ago';
+                } else { str = d.toLocaleString(); }
+                return '<span class="mention mention-ts" title="' + d.toISOString() + '">' + str + '</span>';
+            } catch (e) { return '&lt;t:' + ts + '&gt;'; }
         });
-
-        // 6. Links
+        // Links
         w = w.replace(/(https?:\/\/[^\s<>"]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
-
-        // 7. Markdown básico
+        // Basic markdown
         w = w.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
         w = w.replace(/\*(.+?)\*/g,     '<em>$1</em>');
         w = w.replace(/`(.+?)`/g,       '<code>$1</code>');
         w = w.replace(/\n/g,            '<br>');
-
         return w;
     }
 
     // ─── APPEND MESSAGE ───────────────────────────────────────────────────────
-    function appendMessage(msg, isNew = false) {
-        if (chatFeed.querySelector(`[data-msg-id="${msg.message_id}"]`)) return;
-
+    function appendMessage(msg, isNew) {
+        if (chatFeed.querySelector('[data-msg-id="' + msg.message_id + '"]')) return;
         const el = document.createElement('div');
         el.className = 'message';
-        if (botName && ((msg.author_id && String(msg.author_id) === String(window._botId || '')) || msg.author_name === botName))
-            el.classList.add('msg-me');
+        // Identify bot's own messages for styling
+        if (botName && (
+            (msg.author_id && String(msg.author_id) === String(window._botId || '')) ||
+            msg.author_name === botName
+        )) el.classList.add('msg-me');
 
-        el.dataset.msgId = String(msg.message_id);
-        const rendered = renderDiscordContent(msg.content || '');
-        el.innerHTML = `
-            <div class="msg-header">
-                <div class="msg-time">${formatTimestamp(msg.timestamp)}</div>
-                <div class="msg-author">${escapeHtml(msg.author_name || 'Unknown')}</div>
-            </div>
-            <div class="msg-content" data-raw-content="${escapeHtml(msg.content || '')}">${rendered}</div>`;
+        el.dataset.msgId     = String(msg.message_id);
+        el.dataset.rawContent = msg.content || '';   // raw text for inline edit
+
+        el.innerHTML =
+            '<div class="msg-header">' +
+                '<div class="msg-time">' + formatTimestamp(msg.timestamp) + '</div>' +
+                '<div class="msg-author">' + escapeHtml(msg.author_name || 'Unknown') + '</div>' +
+            '</div>' +
+            '<div class="msg-content">' + renderDiscordContent(msg.content || '') + '</div>';
+
         decorateMessage(el);
         chatFeed.appendChild(el);
 
@@ -412,8 +356,8 @@
         try {
             const d = new Date(ts.replace(' ', 'T'));
             if (isNaN(d.getTime())) return ts.slice(0, 16) || '——';
-            const locale = navigator.language || 'es-ES';
-            const time   = d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false });
+            const locale  = navigator.language || 'en-US';
+            const time    = d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false });
             const sameDay = d.toDateString() === new Date().toDateString();
             if (sameDay) return time;
             return d.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' }) + ' ' + time;
@@ -422,53 +366,46 @@
 
     function escapeHtml(s) {
         return String(s)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
     }
 
+    // ─── MESSAGE ACTIONS ──────────────────────────────────────────────────────
     function decorateMessage(msgEl) {
         if (!msgEl.dataset.msgId || msgEl.querySelector('.msg-actions')) return;
-        const isOwn   = msgEl.classList.contains('msg-me');
-        const msgId   = msgEl.dataset.msgId;
+        const isOwn = msgEl.classList.contains('msg-me');
+        const msgId = msgEl.dataset.msgId;
         const actions = document.createElement('div');
         actions.className = 'msg-actions';
 
-        // ── Reaccionar — visible en TODOS los mensajes ───────────────────────
+        // React — all messages
         const reactBtn = document.createElement('button');
         reactBtn.className = 'msg-action-btn';
         reactBtn.innerHTML = '😊';
-        reactBtn.title = 'Reaccionar';
-        reactBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openEmojiPicker(reactBtn, msgId);
-        });
+        reactBtn.title = 'React';
+        reactBtn.addEventListener('click', (e) => { e.stopPropagation(); openEmojiPicker(reactBtn, msgId); });
         actions.appendChild(reactBtn);
 
-        // ── Editar — solo mensajes propios ───────────────────────────────────
+        // Edit — own messages only
         if (isOwn) {
             const editBtn = document.createElement('button');
             editBtn.className = 'msg-action-btn';
             editBtn.innerHTML = '✏️';
-            editBtn.title = 'Editar';
+            editBtn.title = 'Edit';
             editBtn.addEventListener('click', () => startInlineEdit(msgEl, msgId));
             actions.appendChild(editBtn);
         }
 
-        // ── Borrar — visible en TODOS (bot tiene manage messages) ────────────
+        // Delete — all messages
         const delBtn = document.createElement('button');
         delBtn.className = 'msg-action-btn del';
         delBtn.innerHTML = '🗑️';
-        delBtn.title = 'Borrar';
+        delBtn.title = 'Delete';
         delBtn.addEventListener('click', () => {
-            if (!confirm('¿Borrar este mensaje?')) return;
-            delBtn.disabled = true;
-            delBtn.textContent = '…';
+            if (!confirm('Delete this message?')) return;
+            delBtn.disabled = true; delBtn.textContent = '…';
             fetch('/api/delete', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ channel_id: currentChannelId, message_id: msgId })
             })
             .then(r => r.json())
@@ -477,18 +414,13 @@
                     msgEl.style.transition = 'opacity 200ms';
                     msgEl.style.opacity = '0';
                     setTimeout(() => msgEl.remove(), 210);
-                    showToast('🗑️ Mensaje borrado', 'success');
+                    showToast('🗑️ Message deleted', 'success');
                 } else {
-                    showToast('❌ ' + (d.error || 'Error al borrar'), 'error');
-                    delBtn.disabled = false;
-                    delBtn.innerHTML = '🗑️';
+                    showToast('❌ ' + (d.error || 'Delete failed'), 'error');
+                    delBtn.disabled = false; delBtn.innerHTML = '🗑️';
                 }
             })
-            .catch(err => {
-                showToast('❌ ' + err.message, 'error');
-                delBtn.disabled = false;
-                delBtn.innerHTML = '🗑️';
-            });
+            .catch(err => { showToast('❌ ' + err.message, 'error'); delBtn.disabled = false; delBtn.innerHTML = '🗑️'; });
         });
         actions.appendChild(delBtn);
 
@@ -496,44 +428,51 @@
         (header || msgEl).appendChild(actions);
     }
 
-    // ── Emoji picker ─────────────────────────────────────────────────────────
+    // ─── EMOJI PICKER ─────────────────────────────────────────────────────────
+    // Uses a click-based approach — no pointerdown/mousedown race conditions
     function openEmojiPicker(anchor, msgId) {
-        // Remove existing picker if open
-        document.getElementById('emoji-picker-popup')?.remove();
+        // Toggle: if same picker is already open, close it
+        const existing = document.getElementById('emoji-picker-popup');
+        if (existing) { existing.remove(); return; }
 
         const EMOJIS = ['👍','❤️','😂','😮','😢','🔥','✅','👀','💯','🎉','🤔','😎'];
         const picker = document.createElement('div');
         picker.id = 'emoji-picker-popup';
-        picker.style.cssText = [
-            'position:fixed;z-index:9999',
-            'background:var(--bg2)',
-            'border:1px solid var(--border-hi)',
-            'border-radius:14px',
-            'padding:10px',
-            'display:flex;gap:4px;flex-wrap:wrap;max-width:220px',
-            'box-shadow:0 12px 40px rgba(0,0,0,0.6)'
-        ].join(';');
+        Object.assign(picker.style, {
+            position: 'fixed', zIndex: '9999',
+            background: 'var(--bg2)', border: '1px solid var(--border-hi)',
+            borderRadius: '14px', padding: '10px',
+            display: 'flex', gap: '4px', flexWrap: 'wrap', maxWidth: '220px',
+            boxShadow: '0 12px 40px rgba(0,0,0,0.7)'
+        });
 
         EMOJIS.forEach(em => {
             const btn = document.createElement('button');
             btn.textContent = em;
-            btn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:1.3rem;border-radius:8px;padding:5px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;transition:background 100ms;';
-            btn.addEventListener('mouseover',  () => { btn.style.background = 'var(--lift)'; });
-            btn.addEventListener('mouseout',   () => { btn.style.background = 'none'; });
-            btn.addEventListener('mousedown', (e) => {
-                e.preventDefault(); // prevent blur before click
+            Object.assign(btn.style, {
+                background: 'none', border: 'none', cursor: 'pointer',
+                fontSize: '1.3rem', borderRadius: '8px', padding: '5px',
+                width: '36px', height: '36px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'background 100ms'
+            });
+            btn.addEventListener('mouseover', () => { btn.style.background = 'var(--lift)'; });
+            btn.addEventListener('mouseout',  () => { btn.style.background = 'none'; });
+            // Use click (not mousedown) — simpler and reliable
+            btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 picker.remove();
-                document.removeEventListener('pointerdown', dismiss, true);
+                document.removeEventListener('click', outsideDismiss, true);
+                const chanId = currentChannelId;
+                if (!chanId) { showToast('⚠ No channel selected', 'warn'); return; }
                 fetch('/api/react', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ channel_id: currentChannelId, message_id: msgId, emoji: em })
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ channel_id: chanId, message_id: msgId, emoji: em })
                 })
                 .then(r => r.json())
                 .then(d => {
-                    if (d.success) showToast('✅ Reacción ' + em + ' enviada', 'success');
-                    else showToast('❌ ' + (d.error || 'Error'), 'error');
+                    if (d.success) showToast('✅ Reacted with ' + em, 'success');
+                    else showToast('❌ ' + (d.error || 'Reaction failed'), 'error');
                 })
                 .catch(err => showToast('❌ ' + err.message, 'error'));
             });
@@ -542,77 +481,67 @@
 
         document.body.appendChild(picker);
 
-        // Position above anchor
+        // Position above the anchor button
         const rect = anchor.getBoundingClientRect();
-        const ph   = picker.offsetHeight || 100;
         picker.style.left   = Math.min(rect.left, window.innerWidth - 230) + 'px';
-        picker.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
+        picker.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
 
-        const dismiss = (e) => {
+        // Dismiss when clicking outside — registered on next tick so opening click doesn't dismiss
+        function outsideDismiss(e) {
             if (!picker.contains(e.target) && e.target !== anchor) {
                 picker.remove();
-                document.removeEventListener('pointerdown', dismiss, true);
+                document.removeEventListener('click', outsideDismiss, true);
             }
-        };
-        // Delay so this click doesn't dismiss immediately
-        requestAnimationFrame(() => {
-            document.addEventListener('pointerdown', dismiss, true);
-        });
+        }
+        setTimeout(() => document.addEventListener('click', outsideDismiss, true), 0);
     }
 
-    // ── Inline edit ──────────────────────────────────────────────────────────
+    // ─── INLINE EDIT ──────────────────────────────────────────────────────────
     function startInlineEdit(msgEl, msgId) {
         if (msgEl.querySelector('.msg-edit-wrap')) return;
-        const contentDiv = msgEl.querySelector('.msg-content');
-        if (!contentDiv) return;
-        const originalText = contentDiv.dataset.rawContent || contentDiv.innerText || '';
+        // Read the raw (unencoded) text stored on the message element
+        const originalText = msgEl.dataset.rawContent || '';
 
         const wrap = document.createElement('div');
         wrap.className = 'msg-edit-wrap';
 
         const input = document.createElement('textarea');
         input.className = 'msg-edit-input';
-        input.value = originalText;
+        input.value = originalText;  // plain text, no HTML entities
 
         const saveBtn = document.createElement('button');
         saveBtn.className = 'msg-edit-save';
-        saveBtn.textContent = 'Guardar';
+        saveBtn.textContent = 'Save';
 
         const cancelBtn = document.createElement('button');
         cancelBtn.className = 'msg-edit-cancel';
-        cancelBtn.textContent = 'Cancelar';
+        cancelBtn.textContent = 'Cancel';
 
         cancelBtn.addEventListener('click', () => wrap.remove());
 
         saveBtn.addEventListener('click', () => {
             const newContent = input.value.trim();
-            if (!newContent) { showToast('⚠ El mensaje no puede estar vacío', 'warn'); return; }
+            if (!newContent) { showToast('⚠ Message cannot be empty', 'warn'); return; }
             if (newContent === originalText) { wrap.remove(); return; }
-            saveBtn.disabled = true;
-            saveBtn.textContent = '…';
+            saveBtn.disabled = true; saveBtn.textContent = '…';
             fetch('/api/edit', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ channel_id: currentChannelId, message_id: msgId, content: newContent })
             })
             .then(r => r.json())
             .then(d => {
                 if (d.success) {
-                    contentDiv.innerHTML = renderDiscordContent(newContent);
-                    contentDiv.dataset.rawContent = newContent;
+                    const cd = msgEl.querySelector('.msg-content');
+                    if (cd) cd.innerHTML = renderDiscordContent(newContent);
+                    msgEl.dataset.rawContent = newContent;  // update stored raw text
                     wrap.remove();
-                    showToast('✅ Mensaje editado', 'success');
+                    showToast('✅ Message edited', 'success');
                 } else {
-                    showToast('❌ ' + (d.error || 'Error al editar'), 'error');
-                    saveBtn.disabled = false;
-                    saveBtn.textContent = 'Guardar';
+                    showToast('❌ ' + (d.error || 'Edit failed'), 'error');
+                    saveBtn.disabled = false; saveBtn.textContent = 'Save';
                 }
             })
-            .catch(err => {
-                showToast('❌ ' + err.message, 'error');
-                saveBtn.disabled = false;
-                saveBtn.textContent = 'Guardar';
-            });
+            .catch(err => { showToast('❌ ' + err.message, 'error'); saveBtn.disabled = false; saveBtn.textContent = 'Save'; });
         });
 
         input.addEventListener('keydown', e => {
@@ -620,15 +549,13 @@
             if (e.key === 'Escape') cancelBtn.click();
         });
 
-        wrap.appendChild(input);
-        wrap.appendChild(saveBtn);
-        wrap.appendChild(cancelBtn);
+        wrap.appendChild(input); wrap.appendChild(saveBtn); wrap.appendChild(cancelBtn);
         msgEl.appendChild(wrap);
         input.focus();
         input.setSelectionRange(input.value.length, input.value.length);
     }
 
-    // ─── AUTOCOMPLETADO @ ─────────────────────────────────────────────────────
+    // ─── @ AUTOCOMPLETE ───────────────────────────────────────────────────────
     function getAcBox() {
         if (acBox) return acBox;
         acBox = document.createElement('div');
@@ -637,33 +564,21 @@
         document.body.appendChild(acBox);
         return acBox;
     }
-    function hideAc() {
-        getAcBox().classList.remove('ac-open');
-        acItems = []; acIdx = -1; acTriggerPos = -1;
-    }
+    function hideAc() { getAcBox().classList.remove('ac-open'); acItems = []; acIdx = -1; acTriggerPos = -1; }
     async function handleAcInput() {
-        const val   = msgInput.value;
-        const caret = msgInput.selectionStart;
-        // Buscar hacia atrás el @ más cercano sin espacios intermedios
+        const val = msgInput.value, caret = msgInput.selectionStart;
         let atPos = -1;
         for (let i = caret - 1; i >= 0; i--) {
             if (val[i] === '@') { atPos = i; break; }
-            // Solo rompemos si hay un espacio Y ya tenemos algún texto de query
-            // (permitimos @ solo, o @texto, pero no @ texto con espacio en medio)
             if (val[i] === ' ' || val[i] === '\n') break;
         }
         if (atPos === -1) { hideAc(); return; }
         const query = val.slice(atPos + 1, caret).toLowerCase();
-        // Si la query tiene un espacio interno (ej: "@foo bar"), cerrar
         if (query.includes(' ')) { hideAc(); return; }
         acTriggerPos = atPos;
         await ensureAcData();
-        const roleMatches = acRoles
-            .filter(r => !query || r.name.toLowerCase().includes(query))
-            .slice(0, query ? 4 : 3).map(r => ({ ...r, type: 'role' }));
-        const memberMatches = acMembers
-            .filter(m => !query || m.display.toLowerCase().includes(query) || m.username.toLowerCase().includes(query))
-            .slice(0, 10 - roleMatches.length).map(m => ({ ...m, type: 'user' }));
+        const roleMatches = acRoles.filter(r => !query || r.name.toLowerCase().includes(query)).slice(0, query ? 4 : 3).map(r => ({ ...r, type: 'role' }));
+        const memberMatches = acMembers.filter(m => !query || m.display.toLowerCase().includes(query) || m.username.toLowerCase().includes(query)).slice(0, 10 - roleMatches.length).map(m => ({ ...m, type: 'user' }));
         const matches = [...roleMatches, ...memberMatches];
         if (!matches.length) { hideAc(); return; }
         renderAc(matches);
@@ -671,36 +586,26 @@
     function handleAcKeydown(e) {
         if (!acItems.length) return;
         if (e.key === 'ArrowDown')  { e.preventDefault(); setAcIdx(Math.min(acIdx + 1, acItems.length - 1)); }
-        else if (e.key === 'ArrowUp') { e.preventDefault(); setAcIdx(Math.max(acIdx - 1, 0)); }
+        else if (e.key === 'ArrowUp')  { e.preventDefault(); setAcIdx(Math.max(acIdx - 1, 0)); }
         else if (e.key === 'Tab' || e.key === 'Enter') { e.preventDefault(); applyAc(acIdx >= 0 ? acIdx : 0); }
         else if (e.key === 'Escape') hideAc();
     }
     function renderAc(matches) {
-        const box = getAcBox();
-        box.innerHTML = '';
-        acItems = matches; acIdx = -1;
+        const box = getAcBox(); box.innerHTML = ''; acItems = matches; acIdx = -1;
         matches.forEach((item, i) => {
-            const el = document.createElement('div');
-            el.className = 'ac-item';
-            el.dataset.index = i;
+            const el = document.createElement('div'); el.className = 'ac-item'; el.dataset.index = i;
             if (item.type === 'user') {
                 const av = document.createElement('div'); av.className = 'ac-avatar';
-                if (item.avatar) {
-                    const img = document.createElement('img');
-                    img.src = item.avatar; img.className = 'ac-avatar-img';
-                    av.appendChild(img);
-                } else {
-                    av.textContent = (item.display || item.username || '?')[0].toUpperCase();
-                }
+                if (item.avatar) { const img = document.createElement('img'); img.src = item.avatar; img.className = 'ac-avatar-img'; av.appendChild(img); }
+                else { av.textContent = (item.display || item.username || '?')[0].toUpperCase(); }
                 const info = document.createElement('div'); info.className = 'ac-info';
-                const nm   = document.createElement('span'); nm.className = 'ac-name'; nm.textContent = item.display;
-                const hd   = document.createElement('span'); hd.className = 'ac-handle'; hd.textContent = '@' + item.username;
-                info.appendChild(nm); info.appendChild(hd);
-                el.appendChild(av); el.appendChild(info);
+                const nm = document.createElement('span'); nm.className = 'ac-name'; nm.textContent = item.display;
+                const hd = document.createElement('span'); hd.className = 'ac-handle'; hd.textContent = '@' + item.username;
+                info.appendChild(nm); info.appendChild(hd); el.appendChild(av); el.appendChild(info);
             } else {
-                const dot   = document.createElement('span'); dot.className = 'ac-role-dot'; dot.style.background = item.color;
+                const dot = document.createElement('span'); dot.className = 'ac-role-dot'; dot.style.background = item.color;
                 const label = document.createElement('span'); label.className = 'ac-role-name'; label.style.color = item.color; label.textContent = '@' + item.name;
-                const tag   = document.createElement('span'); tag.className = 'ac-role-tag'; tag.textContent = 'ROLE';
+                const tag = document.createElement('span'); tag.className = 'ac-role-tag'; tag.textContent = 'ROLE';
                 el.appendChild(dot); el.appendChild(label); el.appendChild(tag);
             }
             el.addEventListener('mouseenter', () => setAcIdx(i));
@@ -721,77 +626,50 @@
     }
     function applyAc(i) {
         if (i < 0 || i >= acItems.length) return;
-        const item = acItems[i];
-        const val  = msgInput.value;
-        const tag  = item.type === 'user' ? `<@${item.id}> ` : `<@&${item.id}> `;
-        const before = val.slice(0, acTriggerPos);
-        const after  = val.slice(msgInput.selectionStart);
+        const item = acItems[i], val = msgInput.value;
+        const tag = item.type === 'user' ? '<@' + item.id + '> ' : '<@&' + item.id + '> ';
+        const before = val.slice(0, acTriggerPos), after = val.slice(msgInput.selectionStart);
         msgInput.value = before + tag + after;
         const newPos = before.length + tag.length;
         msgInput.setSelectionRange(newPos, newPos);
         hideAc(); msgInput.focus();
     }
-    async function ensureAcData(forceRefresh = false) {
+    async function ensureAcData(forceRefresh) {
         const now = Date.now();
         if (acLoaded && !forceRefresh && (now - acLoadedAt) < AC_CACHE_MS) return;
         try {
             const r = await fetch('/api/members');
             if (r.ok) {
                 const j = await r.json();
-                acMembers = j.members || [];
-                acRoles   = j.roles   || [];
-                // Mark as loaded regardless — even empty means the API worked.
-                // We only skip caching if the request itself failed.
-                acLoaded   = true;
-                acLoadedAt = now;
+                acMembers = j.members || []; acRoles = j.roles || [];
+                acLoaded = true; acLoadedAt = now;
             }
         } catch (e) { console.warn('ensureAcData error', e); }
     }
 
-    // ─── ENVÍO DE MENSAJES + COMANDOS / ──────────────────────────────────────
+    // ─── SEND MESSAGE ─────────────────────────────────────────────────────────
     async function sendMessage() {
         const content = msgInput.value.trim();
         if (!content) return;
-        if (!currentChannelId) {
-            showToast('⚠ Selecciona un canal primero', 'warn');
-            return;
-        }
+        if (!currentChannelId) { showToast('⚠ Select a channel first', 'warn'); return; }
 
-        // ── /done ─────────────────────────────────────────────────────────────
         if (content === '/done') {
             msgInput.value = '';
-            showToast('Registrando EP…', 'info');
+            showToast('Logging EP…', 'info');
             try {
-                const res  = await fetch('/api/done', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        channel_id: currentChannelId,
-                        user_id: window._doneUserId || window._botId || '0'
-                    })
-                });
+                const res  = await fetch('/api/done', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel_id: currentChannelId, user_id: window._doneUserId || window._botId || '0' }) });
                 const data = await res.json();
-                if (data.error) showToast('❌ ' + data.error, 'error');
-                else showToast('✅ ' + (data.text || 'EP registrado'), 'success');
+                showToast(data.error ? '❌ ' + data.error : '✅ ' + (data.text || 'EP logged'), data.error ? 'error' : 'success');
                 fetchMessages(false);
-            } catch (e) {
-                showToast('❌ Error: ' + e.message, 'error');
-            }
-            msgInput.disabled = false;
-            msgInput.focus();
+            } catch (e) { showToast('❌ Error: ' + e.message, 'error'); }
+            msgInput.disabled = false; msgInput.focus();
             return;
         }
 
-        // ── /deadline ─────────────────────────────────────────────────────────
         if (content.startsWith('/deadline ')) {
-            const rawTarget = content.slice('/deadline '.length).trim();
-            const targetId  = rawTarget.replace(/[<@!>]/g, '').trim();
-            if (targetId) {
-                window.triggerWebDeadline(targetId);
-                msgInput.value = '';
-            } else {
-                showToast('Uso: /deadline @Usuario o /deadline ID_USUARIO', 'warn');
-            }
+            const targetId = content.slice('/deadline '.length).trim().replace(/[<@!>]/g, '').trim();
+            if (targetId) { window.triggerWebDeadline(targetId); msgInput.value = ''; }
+            else showToast('Usage: /deadline @User or /deadline USER_ID', 'warn');
             return;
         }
 
@@ -801,101 +679,63 @@
             optimisticNode = document.createElement('div');
             optimisticNode.className = 'message msg-me';
             optimisticNode.setAttribute('data-optimistic', '1');
-            optimisticNode.dataset.clientId     = optimisticClientId;
+            optimisticNode.dataset.clientId = optimisticClientId;
             optimisticNode.dataset.optimisticTs = String(Date.now());
-            optimisticNode.innerHTML = `
-                <div class="msg-header">
-                    <div class="msg-time">——:——</div>
-                    <div class="msg-author">${escapeHtml(botName || 'BOT')}</div>
-                </div>
-                <div class="msg-content">${renderDiscordContent(content)}</div>`;
+            optimisticNode.innerHTML = '<div class="msg-header"><div class="msg-time">——:——</div><div class="msg-author">' + escapeHtml(botName || 'BOT') + '</div></div><div class="msg-content">' + renderDiscordContent(content) + '</div>';
             chatFeed.appendChild(optimisticNode);
             chatFeed.scrollTop = chatFeed.scrollHeight;
         } catch (e) {}
 
-        msgInput.value = '';
-        msgInput.disabled = true;
+        msgInput.value = ''; msgInput.disabled = true;
         try {
-            const res  = await fetch('/api/send', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ channel_id: currentChannelId, content })
-            });
+            const res  = await fetch('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel_id: currentChannelId, content }) });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Server Reject');
+            if (!res.ok) throw new Error(data.error || 'Server rejected');
             if (data.message_id) {
-                chatFeed.querySelector(`[data-client-id="${optimisticClientId}"]`)?.remove();
+                chatFeed.querySelector('[data-client-id="' + optimisticClientId + '"]')?.remove();
                 fetchMessages(false);
             }
         } catch (e) {
-            console.error('Send error:', e);
             if (optimisticNode?.parentNode) optimisticNode.remove();
             msgInput.value = content;
-            showToast('Error al enviar: ' + e.message, 'error');
-        } finally {
-            msgInput.disabled = false;
-            msgInput.focus();
-        }
+            showToast('❌ Send failed: ' + e.message, 'error');
+        } finally { msgInput.disabled = false; msgInput.focus(); }
     }
 
     // ─── DEADLINE ─────────────────────────────────────────────────────────────
     window.promptDeadline = function (targetId) {
-        const cached = mentionCache.users[targetId];
-        const name   = (cached && typeof cached === 'object') ? cached.display : `ID ${targetId}`;
-        if (confirm(`¿Enviar DEADLINE de 24h a ${name}?`))
-            window.triggerWebDeadline(targetId);
+        const c = mentionCache.users[targetId];
+        const name = (c && typeof c === 'object') ? c.display : 'ID ' + targetId;
+        if (confirm('Send a 24h deadline to ' + name + '?')) window.triggerWebDeadline(targetId);
     };
-
     window.triggerWebDeadline = function (targetId) {
-        if (!currentChannelId) {
-            showToast('Selecciona un canal primero', 'warn');
-            return;
-        }
-        // Resolver nombre si está en caché
-        const cached = mentionCache.users[targetId];
-        const name   = (cached && typeof cached === 'object') ? cached.display : targetId;
-
-        fetch('/api/deadline', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ target_id: targetId, channel_id: currentChannelId })
-        })
-        .then(r => r.json())
-        .then(d => {
-            showToast(`✅ Deadline enviado a ${name}`, 'success');
-            fetchMessages(false);
-        })
-        .catch(err => showToast('Error: ' + err, 'error'));
+        if (!currentChannelId) { showToast('⚠ Select a channel first', 'warn'); return; }
+        const c = mentionCache.users[targetId];
+        const name = (c && typeof c === 'object') ? c.display : targetId;
+        fetch('/api/deadline', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_id: targetId, channel_id: currentChannelId }) })
+            .then(r => r.json())
+            .then(() => { showToast('✅ Deadline sent to ' + name, 'success'); fetchMessages(false); })
+            .catch(err => showToast('❌ Error: ' + err, 'error'));
     };
 
     // ─── LOGS PANEL ───────────────────────────────────────────────────────────
-    let logsInterval = null;
-    let logsUnlocked = false;
-
+    let logsInterval = null, logsUnlocked = false;
     function openLogs() {
         const panel = document.getElementById('logs-panel');
         if (!panel) return;
         panel.classList.add('active');
         if (!logsUnlocked) {
-            document.getElementById('logs-auth').style.display  = 'flex';
+            document.getElementById('logs-auth').style.display   = 'flex';
             document.getElementById('logs-viewer').style.display = 'none';
             document.getElementById('logs-user').value = '';
             document.getElementById('logs-pass').value = '';
             document.getElementById('logs-error').textContent = '';
-        } else {
-            fetchLogs();
-        }
+        } else { fetchLogs(); }
     }
-
     window.openLogs  = openLogs;
-    window.fetchLogs = fetchLogs;   // expuesto para el onchange del input de líneas
-
-    window.closeLogs = function () {
-        document.getElementById('logs-panel')?.classList.remove('active');
-        clearInterval(logsInterval);
-    };
-
-    window.authLogs = function () {
+    window.fetchLogs = fetchLogs;
+    window.closeLogs = function () { document.getElementById('logs-panel')?.classList.remove('active'); clearInterval(logsInterval); };
+    window.authLogs  = function () {
         const user = document.getElementById('logs-user').value;
         const pass = document.getElementById('logs-pass').value;
         if (user === 'ogmhabas' && pass === 'blz-tadmin') {
@@ -904,48 +744,25 @@
             document.getElementById('logs-viewer').style.display = 'block';
             fetchLogs();
             clearInterval(logsInterval);
-            logsInterval = setInterval(() => {
-                if (document.getElementById('logs-panel')?.classList.contains('active'))
-                    fetchLogs();
-                else clearInterval(logsInterval);
-            }, 3000);
-        } else {
-            document.getElementById('logs-error').textContent = '❌ Credenciales incorrectas';
-        }
+            logsInterval = setInterval(() => { if (document.getElementById('logs-panel')?.classList.contains('active')) fetchLogs(); else clearInterval(logsInterval); }, 3000);
+        } else { document.getElementById('logs-error').textContent = '❌ Incorrect credentials'; }
     };
-
     async function fetchLogs() {
         try {
-            const linesInput = document.getElementById('logs-lines-input');
-            const lines = linesInput ? (parseInt(linesInput.value) || 200) : 200;
-            const res   = await fetch(`/api/logs?lines=${lines}`);
-            const text  = await res.text();
+            const lines = parseInt(document.getElementById('logs-lines-input')?.value) || 200;
+            const text  = await (await fetch('/api/logs?lines=' + lines)).text();
             const pre   = document.getElementById('logs-content');
-            if (pre) {
-                pre.innerHTML = colorizeLogs(escapeHtml(text));
-                const viewer = document.getElementById('logs-viewer');
-                if (viewer) viewer.scrollTop = viewer.scrollHeight;
-            }
-        } catch (e) {
-            const pre = document.getElementById('logs-content');
-            if (pre) pre.textContent = 'Error cargando logs: ' + e.message;
-        }
+            if (pre) { pre.innerHTML = colorizeLogs(escapeHtml(text)); document.getElementById('logs-viewer').scrollTop = 999999; }
+        } catch (e) { const pre = document.getElementById('logs-content'); if (pre) pre.textContent = 'Error loading logs: ' + e.message; }
     }
-
-    // Coloriza líneas según nivel de log
-    function colorizeLogs(escapedText) {
-        return escapedText.split('\n').map(line => {
-            if (line.includes('[ERROR]') || line.includes('!!!'))
-                return `<span style="color:#ff6b6b">${line}</span>`;
-            if (line.includes('[WARNING]') || line.includes('[WARN]'))
-                return `<span style="color:#f5a623">${line}</span>`;
-            if (line.includes('[AUTOMOD]') || line.includes('AUTOMOD') || line.includes('SPAM'))
-                return `<span style="color:#a78bfa">${line}</span>`;
-            if (line.includes('[SLASH]') || line.includes('[DEADLINE]') || line.includes('>>>'))
-                return `<span style="color:#26c9b8">${line}</span>`;
-            if (line.includes('[HISTORY]') || line.includes('[SHEETS]'))
-                return `<span style="color:#f5a623aa">${line}</span>`;
-            return `<span style="color:#5a5575">${line}</span>`;
+    function colorizeLogs(t) {
+        return t.split('\n').map(line => {
+            if (line.includes('[ERROR]') || line.includes('!!!'))       return '<span style="color:#ff6b6b">' + line + '</span>';
+            if (line.includes('[WARNING]') || line.includes('[WARN]'))  return '<span style="color:#f5a623">' + line + '</span>';
+            if (line.includes('[AUTOMOD]') || line.includes('SPAM'))    return '<span style="color:#a78bfa">' + line + '</span>';
+            if (line.includes('[SLASH]') || line.includes('>>>'))       return '<span style="color:#26c9b8">' + line + '</span>';
+            if (line.includes('[HISTORY]') || line.includes('[SHEETS]')) return '<span style="color:#f5a623aa">' + line + '</span>';
+            return '<span style="color:#5a5575">' + line + '</span>';
         }).join('\n');
     }
 
@@ -956,17 +773,11 @@
         const pass = document.getElementById('login-pass')?.value;
         if (user === 'admin' && pass === 'blzt2024') {
             localStorage.setItem('blzt_mod', '1');
-            applyLoginState(true);
-            toggleLogin();
-            showToast('Sesión iniciada ✅', 'success');
-        } else {
-            document.getElementById('login-error').textContent = '❌ Credenciales incorrectas';
-        }
+            applyLoginState(true); toggleLogin(); showToast('✅ Logged in', 'success');
+        } else { document.getElementById('login-error').textContent = '❌ Incorrect credentials'; }
     };
     function applyLoginState(loggedIn) {
-        const btn  = document.getElementById('login-btn');
-        const lbl  = document.getElementById('login-btn-label');
-        const modB = document.getElementById('mod-btn');
+        const btn = document.getElementById('login-btn'), lbl = document.getElementById('login-btn-label'), modB = document.getElementById('mod-btn');
         if (btn)  btn.classList.toggle('logged-in', loggedIn);
         if (lbl)  lbl.textContent = loggedIn ? 'Logout' : 'Login';
         if (modB) modB.style.display = loggedIn ? 'flex' : 'none';
@@ -975,8 +786,7 @@
 
     // ─── MOD PANEL ────────────────────────────────────────────────────────────
     window.toggleMod = function () {
-        const panel   = document.getElementById('mod-panel');
-        if (!panel) return;
+        const panel = document.getElementById('mod-panel'); if (!panel) return;
         const opening = !panel.classList.contains('active');
         panel.classList.toggle('active');
         if (opening) { loadModPanel('warned'); loadModStats(); }
@@ -985,245 +795,129 @@
         document.querySelectorAll('.mod-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
         loadModPanel(tab);
     };
-
     async function loadModStats() {
         try {
-            const r = await fetch('/api/stats');
-            if (!r.ok) return;
-            const s = await r.json();
+            const s = await (await fetch('/api/stats')).json();
             const el = document.getElementById('mod-stats-bar');
-            if (el) el.innerHTML = `
-                <span class="mod-stat">💬 ${s.total_messages} msgs</span>
-                <span class="mod-stat">⚠ ${s.total_warnings} warns</span>
-                <span class="mod-stat">👤 ${s.unique_warned_users} sancionados</span>
-                <span class="mod-stat">🔨 ${s.total_mod_actions} acciones</span>`;
+            if (el) el.innerHTML =
+                '<span class="mod-stat">💬 ' + s.total_messages + ' msgs</span>' +
+                '<span class="mod-stat">⚠ ' + s.total_warnings + ' warns</span>' +
+                '<span class="mod-stat">👤 ' + s.unique_warned_users + ' sanctioned</span>' +
+                '<span class="mod-stat">🔨 ' + s.total_mod_actions + ' actions</span>';
         } catch (e) {}
     }
-
-    async function loadModPanel(tab = 'warned') {
-        const body = document.getElementById('mod-body');
-        if (!body) return;
-        body.innerHTML = '<div class="mod-loading">Cargando...</div>';
+    async function loadModPanel(tab) {
+        const body = document.getElementById('mod-body'); if (!body) return;
+        body.innerHTML = '<div class="mod-loading">Loading...</div>';
         try {
-            if (tab === 'warned') {
-                const res  = await fetch('/api/mod/users');
-                const data = await res.json();
-                if (data.error) throw new Error(data.error);
-                renderWarnedUsers(data, body);
-            } else {
-                const res  = await fetch('/api/mod/action_log');
-                const data = await res.json();
-                if (data.error) throw new Error(data.error);
-                renderActionLog(data, body);
-            }
-        } catch (e) {
-            body.innerHTML = `<div class="mod-empty">❌ Error: ${escapeHtml(e.message)}</div>`;
-        }
+            if (tab === 'warned') { const data = await (await fetch('/api/mod/users')).json(); if (data.error) throw new Error(data.error); renderWarnedUsers(data, body); }
+            else { const data = await (await fetch('/api/mod/action_log')).json(); if (data.error) throw new Error(data.error); renderActionLog(data, body); }
+        } catch (e) { body.innerHTML = '<div class="mod-empty">❌ Error: ' + escapeHtml(e.message) + '</div>'; }
     }
-
     function renderWarnedUsers(users, container) {
-        if (!users.length) {
-            container.innerHTML = '<div class="mod-empty">✅ Sin usuarios sancionados</div>';
-            return;
-        }
+        if (!users.length) { container.innerHTML = '<div class="mod-empty">✅ No sanctioned users</div>'; return; }
         container.innerHTML = '';
         users.forEach(u => {
-            const card    = document.createElement('div');
-            card.className = 'mod-user-card';
+            const card = document.createElement('div'); card.className = 'mod-user-card';
             const initial = (u.user_name || '?')[0].toUpperCase();
             const lastAct = u.last_action ? u.last_action.action.toUpperCase() : null;
-
             const recentHtml = (u.recent_warnings || []).slice(0, 2).map(w => {
-                const reason  = escapeHtml(w.reason || '—');
-                const msgContent = w.message_content
-                    ? `<div class="warn-msg-preview">
-                           <span class="warn-msg-label">💬</span>
-                           <span class="warn-msg-text">${escapeHtml(w.message_content).substring(0, 100)}${w.message_content.length > 100 ? '…' : ''}</span>
-                       </div>`
-                    : '';
-                const link = w.message_link
-                    ? `<a class="warn-msg-link" href="${escapeHtml(w.message_link)}" target="_blank">🔗</a>`
-                    : '';
-                return `<div class="warn-entry">
-                    <span class="warn-entry-reason">${reason}</span>${link}
-                    ${msgContent}
-                </div>`;
+                const reason = escapeHtml(w.reason || '—');
+                const mc = w.message_content ? '<div class="warn-msg-preview"><span class="warn-msg-label">💬</span><span class="warn-msg-text">' + escapeHtml(w.message_content).substring(0, 100) + (w.message_content.length > 100 ? '…' : '') + '</span></div>' : '';
+                const lnk = w.message_link ? '<a class="warn-msg-link" href="' + escapeHtml(w.message_link) + '" target="_blank">🔗</a>' : '';
+                return '<div class="warn-entry"><span class="warn-entry-reason">' + reason + '</span>' + lnk + mc + '</div>';
             }).join('');
-
-            // NOTE: No inline onclick attributes — all events attached programmatically below
-            //       to avoid HTML-escaping bugs with special chars in user names
-            card.innerHTML = `
-                <div class="mod-user-avatar">${initial}</div>
-                <div class="mod-user-info">
-                    <div class="mod-user-name">${escapeHtml(u.user_name || 'Unknown')}</div>
-                    <div class="mod-user-meta">ID: ${escapeHtml(u.user_id)}</div>
-                    <div class="warn-badges">
-                        <span class="warn-badge warn-badge-count">⚠ ${u.warn_count} warn${u.warn_count !== 1 ? 's' : ''}</span>
-                        ${lastAct ? `<span class="warn-badge warn-badge-action">${lastAct}</span>` : ''}
-                    </div>
-                    ${recentHtml}
-                    <button class="warn-history-btn js-warn-hist">
-                        📋 Historial completo (${u.warn_count})
-                    </button>
-                </div>
-                <div class="mod-user-actions">
-                    <button class="mod-action-btn warn"    data-action="warn">Warn</button>
-                    <button class="mod-action-btn timeout" data-action="timeout">Timeout</button>
-                    <button class="mod-action-btn kick"    data-action="kick">Kick</button>
-                    <button class="mod-action-btn ban"     data-action="ban">Ban</button>
-                    <button class="mod-action-btn clear"   data-action="clear">Clear</button>
-                </div>`;
-
-            // Attach events safely via closure — no string encoding needed
-            card.querySelector('.js-warn-hist').addEventListener('click', () => {
-                showWarnHistory(u.user_id, u.user_name || 'Unknown');
-            });
+            card.innerHTML =
+                '<div class="mod-user-avatar">' + initial + '</div>' +
+                '<div class="mod-user-info">' +
+                    '<div class="mod-user-name">' + escapeHtml(u.user_name || 'Unknown') + '</div>' +
+                    '<div class="mod-user-meta">ID: ' + escapeHtml(u.user_id) + '</div>' +
+                    '<div class="warn-badges"><span class="warn-badge warn-badge-count">⚠ ' + u.warn_count + ' warn' + (u.warn_count !== 1 ? 's' : '') + '</span>' + (lastAct ? '<span class="warn-badge warn-badge-action">' + lastAct + '</span>' : '') + '</div>' +
+                    recentHtml +
+                    '<button class="warn-history-btn js-warn-hist">📋 Full history (' + u.warn_count + ')</button>' +
+                '</div>' +
+                '<div class="mod-user-actions">' +
+                    '<button class="mod-action-btn warn"    data-action="warn">Warn</button>' +
+                    '<button class="mod-action-btn timeout" data-action="timeout">Timeout</button>' +
+                    '<button class="mod-action-btn kick"    data-action="kick">Kick</button>' +
+                    '<button class="mod-action-btn ban"     data-action="ban">Ban</button>' +
+                    '<button class="mod-action-btn clear"   data-action="clear">Clear</button>' +
+                '</div>';
+            card.querySelector('.js-warn-hist').addEventListener('click', () => showWarnHistory(u.user_id, u.user_name || 'Unknown'));
             card.querySelectorAll('.mod-action-btn[data-action]').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    modAction(btn.dataset.action, u.user_id, u.user_name || '', u.guild_id || '', btn);
-                });
+                btn.addEventListener('click', () => modAction(btn.dataset.action, u.user_id, u.user_name || '', u.guild_id || '', btn));
             });
-
             container.appendChild(card);
         });
     }
-
     function renderActionLog(actions, container) {
-        if (!actions.length) {
-            container.innerHTML = '<div class="mod-empty">Sin acciones registradas</div>';
-            return;
-        }
-        const table = document.createElement('table');
-        table.className = 'mod-log-table';
-        table.innerHTML = `
-            <thead><tr>
-                <th>Usuario</th><th>Acción</th><th>Razón</th><th>Moderador</th><th>Fecha</th>
-            </tr></thead>
-            <tbody>${actions.map(a => `
-                <tr>
-                    <td>${escapeHtml(a.user_name || a.user_id)}</td>
-                    <td><span class="log-action-badge ${escapeHtml(a.action)}">${escapeHtml(a.action)}</span></td>
-                    <td title="${escapeHtml(a.reason||'')}">${escapeHtml((a.reason||'—').substring(0,60))}${(a.reason||'').length>60?'…':''}</td>
-                    <td>${escapeHtml(a.moderator_name || '—')}</td>
-                    <td>${a.timestamp ? a.timestamp.slice(0,16) : '—'}</td>
-                </tr>`).join('')}
-            </tbody>`;
-        container.innerHTML = '';
-        container.appendChild(table);
+        if (!actions.length) { container.innerHTML = '<div class="mod-empty">No actions recorded</div>'; return; }
+        const table = document.createElement('table'); table.className = 'mod-log-table';
+        table.innerHTML = '<thead><tr><th>User</th><th>Action</th><th>Reason</th><th>Moderator</th><th>Date</th></tr></thead><tbody>' +
+            actions.map(a => '<tr><td>' + escapeHtml(a.user_name || a.user_id) + '</td><td><span class="log-action-badge ' + escapeHtml(a.action) + '">' + escapeHtml(a.action) + '</span></td><td title="' + escapeHtml(a.reason||'') + '">' + escapeHtml((a.reason||'—').substring(0,60)) + ((a.reason||'').length>60?'…':'') + '</td><td>' + escapeHtml(a.moderator_name||'—') + '</td><td>' + (a.timestamp?a.timestamp.slice(0,16):'—') + '</td></tr>').join('') +
+            '</tbody>';
+        container.innerHTML = ''; container.appendChild(table);
     }
 
     // ─── WARN HISTORY MODAL ───────────────────────────────────────────────────
     window.showWarnHistory = async function (userId, userName) {
-        const modal = document.getElementById('warn-history-modal');
-        if (!modal) return;
-        // CSS requires wh-open (display:flex) + wh-visible (opacity/transform)
+        const modal = document.getElementById('warn-history-modal'); if (!modal) return;
         modal.classList.add('wh-open');
         requestAnimationFrame(() => modal.classList.add('wh-visible'));
-        const title   = document.getElementById('wh-title');
-        const content = document.getElementById('wh-content');
-        if (title)   title.textContent = `📋 Historial: ${userName}`;
-        if (content) content.innerHTML = '<div class="mod-loading">Cargando...</div>';
-
+        const title = document.getElementById('wh-title'), content = document.getElementById('wh-content');
+        if (title) title.textContent = '📋 History: ' + userName;
+        if (content) content.innerHTML = '<div class="mod-loading">Loading...</div>';
         try {
-            const r    = await fetch(`/api/mod/warn_history/${encodeURIComponent(userId)}`);
-            const data = await r.json();
+            const data = await (await fetch('/api/mod/warn_history/' + encodeURIComponent(userId))).json();
             if (data.error) throw new Error(data.error);
-            if (!data.length) {
-                content.innerHTML = '<div class="mod-empty">Sin advertencias registradas</div>';
-                return;
-            }
+            if (!data.length) { content.innerHTML = '<div class="mod-empty">No warnings on record</div>'; return; }
             content.innerHTML = data.map((w, i) => {
-                // CRÍTICO: escapeHtml en message_content para evitar XSS y renderizado HTML no deseado
                 const msgBlock = w.message_content
-                    ? `<div class="wh-msg-content">
-                           <span class="wh-msg-label">💬 Mensaje que activó la sanción:</span>
-                           <pre class="wh-msg-pre">${escapeHtml(w.message_content)}</pre>
-                       </div>`
-                    : '<div class="wh-msg-content"><em style="color:var(--t2)">Sin mensaje guardado</em></div>';
-                const link = w.message_link
-                    ? `<a class="warn-msg-link" href="${escapeHtml(w.message_link)}" target="_blank" rel="noopener">🔗 Ver en Discord</a>`
-                    : '';
-                return `<div class="wh-entry">
-                    <div class="wh-entry-header">
-                        <span class="wh-num">#${data.length - i}</span>
-                        <span class="wh-reason">${escapeHtml(w.reason || '—')}</span>
-                        <span class="wh-mod">por ${escapeHtml(w.moderator_name || 'AutoMod')}</span>
-                        <span class="wh-ts">${w.timestamp ? w.timestamp.slice(0,16) : '—'}</span>
-                    </div>
-                    ${msgBlock}${link}
-                </div>`;
+                    ? '<div class="wh-msg-content"><span class="wh-msg-label">💬 Message that triggered the action:</span><pre class="wh-msg-pre">' + escapeHtml(w.message_content) + '</pre></div>'
+                    : '<div class="wh-msg-content"><em style="color:var(--t2)">No message saved</em></div>';
+                const link = w.message_link ? '<a class="warn-msg-link" href="' + escapeHtml(w.message_link) + '" target="_blank" rel="noopener">🔗 View in Discord</a>' : '';
+                return '<div class="wh-entry"><div class="wh-entry-header"><span class="wh-num">#' + (data.length - i) + '</span><span class="wh-reason">' + escapeHtml(w.reason||'—') + '</span><span class="wh-mod">by ' + escapeHtml(w.moderator_name||'AutoMod') + '</span><span class="wh-ts">' + (w.timestamp?w.timestamp.slice(0,16):'—') + '</span></div>' + msgBlock + link + '</div>';
             }).join('');
-        } catch (e) {
-            if (content) content.innerHTML = `<div class="mod-empty">❌ Error: ${escapeHtml(e.message)}</div>`;
-        }
+        } catch (e) { if (content) content.innerHTML = '<div class="mod-empty">❌ Error: ' + escapeHtml(e.message) + '</div>'; }
     };
-
     window.closeWarnHistory = function () {
-        const modal = document.getElementById('warn-history-modal');
-        if (!modal) return;
+        const modal = document.getElementById('warn-history-modal'); if (!modal) return;
         modal.classList.remove('wh-visible');
         setTimeout(() => modal.classList.remove('wh-open'), 280);
     };
 
-    // ─── ACCIONES DE MOD ──────────────────────────────────────────────────────
+    // ─── MOD ACTIONS ──────────────────────────────────────────────────────────
     window.modAction = async function (action, uid, uname, gid, btn) {
-        const labels = {
-            warn:'advertir a', timeout:'silenciar 24h a', kick:'expulsar a',
-            ban:'banear a', clear:'limpiar warns de'
-        };
-
+        const labels = { warn:'warn', timeout:'timeout (24h)', kick:'kick', ban:'ban', clear:'clear warns for' };
         let reason = 'Manual action from web panel';
-
-        // Para clear solo pedimos confirmación, para el resto pedimos razón primero
         if (action === 'clear') {
-            if (!confirm(`¿${labels[action] || action} ${uname}?`)) return;
+            if (!confirm('Clear all warns for ' + uname + '?')) return;
         } else {
-            // Primero pedimos razón (incluyendo warn)
-            const input = prompt(`Razón para ${action} a ${uname}:`, reason);
-            if (input === null) return; // canceló
+            const input = prompt('Reason for ' + (labels[action]||action) + ' on ' + uname + ':', reason);
+            if (input === null) return;
             reason = input.trim() || reason;
-            // Luego confirmamos
-            if (!confirm(`¿${labels[action] || action} ${uname}?\nRazón: ${reason}`)) return;
+            if (!confirm((labels[action]||action) + ' ' + uname + '?\nReason: ' + reason)) return;
         }
-
         if (btn) { btn.disabled = true; btn.textContent = '…'; }
         try {
-            const res  = await fetch('/api/mod/action', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action, user_id: uid, user_name: uname, guild_id: gid, reason })
-            });
-            const data = await res.json();
+            const data = await (await fetch('/api/mod/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, user_id: uid, user_name: uname, guild_id: gid, reason }) })).json();
             if (data.error) throw new Error(data.error);
-            showToast(`✅ ${action.toUpperCase()} aplicado a ${uname}`, 'success');
+            showToast('✅ ' + action.toUpperCase() + ' applied to ' + uname, 'success');
             setTimeout(() => { loadModPanel('warned'); loadModStats(); }, 600);
-        } catch (e) {
-            showToast(`❌ Error: ${e.message}`, 'error');
-        } finally {
-            if (btn) {
-                btn.disabled = false;
-                const btnLabels = { warn:'Warn', timeout:'Timeout', kick:'Kick', ban:'Ban', clear:'Clear' };
-                btn.textContent = btnLabels[action] || action;
-            }
-        }
+        } catch (e) { showToast('❌ Error: ' + e.message, 'error'); }
+        finally { if (btn) { btn.disabled = false; btn.textContent = { warn:'Warn', timeout:'Timeout', kick:'Kick', ban:'Ban', clear:'Clear' }[action] || action; } }
     };
 
     // ─── TOAST ────────────────────────────────────────────────────────────────
-    function showToast(message, type = 'info') {
-        let container = document.getElementById('toast-container');
-        if (!container) {
-            container = document.createElement('div');
-            container.id = 'toast-container';
-            container.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
-            document.body.appendChild(container);
-        }
-        const toast = document.createElement('div');
-        const colors = { success:'#26c9b8', error:'#ff6b6b', warn:'#f5a623', info:'#a78bfa' };
-        const c = colors[type] || colors.info;
-        toast.style.cssText = `background:rgba(20,18,31,0.95);border:1px solid ${c};color:${c};padding:10px 16px;border-radius:8px;font-size:13px;font-family:var(--f-display,sans-serif);backdrop-filter:blur(10px);pointer-events:auto;max-width:320px;box-shadow:0 4px 20px rgba(0,0,0,0.4);transition:opacity 0.3s;`;
-        toast.textContent = message;
-        container.appendChild(toast);
-        setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3500);
+    function showToast(message, type) {
+        type = type || 'info';
+        let c = document.getElementById('toast-container');
+        if (!c) { c = document.createElement('div'); c.id = 'toast-container'; c.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none;'; document.body.appendChild(c); }
+        const t = document.createElement('div');
+        const col = { success:'#26c9b8', error:'#ff6b6b', warn:'#f5a623', info:'#a78bfa' }[type] || '#a78bfa';
+        t.style.cssText = 'background:rgba(20,18,31,0.95);border:1px solid ' + col + ';color:' + col + ';padding:10px 16px;border-radius:8px;font-size:13px;font-family:var(--f-display,sans-serif);backdrop-filter:blur(10px);pointer-events:auto;max-width:320px;box-shadow:0 4px 20px rgba(0,0,0,0.4);transition:opacity 0.3s;';
+        t.textContent = message; c.appendChild(t);
+        setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
     }
 
     // ─── STATS ────────────────────────────────────────────────────────────────
@@ -1232,133 +926,50 @@
         if (document.getElementById('dvg')?.value.trim() !== '') type = 'gk';
         const inputs = type === 'offensive' ? ['sht','dbl','stl','psn','dfd'] : ['dvg','biq','rfx','dtg'];
         let data = {}, sum = 0;
-        inputs.forEach(id => {
-            let val = parseFloat(document.getElementById(id)?.value) || 0;
-            val = Math.min(10, Math.max(0, val));
-            data[id] = val; sum += val;
-        });
-        const avg  = sum / inputs.length;
-        const rank = type === 'offensive' ? getOffensiveRank(avg) : getGKRank(avg);
-        window._lastRank = rank;
-        drawGraph(type, data, avg, rank);
+        inputs.forEach(id => { let v = parseFloat(document.getElementById(id)?.value)||0; v=Math.min(10,Math.max(0,v)); data[id]=v; sum+=v; });
+        const avg=sum/inputs.length, rank=type==='offensive'?getOffensiveRank(avg):getGKRank(avg);
+        window._lastRank=rank; drawGraph(type,data,avg,rank);
         document.getElementById('stats-modal')?.classList.add('active');
         document.getElementById('stats-drawer')?.classList.remove('active');
     };
-
     function getOffensiveRank(s) {
         if (s < 4.6) return 'N/A';
-        const ranks = [
-            [4.8,'ROOKIE 🥉 - ⭐'],[5.1,'ROOKIE 🥉 - ⭐⭐'],[5.4,'ROOKIE 🥉 - ⭐⭐⭐'],
-            [5.7,'AMATEUR ⚽ - ⭐'],[6.0,'AMATEUR ⚽ - ⭐⭐'],[6.3,'AMATEUR ⚽ - ⭐⭐⭐'],
-            [6.6,'ELITE ⚡ - ⭐'],[6.9,'ELITE ⚡ - ⭐⭐'],[7.2,'ELITE ⚡ - ⭐⭐⭐'],
-            [7.5,'PRODIGY 🏅 - ⭐'],[7.8,'PRODIGY 🏅 - ⭐⭐'],[8.1,'PRODIGY 🏅 - ⭐⭐⭐'],
-            [8.4,'NEW GEN XI - ⭐'],[8.7,'NEW GEN XI - ⭐⭐'],[9.0,'NEW GEN XI - ⭐⭐⭐'],
-            [9.3,'WORLD CLASS 👑 - ⭐'],[9.6,'WORLD CLASS 👑 - ⭐⭐'],[Infinity,'WORLD CLASS 👑 - ⭐⭐⭐']
-        ];
-        return (ranks.find(([max]) => s <= max) || ranks[ranks.length-1])[1];
+        const r=[[4.8,'ROOKIE 🥉 - ⭐'],[5.1,'ROOKIE 🥉 - ⭐⭐'],[5.4,'ROOKIE 🥉 - ⭐⭐⭐'],[5.7,'AMATEUR ⚽ - ⭐'],[6.0,'AMATEUR ⚽ - ⭐⭐'],[6.3,'AMATEUR ⚽ - ⭐⭐⭐'],[6.6,'ELITE ⚡ - ⭐'],[6.9,'ELITE ⚡ - ⭐⭐'],[7.2,'ELITE ⚡ - ⭐⭐⭐'],[7.5,'PRODIGY 🏅 - ⭐'],[7.8,'PRODIGY 🏅 - ⭐⭐'],[8.1,'PRODIGY 🏅 - ⭐⭐⭐'],[8.4,'NEW GEN XI - ⭐'],[8.7,'NEW GEN XI - ⭐⭐'],[9.0,'NEW GEN XI - ⭐⭐⭐'],[9.3,'WORLD CLASS 👑 - ⭐'],[9.6,'WORLD CLASS 👑 - ⭐⭐'],[Infinity,'WORLD CLASS 👑 - ⭐⭐⭐']];
+        return (r.find(([m])=>s<=m)||r[r.length-1])[1];
     }
-    function getGKRank(s) {
-        if (s <= 6.9) return 'D TIER'; if (s <= 7.9) return 'C TIER';
-        if (s <= 8.4) return 'B TIER'; if (s <= 8.9) return 'A TIER';
-        if (s <= 9.4) return 'S TIER'; return 'S+ TIER';
-    }
-    function drawGraph(type, data, avg, rank) {
-        if (!ctx) return;
-        const W=500,H=500,CX=250,CY=248,R=132;
-        const isGK=type==='gk', mainCol=isGK?'#A78BFA':'#F5A623',
-              fillCol=isGK?'rgba(167,139,250,0.25)':'rgba(245,166,35,0.22)',
-              glowCol=isGK?'rgba(167,139,250,0.55)':'rgba(245,166,35,0.50)';
-        ctx.clearRect(0,0,W,H); ctx.fillStyle='#0F0E17'; ctx.fillRect(0,0,W,H);
-        const grd=ctx.createRadialGradient(CX,CY,0,CX,CY,R*1.3);
-        grd.addColorStop(0,isGK?'rgba(167,139,250,0.06)':'rgba(245,166,35,0.06)');
-        grd.addColorStop(1,'transparent'); ctx.fillStyle=grd; ctx.fillRect(0,0,W,H);
-        const keys=Object.keys(data),total=keys.length,step=(Math.PI*2)/total;
-        for(let l=1;l<=4;l++){
-            const rad=(R/4)*l; ctx.beginPath();
-            if(isGK) ctx.arc(CX,CY,rad,0,Math.PI*2);
-            else keys.forEach((_,i)=>{const a=i*step-Math.PI/2; i===0?ctx.moveTo(CX+Math.cos(a)*rad,CY+Math.sin(a)*rad):ctx.lineTo(CX+Math.cos(a)*rad,CY+Math.sin(a)*rad);});
-            ctx.strokeStyle=isGK?`rgba(167,139,250,${l===4?0.3:0.08})`:`rgba(245,166,35,${l===4?0.3:0.08})`;
-            ctx.lineWidth=l===4?1.5:0.8; ctx.stroke();
-        }
-        ctx.beginPath();
-        keys.forEach((k,i)=>{const rad=(data[k]/10)*R,a=i*step-Math.PI/2; i===0?ctx.moveTo(CX+Math.cos(a)*rad,CY+Math.sin(a)*rad):ctx.lineTo(CX+Math.cos(a)*rad,CY+Math.sin(a)*rad);});
-        ctx.closePath(); ctx.shadowBlur=22; ctx.shadowColor=glowCol;
-        ctx.fillStyle=fillCol; ctx.fill(); ctx.strokeStyle=mainCol; ctx.lineWidth=2.5; ctx.stroke(); ctx.shadowBlur=0;
-        keys.forEach((k,i)=>{const rad=(data[k]/10)*R,a=i*step-Math.PI/2,x=CX+Math.cos(a)*rad,y=CY+Math.sin(a)*rad;
-            ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);ctx.shadowBlur=10;ctx.shadowColor=glowCol;ctx.fillStyle=mainCol+'CC';ctx.fill();
-            ctx.beginPath();ctx.arc(x,y,2.5,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.shadowBlur=0;});
-        keys.forEach((k,i)=>{const a=i*step-Math.PI/2,lx=CX+Math.cos(a)*(R+36),ly=CY+Math.sin(a)*(R+36);
-            ctx.font="700 15px 'Sora',sans-serif";ctx.fillStyle=mainCol;ctx.textAlign='center';ctx.textBaseline='middle';
-            ctx.shadowBlur=6;ctx.shadowColor=glowCol;ctx.fillText(k.toUpperCase(),lx,ly);ctx.shadowBlur=0;});
-        ctx.font="400 12px 'JetBrains Mono',monospace";ctx.fillStyle='#6B6480';ctx.textAlign='center';
-        ctx.fillText('AVG  '+avg.toFixed(2)+'  /  10',CX,449);
-        ctx.shadowBlur=20;ctx.shadowColor=glowCol;ctx.font="800 24px 'Sora',sans-serif";ctx.fillStyle=mainCol;
-        ctx.fillText(rank,CX,482);ctx.shadowBlur=0;
+    function getGKRank(s) { if(s<=6.9)return'D TIER';if(s<=7.9)return'C TIER';if(s<=8.4)return'B TIER';if(s<=8.9)return'A TIER';if(s<=9.4)return'S TIER';return'S+ TIER'; }
+    function drawGraph(type,data,avg,rank){
+        if(!ctx)return;
+        const W=500,H=500,CX=250,CY=248,R=132,isGK=type==='gk',mainCol=isGK?'#A78BFA':'#F5A623',fillCol=isGK?'rgba(167,139,250,0.25)':'rgba(245,166,35,0.22)',glowCol=isGK?'rgba(167,139,250,0.55)':'rgba(245,166,35,0.50)';
+        ctx.clearRect(0,0,W,H);ctx.fillStyle='#0F0E17';ctx.fillRect(0,0,W,H);
+        const grd=ctx.createRadialGradient(CX,CY,0,CX,CY,R*1.3);grd.addColorStop(0,isGK?'rgba(167,139,250,0.06)':'rgba(245,166,35,0.06)');grd.addColorStop(1,'transparent');ctx.fillStyle=grd;ctx.fillRect(0,0,W,H);
+        const keys=Object.keys(data),step=(Math.PI*2)/keys.length;
+        for(let l=1;l<=4;l++){const rad=(R/4)*l;ctx.beginPath();if(isGK)ctx.arc(CX,CY,rad,0,Math.PI*2);else keys.forEach((_,i)=>{const a=i*step-Math.PI/2;i===0?ctx.moveTo(CX+Math.cos(a)*rad,CY+Math.sin(a)*rad):ctx.lineTo(CX+Math.cos(a)*rad,CY+Math.sin(a)*rad);});ctx.strokeStyle=isGK?'rgba(167,139,250,'+(l===4?0.3:0.08)+')':'rgba(245,166,35,'+(l===4?0.3:0.08)+')';ctx.lineWidth=l===4?1.5:0.8;ctx.stroke();}
+        ctx.beginPath();keys.forEach((k,i)=>{const rad=(data[k]/10)*R,a=i*step-Math.PI/2;i===0?ctx.moveTo(CX+Math.cos(a)*rad,CY+Math.sin(a)*rad):ctx.lineTo(CX+Math.cos(a)*rad,CY+Math.sin(a)*rad);});ctx.closePath();ctx.shadowBlur=22;ctx.shadowColor=glowCol;ctx.fillStyle=fillCol;ctx.fill();ctx.strokeStyle=mainCol;ctx.lineWidth=2.5;ctx.stroke();ctx.shadowBlur=0;
+        keys.forEach((k,i)=>{const rad=(data[k]/10)*R,a=i*step-Math.PI/2,x=CX+Math.cos(a)*rad,y=CY+Math.sin(a)*rad;ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);ctx.shadowBlur=10;ctx.shadowColor=glowCol;ctx.fillStyle=mainCol+'CC';ctx.fill();ctx.beginPath();ctx.arc(x,y,2.5,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.shadowBlur=0;});
+        keys.forEach((k,i)=>{const a=i*step-Math.PI/2,lx=CX+Math.cos(a)*(R+36),ly=CY+Math.sin(a)*(R+36);ctx.font="700 15px 'Sora',sans-serif";ctx.fillStyle=mainCol;ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowBlur=6;ctx.shadowColor=glowCol;ctx.fillText(k.toUpperCase(),lx,ly);ctx.shadowBlur=0;});
+        ctx.font="400 12px 'JetBrains Mono',monospace";ctx.fillStyle='#6B6480';ctx.textAlign='center';ctx.fillText('AVG  '+avg.toFixed(2)+'  /  10',CX,449);
+        ctx.shadowBlur=20;ctx.shadowColor=glowCol;ctx.font="800 24px 'Sora',sans-serif";ctx.fillStyle=mainCol;ctx.fillText(rank,CX,482);ctx.shadowBlur=0;
     }
 
-    // ─── SHORTCUTS GLOBALES ───────────────────────────────────────────────────
+    // ─── GLOBAL SHORTCUTS ─────────────────────────────────────────────────────
     window.toggleDrawer        = () => document.getElementById('stats-drawer')?.classList.toggle('active');
     window.toggleCommands      = () => document.getElementById('commands-panel')?.classList.toggle('active');
     window.toggleChannelDrawer = () => document.getElementById('channel-drawer')?.classList.toggle('open');
 
     // ─── SETTINGS ─────────────────────────────────────────────────────────────
-    const QUALITY_KEY = 'blzt_quality';
-
     function applyQuality(q) {
         document.body.dataset.quality = q;
-        localStorage.setItem(QUALITY_KEY, q);
-        document.querySelectorAll('.quality-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.q === q);
-        });
+        localStorage.setItem('blzt_quality', q);
+        document.querySelectorAll('.quality-btn').forEach(b => b.classList.toggle('active', b.dataset.q === q));
     }
-
     function initSettings() {
-        // Apply saved quality on load
-        const saved = localStorage.getItem(QUALITY_KEY) || 'high';
-        applyQuality(saved);
-
-        // Wire up quality buttons
-        document.querySelectorAll('.quality-btn').forEach(btn => {
-            btn.addEventListener('click', () => applyQuality(btn.dataset.q));
-        });
-
-        // Compact mode toggle
-        const compactToggle = document.getElementById('settings-compact');
-        if (compactToggle) {
-            compactToggle.checked = localStorage.getItem('blzt_compact') === '1';
-            applyCompact(compactToggle.checked);
-            compactToggle.addEventListener('change', () => {
-                applyCompact(compactToggle.checked);
-                localStorage.setItem('blzt_compact', compactToggle.checked ? '1' : '0');
-            });
-        }
-
-        // Timestamps toggle
-        const tsToggle = document.getElementById('settings-timestamps');
-        if (tsToggle) {
-            tsToggle.checked = localStorage.getItem('blzt_ts') !== '0';
-            applyTimestamps(tsToggle.checked);
-            tsToggle.addEventListener('change', () => {
-                applyTimestamps(tsToggle.checked);
-                localStorage.setItem('blzt_ts', tsToggle.checked ? '1' : '0');
-            });
-        }
+        applyQuality(localStorage.getItem('blzt_quality') || 'high');
+        document.querySelectorAll('.quality-btn').forEach(btn => btn.addEventListener('click', () => applyQuality(btn.dataset.q)));
     }
+    window.toggleSettings = function () { document.getElementById('settings-panel')?.classList.toggle('active'); };
 
-    function applyCompact(on) {
-        document.body.classList.toggle('compact-mode', on);
-    }
-    function applyTimestamps(on) {
-        document.body.classList.toggle('hide-timestamps', on === false);
-    }
-
-    window.toggleSettings = function () {
-        const panel = document.getElementById('settings-panel');
-        if (!panel) return;
-        panel.classList.toggle('active');
-    };
-
-    // ─── ARRANQUE ─────────────────────────────────────────────────────────────
+    // ─── BOOT ─────────────────────────────────────────────────────────────────
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
     else init();
 })();
