@@ -166,36 +166,7 @@ body {
     color: var(--t0);
 }
 
-/* Channel pills */
-.channel-pills-wrap {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    position: relative;
-}
-
-/* Fade edges */
-.channel-pills-wrap::before,
-.channel-pills-wrap::after {
-    content: '';
-    position: absolute;
-    top: 0; bottom: 0;
-    width: 28px;
-    z-index: 2;
-    pointer-events: none;
-}
-.channel-pills-wrap::before { left: 0; background: linear-gradient(90deg, rgba(20,18,31,0.9), transparent); }
-.channel-pills-wrap::after  { right: 0; background: linear-gradient(270deg, rgba(20,18,31,0.9), transparent); }
-
-.channel-pills {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 2px 8px;
-    overflow-x: auto;
-    scrollbar-width: none;
-}
-.channel-pills::-webkit-scrollbar { display: none; }
+/* Channel pills wrap — DEPRECATED, channels live in the right sidebar now */
 
 /* Individual channel pill */
 .channel-item {
@@ -589,7 +560,8 @@ body {
 
 .composer-input::placeholder {
     color: var(--t3);
-    font-size: 0.85rem;
+    font-size: inherit;
+    opacity: 1;
 }
 .composer-input:disabled { opacity: 0.4; }
 
@@ -944,10 +916,9 @@ body {
 .stats-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0;
+    gap: 10px;
     border-top: 1px solid var(--border);
     padding: 12px 16px;
-    gap: 10px;
 }
 
 .stats-btn {
@@ -980,12 +951,6 @@ body {
     cursor: default;
     transition: background 140ms;
 }
-.mention-user    { background: var(--teal-dim); color: var(--teal-hi); }
-.mention-user:hover { background: rgba(38,201,184,0.18); }
-.mention-role    { background: var(--lav-dim); color: var(--lav); }
-.mention-role:hover { background: rgba(167,139,250,0.18); }
-.mention-channel { background: var(--amber-dim); color: var(--amber-hi); }
-.mention-channel:hover { background: rgba(245,166,35,0.18); }
 .mention-loading { opacity: 0.5; animation: mload 1s ease-in-out infinite; }
 @keyframes mload { 0%, 100% { opacity: 0.5; } 50% { opacity: 0.9; } }
 
@@ -1079,35 +1044,6 @@ body {
     border-radius: 0 10px 10px 0;
 }
 .msg-edit-cancel:hover { color: var(--t0); border-color: var(--border-hi); }
-
-/* Emoji picker */
-#emoji-picker {
-    position: fixed;
-    z-index: 600;
-    background: var(--bg2);
-    border: 1px solid var(--border-hi);
-    border-radius: 16px;
-    padding: 10px;
-    display: none;
-    flex-wrap: wrap;
-    gap: 3px;
-    width: 250px;
-    box-shadow: 0 12px 40px rgba(0,0,0,0.6);
-    backdrop-filter: blur(10px);
-}
-#emoji-picker.open { display: flex; }
-
-.emoji-btn {
-    width: 32px; height: 32px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.1rem;
-    cursor: pointer;
-    border: 1px solid transparent;
-    background: transparent;
-    border-radius: 8px;
-    transition: all 120ms ease;
-}
-.emoji-btn:hover { background: var(--amber-soft); border-color: var(--border); transform: scale(1.2); }
 
 /* ════════════════════════════════════
    RIGHT SIDEBAR — channel list
@@ -1211,13 +1147,6 @@ body {
     color: var(--t3);
     text-align: center;
     letter-spacing: 0.10em;
-}
-
-/* Remove old top pills styles that are no longer used */
-.channel-pills-wrap, .channel-pills { display: none; }
-
-@media (max-width: 900px) {
-    .right-sidebar { display: none; }
 }
 
 /* ════════════════════════════════════
@@ -1464,115 +1393,6 @@ body {
 }
 
 /* ════════════════════════════════════
-   DELETE CONFIRM MODAL
-   ════════════════════════════════════ */
-#delete-modal {
-    position: fixed;
-    inset: 0;
-    z-index: 800;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-}
-#delete-modal.del-modal--open { display: flex; }
-
-.del-modal-backdrop {
-    position: absolute;
-    inset: 0;
-    background: rgba(10,9,18,0.75);
-    backdrop-filter: blur(6px);
-    opacity: 0;
-    transition: opacity 220ms ease;
-}
-#delete-modal.del-modal--visible .del-modal-backdrop { opacity: 1; }
-
-.del-modal-card {
-    position: relative;
-    z-index: 1;
-    background: var(--bg2);
-    border: 1px solid var(--border-hi);
-    border-top: 3px solid var(--coral);
-    border-radius: 20px;
-    padding: 28px 28px 22px;
-    width: 100%;
-    max-width: 360px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    text-align: center;
-    opacity: 0;
-    transform: scale(0.90) translateY(16px);
-    transition: opacity 220ms ease, transform 260ms cubic-bezier(0.34, 1.4, 0.64, 1);
-    box-shadow: 0 20px 60px rgba(0,0,0,0.55);
-}
-#delete-modal.del-modal--visible .del-modal-card {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-}
-
-.del-modal-icon {
-    font-size: 2.2rem;
-    line-height: 1;
-    margin-bottom: 4px;
-}
-
-.del-modal-title {
-    font-size: 1.1rem;
-    font-weight: 800;
-    color: var(--t0);
-    letter-spacing: 0.04em;
-}
-
-.del-modal-body {
-    font-size: 0.82rem;
-    color: var(--t2);
-    line-height: 1.5;
-    font-weight: 400;
-    max-width: 260px;
-}
-
-.del-modal-actions {
-    display: flex;
-    gap: 10px;
-    margin-top: 8px;
-    width: 100%;
-}
-
-.del-btn {
-    flex: 1;
-    padding: 11px;
-    border-radius: 12px;
-    font-family: var(--f-display);
-    font-size: 0.82rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    cursor: pointer;
-    transition: all 180ms ease;
-    border: 1px solid transparent;
-}
-
-.del-btn--cancel {
-    background: var(--surface);
-    border-color: var(--border-hi);
-    color: var(--t1);
-}
-.del-btn--cancel:hover { background: var(--lift); color: var(--t0); }
-
-.del-btn--confirm {
-    background: linear-gradient(135deg, var(--coral), #E84040);
-    color: #fff;
-    border-color: transparent;
-    box-shadow: 0 3px 14px rgba(255,107,107,0.25);
-}
-.del-btn--confirm:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(255,107,107,0.35);
-}
-.del-btn--confirm:active { transform: scale(0.97); }
-
-/* ════════════════════════════════════
    EXTRA DYNAMISM & ANIMATIONS
    ════════════════════════════════════ */
 
@@ -1798,17 +1618,7 @@ body {
     transform: scale(1.18) translateY(-1px);
 }
 
-/* ── 19. Delete modal: shake on confirm ── */
-.del-btn--confirm:active {
-    animation: shake 300ms ease;
-}
-@keyframes shake {
-    0%, 100% { transform: translateX(0); }
-    20%       { transform: translateX(-4px); }
-    60%       { transform: translateX(4px); }
-}
-
-/* ── 20. Comp buttons: energy on hover ── */
+/* ── 19. Comp buttons: energy on hover ── */
 .comp-btn:hover:not(:disabled) {
     transform: translateY(-2px);
     box-shadow: 0 4px 16px rgba(0,0,0,0.3);
@@ -2057,43 +1867,7 @@ body {
 }
 .cursor-reset-btn:hover { background: var(--coral-dim); border-color: var(--coral); color: var(--coral); }
 
-/* ── Quality CSS classes applied to <html> ── */
-
-/* LOW — remove purely decorative animations, keep all UI functional */
-html.q-low .orb                           { display: none !important; }
-html.q-low .brand-orb::after              { display: none !important; }
-html.q-low .brand-orb                     { animation: none !important; }
-html.q-low .channel-bar-hash              { animation: none !important; }
-html.q-low .feed-empty-icon               { animation: none !important; }
-html.q-low .feed-empty-icon::before,
-html.q-low .feed-empty-icon::after        { display: none !important; }
-html.q-low .uptime-dot                    { animation: none !important; }
-html.q-low .composer-send                 { animation: none !important; }
-html.q-low .channel-item.active::after    { animation: none !important; }
-html.q-low .channel-item                  { animation: none !important; opacity: 1 !important; }
-html.q-low .message                       { animation: none !important; filter: none !important; }
-/* Only remove backdrop-filter from pure decorative overlays, NOT interactive elements */
-html.q-low .topnav,
-html.q-low .composer                      { backdrop-filter: none !important; }
-
-/* MEDIUM — keep animations, reduce blur intensity */
-html.q-medium .orb                        { filter: blur(55px) !important; }
-html.q-medium .topnav,
-html.q-medium .composer                   { backdrop-filter: blur(8px) !important; }
-
-/* HIGH = default — no overrides needed */
-
 /* ── SVG icon fixes ── */
-.del-modal-icon {
-    width: 52px; height: 52px;
-    border-radius: 50%;
-    background: var(--coral-dim);
-    border: 1px solid rgba(255,107,107,0.20);
-    display: flex; align-items: center; justify-content: center;
-    margin-bottom: 2px;
-}
-.del-modal-icon svg { width: 24px; height: 24px; }
-
 .msg-action-btn svg { pointer-events: none; }
 
 /* Quality btn icon color when active */
@@ -2235,11 +2009,6 @@ html.q-medium .composer                   { backdrop-filter: blur(8px) !importan
     .quality-options { grid-template-columns: 1fr 1fr; }
     .quality-btn[data-q="high"] { grid-column: 1 / -1; }
 
-    /* Delete confirm modal: tighter */
-    .del-modal-card { padding: 22px 18px 18px; max-width: 100%; border-radius: 22px 22px 0 0; }
-    #delete-modal { align-items: flex-end; }
-    #delete-modal .del-modal-backdrop { border-radius: 0; }
-
     /* Toast: bottom center, full width */
     .blz-toast { width: calc(100vw - 32px); text-align: center; bottom: 90px; font-size: 0.80rem; }
 
@@ -2279,7 +2048,6 @@ html.q-medium .composer                   { backdrop-filter: blur(8px) !importan
     .msg-action-btn { width: 32px; height: 30px; }
     .emoji-btn     { width: 40px; height: 40px; font-size: 1.3rem; }
     .quality-btn   { padding: 16px 10px; }
-    .del-btn       { padding: 14px; }
     .composer-send { width: 48px; height: 48px; }
     .stats-btn     { padding: 16px; }
     .mg-field input { padding: 10px 12px; font-size: 1rem; }
@@ -2795,9 +2563,17 @@ html.q-medium .composer                   { backdrop-filter: blur(8px) !importan
 .mod-user-card {
     background: var(--surface); border: 1px solid var(--border);
     border-radius: 16px; padding: 14px 16px; margin-bottom: 10px;
-    display: flex; align-items: center; gap: 14px;
+    display: grid;
+    grid-template-columns: 40px 1fr auto;
+    gap: 14px;
+    align-items: start;
+    transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
 }
-.mod-user-card:hover { border-color: var(--border-hi); }
+.mod-user-card:hover {
+    border-color: var(--border-hi);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+}
 
 .mod-user-avatar {
     width: 40px; height: 40px; border-radius: 50%;
@@ -2820,7 +2596,14 @@ html.q-medium .composer                   { backdrop-filter: blur(8px) !importan
 .warn-badge-count { background: var(--coral-dim); color: var(--coral); border: 1px solid rgba(255,107,107,0.25); }
 .warn-badge-action { background: var(--amber-dim); color: var(--amber-hi); border: 1px solid rgba(245,166,35,0.22); }
 
-.mod-user-actions { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.mod-user-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+    align-items: stretch;
+    min-width: 80px;
+}
 
 .mod-action-btn {
     padding: 6px 12px; border-radius: 10px; border: 1px solid var(--border);
@@ -2834,36 +2617,6 @@ html.q-medium .composer                   { backdrop-filter: blur(8px) !importan
 .mod-action-btn.kick:hover      { background: var(--amber-dim); border-color: var(--amber); color: var(--amber); }
 .mod-action-btn.ban:hover       { background: var(--coral-dim); border-color: var(--coral); color: var(--coral); }
 .mod-action-btn.clear:hover     { background: var(--teal-dim); border-color: var(--teal); color: var(--teal); }
-
-/* Timeout duration picker */
-.timeout-picker {
-    display: none; flex-direction: column; gap: 8px;
-    background: var(--bg); border: 1px solid var(--border-hi);
-    border-radius: 14px; padding: 12px 14px; margin-top: 8px;
-}
-.timeout-picker.open { display: flex; }
-.timeout-presets { display: flex; gap: 6px; flex-wrap: wrap; }
-.timeout-preset {
-    padding: 5px 12px; border-radius: 8px; border: 1px solid var(--border);
-    background: var(--surface); color: var(--t1); font-size: 0.72rem; font-weight: 600;
-    cursor: pointer; transition: all 130ms;
-}
-.timeout-preset:hover, .timeout-preset.active {
-    background: var(--lav-dim); border-color: var(--lav); color: var(--lav);
-}
-.timeout-custom-row { display: flex; gap: 8px; align-items: center; }
-.timeout-custom-input {
-    background: var(--bg); border: 1px solid var(--border-hi); border-radius: 8px;
-    color: var(--t0); font-family: var(--f-mono); font-size: 0.85rem;
-    padding: 7px 10px; outline: none; width: 70px; text-align: center;
-}
-.timeout-custom-input:focus { border-color: var(--lav); }
-.timeout-confirm-btn {
-    padding: 7px 14px; border-radius: 8px; background: var(--lav-dim);
-    border: 1px solid var(--lav); color: var(--lav); font-size: 0.74rem; font-weight: 700;
-    cursor: pointer; transition: all 150ms;
-}
-.timeout-confirm-btn:hover { background: rgba(167,139,250,0.22); }
 
 /* Action log table */
 .mod-log-table { width: 100%; border-collapse: collapse; }
@@ -2888,83 +2641,18 @@ html.q-medium .composer                   { backdrop-filter: blur(8px) !importan
 
 @media (max-width: 900px) {
     .mod-card { max-height: 95vh; }
-    .mod-user-actions { justify-content: flex-start; }
-    .mod-user-card { flex-wrap: wrap; }
+    .mod-user-card {
+        grid-template-columns: 40px 1fr;
+        gap: 10px;
+    }
+    .mod-user-actions {
+        grid-column: 1 / -1;
+        flex-direction: row;
+        flex-wrap: wrap;
+        min-width: 0;
+    }
+    .mod-user-actions .mod-action-btn { flex: 1 1 auto; min-width: 60px; }
 }
-
-/* ════════════════════════════════════
-   MOD CONFIRM MODAL
-   ════════════════════════════════════ */
-#mod-confirm-modal {
-    position: fixed; inset: 0; z-index: 900;
-    display: none; align-items: center; justify-content: center; padding: 20px;
-}
-#mod-confirm-modal.mc-open { display: flex; }
-
-.mod-confirm-backdrop {
-    position: absolute; inset: 0;
-    background: rgba(10,9,18,0.80); backdrop-filter: blur(8px);
-    opacity: 0; transition: opacity 220ms;
-}
-#mod-confirm-modal.mc-visible .mod-confirm-backdrop { opacity: 1; }
-
-.mod-confirm-card {
-    position: relative; z-index: 1;
-    width: 340px; max-width: 94vw;
-    background: var(--bg2);
-    border: 1px solid var(--border-hi); border-radius: 22px;
-    padding: 28px 26px 22px;
-    display: flex; flex-direction: column; align-items: center; gap: 12px;
-    text-align: center;
-    opacity: 0; transform: scale(0.88) translateY(18px);
-    transition: opacity 220ms, transform 280ms cubic-bezier(0.34,1.4,0.64,1);
-    box-shadow: 0 24px 80px rgba(0,0,0,0.6);
-}
-#mod-confirm-modal.mc-visible .mod-confirm-card { opacity: 1; transform: scale(1) translateY(0); }
-
-.mod-confirm-icon {
-    width: 56px; height: 56px; border-radius: 50%;
-    background: var(--surface); border: 1px solid var(--border-hi);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.6rem; margin-bottom: 2px;
-}
-
-.mod-confirm-msg {
-    font-size: 0.88rem; color: var(--t1); line-height: 1.55;
-}
-.mod-confirm-msg strong { color: var(--t0); font-weight: 700; }
-.mod-confirm-msg small  { font-size: 0.75rem; color: var(--t2); display: block; margin-top: 4px; }
-
-.mod-confirm-actions {
-    display: flex; gap: 10px; width: 100%; margin-top: 4px;
-}
-
-.mod-confirm-btn {
-    flex: 1; padding: 11px; border-radius: 12px;
-    font-family: var(--f-display); font-size: 0.82rem; font-weight: 700;
-    letter-spacing: 0.05em; cursor: pointer; transition: all 180ms ease;
-    border: 1px solid transparent;
-}
-
-.mod-confirm-cancel {
-    background: var(--surface); border-color: var(--border-hi); color: var(--t1);
-}
-.mod-confirm-cancel:hover { background: var(--lift); color: var(--t0); }
-
-/* Action-specific confirm button colors */
-.mod-confirm-ok { background: var(--surface); border-color: var(--border-hi); color: var(--t0); }
-
-.mod-confirm-warn  { background: var(--amber-dim); border-color: rgba(245,166,35,0.45); color: var(--amber-hi); }
-.mod-confirm-warn:hover  { background: rgba(245,166,35,0.20); box-shadow: 0 0 14px var(--amber-glow); }
-
-.mod-confirm-kick  { background: var(--amber-dim); border-color: rgba(245,166,35,0.35); color: var(--amber); }
-.mod-confirm-kick:hover  { background: rgba(245,166,35,0.18); }
-
-.mod-confirm-ban   { background: var(--coral-dim); border-color: rgba(255,107,107,0.45); color: var(--coral-hi); }
-.mod-confirm-ban:hover   { background: rgba(255,107,107,0.20); box-shadow: 0 0 14px rgba(255,107,107,0.25); }
-
-.mod-confirm-clear { background: var(--teal-dim); border-color: rgba(38,201,184,0.40); color: var(--teal-hi); }
-.mod-confirm-clear:hover { background: rgba(38,201,184,0.18); box-shadow: 0 0 14px var(--teal-glow); }
 
 /* ── Botones de componentes no interactivos (limitación API Discord) ── */
 .comp-btn--readonly {
@@ -3115,7 +2803,8 @@ html.q-medium .composer                   { backdrop-filter: blur(8px) !importan
 
 .logs-card {
     position: relative; z-index: 1;
-    width: 800px; max-width: 95vw; max-height: 80vh;
+    width: 800px; max-width: 95vw;
+    height: 70vh; max-height: 600px;
     background: var(--bg2);
     border: 1px solid var(--border-hi);
     border-radius: 22px;
@@ -3171,9 +2860,20 @@ html.q-medium .composer                   { backdrop-filter: blur(8px) !importan
 .logs-error { font-size: 0.78rem; color: var(--coral); text-align: center; }
 
 .logs-viewer {
-    flex: 1; overflow: auto; padding: 16px;
-    background: #0a0a0f; border-radius: 0 0 22px 22px;
+    flex: 1; padding: 16px;
+    background: #0a0a0f;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
 }
+#logs-scroll {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+#logs-scroll::-webkit-scrollbar { width: 5px; }
+#logs-scroll::-webkit-scrollbar-track { background: transparent; }
+#logs-scroll::-webkit-scrollbar-thumb { background: var(--raised); border-radius: 3px; }
 #logs-content {
     font-family: var(--f-mono); font-size: 0.78rem;
     color: #e0e0e0; white-space: pre-wrap; word-break: break-word;
@@ -3329,27 +3029,6 @@ html.q-medium .composer                   { backdrop-filter: blur(8px) !importan
     margin: 0;
 }
 
-/* Logs panel mejorado */
-.logs-card {
-    display: flex;
-    flex-direction: column;
-    height: 70vh;
-    max-height: 600px;
-}
-.logs-viewer {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    overflow: hidden;
-}
-#logs-scroll {
-    flex: 1;
-    overflow-y: auto;
-}
-#logs-scroll::-webkit-scrollbar { width: 5px; }
-#logs-scroll::-webkit-scrollbar-track { background: transparent; }
-#logs-scroll::-webkit-scrollbar-thumb { background: var(--raised); border-radius: 3px; }
-
 /* Mentions mejoradas */
 .mention {
     border-radius: 4px;
@@ -3393,7 +3072,10 @@ html.q-medium .composer                   { backdrop-filter: blur(8px) !importan
    GRAPHICS QUALITY MODES
    Applied via body[data-quality="low|medium|high"]
    ════════════════════════════════════ */
-body[data-quality="low"] .orb { display: none; }
+body[data-quality="low"] .orb,
+body[data-quality="low"] .bg-grid,
+body[data-quality="low"] .bg-aurora,
+body[data-quality="low"] .bg-scanlines { display: none; }
 body[data-quality="low"] * { animation: none !important; transition: none !important; }
 body[data-quality="low"] .topnav,
 body[data-quality="low"] .composer,
@@ -3402,7 +3084,342 @@ body[data-quality="low"] .modal-backdrop,
 body[data-quality="low"] .settings-backdrop,
 body[data-quality="low"] .cmds-backdrop { backdrop-filter: none !important; }
 
-body[data-quality="medium"] .orb { opacity: 0.4; filter: blur(100px); animation: none; }
+body[data-quality="medium"] .orb { opacity: 0.4; filter: blur(100px); }
+body[data-quality="medium"] .orb-0,
 body[data-quality="medium"] .orb-1,
 body[data-quality="medium"] .orb-2,
 body[data-quality="medium"] .orb-3 { animation: none !important; }
+body[data-quality="medium"] .bg-aurora { animation: none !important; opacity: 0.25 !important; }
+body[data-quality="medium"] .bg-scanlines { display: none; }
+body[data-quality="medium"] .bg-grid { opacity: 0.35 !important; }
+
+/* ════════════════════════════════════════════════════════
+   v3 — ANIMATED BACKGROUND, MICRO-INTERACTIONS, POLISH
+   ════════════════════════════════════════════════════════ */
+
+/* ── Animated dot grid (very subtle, parallax-friendly) ── */
+.bg-grid {
+    position: fixed;
+    inset: -20% -20% -20% -20%;
+    z-index: 0;
+    pointer-events: none;
+    background-image:
+        radial-gradient(circle at center, rgba(245,166,35,0.05) 1px, transparent 1.2px);
+    background-size: 36px 36px;
+    mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.9), transparent 70%);
+    -webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.9), transparent 70%);
+    animation: gridDrift 60s linear infinite;
+    opacity: 0.7;
+}
+@keyframes gridDrift {
+    from { background-position: 0 0; }
+    to   { background-position: 360px 360px; }
+}
+
+/* ── Aurora: slow color-shifting gradient band at top ── */
+.bg-aurora {
+    position: fixed;
+    top: -20%;
+    left: -10%;
+    right: -10%;
+    height: 60vh;
+    z-index: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(ellipse 60% 40% at 20% 40%, rgba(245,166,35,0.10), transparent 60%),
+        radial-gradient(ellipse 50% 35% at 80% 50%, rgba(38,201,184,0.09), transparent 60%),
+        radial-gradient(ellipse 40% 30% at 50% 30%, rgba(167,139,250,0.08), transparent 65%);
+    filter: blur(30px);
+    opacity: 0.55;
+    animation: auroraShift 22s ease-in-out infinite;
+}
+@keyframes auroraShift {
+    0%, 100% {
+        transform: translateX(0) translateY(0);
+        background-position: 0% 0%, 0% 0%, 0% 0%;
+    }
+    33% {
+        transform: translateX(-4%) translateY(2%);
+        background-position: 20% 10%, -10% 5%, 15% -5%;
+    }
+    66% {
+        transform: translateX(3%) translateY(-2%);
+        background-position: -10% 15%, 15% -5%, -5% 10%;
+    }
+}
+
+/* ── 4th orb: massive, very-slow rotating gradient behind everything ── */
+.orb-0 {
+    width: 900px; height: 900px;
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    z-index: 0;
+    pointer-events: none;
+    filter: blur(110px);
+    background:
+        conic-gradient(from 0deg,
+            rgba(245,166,35,0.06),
+            rgba(255,107,107,0.05),
+            rgba(167,139,250,0.05),
+            rgba(38,201,184,0.05),
+            rgba(245,166,35,0.06));
+    animation: orb0Rotate 90s linear infinite;
+    opacity: 0.6;
+}
+@keyframes orb0Rotate {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to   { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* ── Very subtle scanlines over the feed (gaming terminal feel) ── */
+.bg-scanlines {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent 2px,
+        rgba(255,255,255,0.008) 3px,
+        transparent 4px
+    );
+    mix-blend-mode: overlay;
+    opacity: 0.35;
+}
+
+/* ── Shine sweep on message hover ── */
+.message { position: relative; overflow: hidden; }
+.message::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -80%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(
+        105deg,
+        transparent 0%,
+        rgba(255,255,255,0.04) 45%,
+        rgba(255,255,255,0.08) 50%,
+        rgba(255,255,255,0.04) 55%,
+        transparent 100%
+    );
+    transform: skewX(-18deg);
+    pointer-events: none;
+    transition: left 700ms ease;
+}
+.message:hover::before { left: 140%; }
+
+/* ── Channel ripple on click ── */
+.channel-item { position: relative; overflow: hidden; }
+.channel-item::before {
+    z-index: 1;      /* keep numeric badge above ripple */
+    position: relative;
+}
+@keyframes channelRipple {
+    from {
+        opacity: 0.35;
+        transform: scale(0);
+    }
+    to {
+        opacity: 0;
+        transform: scale(4);
+    }
+}
+.channel-item > .ch-ripple {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(245,166,35,0.4);
+    width: 12px; height: 12px;
+    pointer-events: none;
+    animation: channelRipple 520ms ease-out forwards;
+}
+
+/* ── Composer typing caret — amber blink inside the ring ── */
+@keyframes caretBlink {
+    0%, 49%   { opacity: 1; }
+    50%, 100% { opacity: 0.3; }
+}
+.composer-inner:focus-within::after {
+    content: '';
+    position: absolute;
+    right: 56px; top: 50%;
+    width: 2px; height: 18px;
+    background: var(--amber);
+    transform: translateY(-50%);
+    border-radius: 1px;
+    box-shadow: 0 0 6px var(--amber-glow);
+    animation: caretBlink 900ms steps(1) infinite;
+    pointer-events: none;
+    opacity: 0;
+}
+.composer-inner { position: relative; }
+/* Show caret only when input has no text — caret.js-free approach */
+.composer-inner:focus-within:has(input.composer-input[value=""])::after {
+    /* no-op: input value attribute doesn't track live — we handle via empty class instead */
+}
+.composer-inner.is-empty:focus-within::after { opacity: 1; }
+
+/* ── Mod panel user cards: pop subtle on hover (already has lift above) ── */
+/* Action buttons have a stronger highlight when the row is hovered */
+.mod-user-card:hover .mod-action-btn {
+    border-color: var(--border-hi);
+}
+
+/* ── Unified scrollbar styles ── */
+*::-webkit-scrollbar        { width: 6px; height: 6px; }
+*::-webkit-scrollbar-track  { background: transparent; }
+*::-webkit-scrollbar-thumb  {
+    background: rgba(255,255,255,0.08);
+    border-radius: 4px;
+    transition: background 200ms ease;
+}
+*::-webkit-scrollbar-thumb:hover {
+    background: rgba(245,166,35,0.30);
+}
+* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.10) transparent; }
+
+/* Restore narrow scrollbars where design expects very thin ones */
+.rsidebar-list::-webkit-scrollbar,
+.channel-drawer-list::-webkit-scrollbar { width: 3px; }
+.mod-body::-webkit-scrollbar,
+.settings-body::-webkit-scrollbar { width: 4px; }
+
+/* ── Channel active: add a subtle orange underglow spreading down ── */
+.channel-item.active {
+    position: relative;
+}
+.rsidebar-list .channel-item.active::before {
+    color: var(--bg) !important;
+    background: var(--amber) !important;
+    font-weight: 700 !important;
+    box-shadow: 0 0 14px var(--amber-glow);
+}
+
+/* ── Feed-empty: dual orbit rings + tighter animation ── */
+@keyframes emptyRingDual {
+    0%, 100% { transform: rotate(0deg) scale(1); opacity: 0.6; }
+    50%       { transform: rotate(180deg) scale(1.1); opacity: 1; }
+}
+.feed-empty-icon::before { animation: emptyRingDual 4s ease-in-out infinite; }
+.feed-empty-icon::after  { animation: emptyRingDual 6s ease-in-out infinite reverse; }
+
+/* ── Toast notification: softer entrance ── */
+@keyframes toastIn {
+    from { opacity: 0; transform: translateY(20px) scale(0.95); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+#toast-container > div {
+    animation: toastIn 280ms cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+
+/* ── Login button logged-in: small pulse on the teal ── */
+.login-btn.logged-in {
+    animation: loggedInPulse 3s ease-in-out infinite;
+}
+@keyframes loggedInPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(38,201,184,0); }
+    50%       { box-shadow: 0 0 0 6px rgba(38,201,184,0.08); }
+}
+
+/* ── Mod action button: stronger press feedback ── */
+.mod-action-btn:active { transform: scale(0.95); }
+.mod-action-btn:hover  { transform: translateY(-1px); }
+
+/* ── Mod stat pill: inline badges get a subtle gradient border ── */
+.mod-stat {
+    background: linear-gradient(var(--surface), var(--surface)) padding-box,
+                linear-gradient(135deg, rgba(245,166,35,0.2), rgba(38,201,184,0.2)) border-box;
+    border: 1px solid transparent;
+}
+
+/* ── Mentions v3: unified polish ── */
+.mention-user {
+    background: rgba(167,139,250,0.15);
+    color: #c4b5fd;
+}
+.mention-user:hover {
+    background: rgba(167,139,250,0.28);
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(167,139,250,0.25);
+}
+.mention-role {
+    font-weight: 600;
+}
+.mention-channel {
+    background: rgba(38,201,184,0.12);
+    color: var(--teal);
+}
+.mention-channel:hover {
+    background: rgba(38,201,184,0.22);
+}
+.mention-ts {
+    background: rgba(245,166,35,0.1);
+    color: var(--amber);
+    font-family: var(--f-mono);
+    font-size: 0.85em;
+}
+
+/* ── Topnav: animated gradient line below it ── */
+.topnav::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; bottom: -1px;
+    height: 1px;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(245,166,35,0.25) 20%,
+        rgba(38,201,184,0.25) 50%,
+        rgba(167,139,250,0.25) 80%,
+        transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: topnavLine 8s linear infinite;
+    pointer-events: none;
+}
+@keyframes topnavLine {
+    from { background-position: 0% 0; }
+    to   { background-position: 200% 0; }
+}
+
+/* ── Cmd-send button: shine sweep on hover ── */
+.cmd-send-btn { position: relative; overflow: hidden; }
+.cmd-send-btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+    transform: translateX(-100%);
+}
+.cmd-send-btn:hover::after {
+    animation: pillSweep 650ms ease forwards;
+}
+
+/* ── Login / settings / cmds close buttons: subtle active scale ── */
+.login-submit:active,
+.modal-submit:active,
+.cmd-send-btn:active {
+    transform: scale(0.97);
+}
+
+/* ── Respect prefers-reduced-motion ── */
+@media (prefers-reduced-motion: reduce) {
+    .bg-grid, .bg-aurora, .orb, .orb-0, .bg-scanlines,
+    .topnav::after, .brand-orb, .brand-orb::after,
+    .channel-bar-hash, .feed-empty-icon, .uptime-dot,
+    .composer-send, .channel-item.active::after {
+        animation: none !important;
+    }
+    * { transition-duration: 50ms !important; }
+}
+
+/* ── Mobile: disable heavy background FX ── */
+@media (max-width: 600px) {
+    .orb-0 { display: none; }
+    .bg-aurora { opacity: 0.3; }
+    .bg-scanlines { display: none; }
+    .bg-grid { background-size: 28px 28px; opacity: 0.4; }
+}
