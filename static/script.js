@@ -122,9 +122,16 @@
     // ─── EVENTS ───────────────────────────────────────────────────────────────
     function setupEventListeners() {
         if (msgInput) {
+            const updateEmptyState = () => {
+                const wrap = msgInput.closest('.composer-inner');
+                if (wrap) wrap.classList.toggle('is-empty', msgInput.value.length === 0);
+            };
+            updateEmptyState();
             msgInput.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage(); });
-            msgInput.addEventListener('input',    handleAcInput);
+            msgInput.addEventListener('input',    () => { handleAcInput(); updateEmptyState(); });
             msgInput.addEventListener('keydown',  handleAcKeydown);
+            msgInput.addEventListener('focus',    updateEmptyState);
+            msgInput.addEventListener('blur',     updateEmptyState);
         }
         if (sendBtn) sendBtn.onclick = sendMessage;
         document.addEventListener('keydown', e => {
@@ -168,15 +175,25 @@
         const div = document.createElement('div');
         div.className = 'channel-item';
         div.setAttribute('data-index', String(idx + 1).padStart(2, '0'));
+        div.dataset.channelId = String(id);
         const span = document.createElement('span');
         span.className = 'ch-name';
         span.textContent = name.toUpperCase();
         div.appendChild(span);
-        div.onclick = () => {
+        div.onclick = (e) => {
+            // Ripple micro-interaction
+            try {
+                const rect = div.getBoundingClientRect();
+                const r = document.createElement('span');
+                r.className = 'ch-ripple';
+                r.style.left = (e.clientX - rect.left - 6) + 'px';
+                r.style.top  = (e.clientY - rect.top  - 6) + 'px';
+                div.appendChild(r);
+                setTimeout(() => r.remove(), 560);
+            } catch (_) {}
             currentChannelId = id;
-            document.querySelectorAll('.channel-item').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.channel-item').forEach(b => {
-                if (b.querySelector('.ch-name')?.textContent === name.toUpperCase()) b.classList.add('active');
+                b.classList.toggle('active', b.dataset.channelId === String(id));
             });
             if (chatChannelName) chatChannelName.innerText = name.toUpperCase();
             resetTimer();
@@ -653,19 +670,6 @@
         if (!content) return;
         if (!currentChannelId) { showToast('⚠ Select a channel first', 'warn'); return; }
 
-        if (content === '/done') {
-            msgInput.value = '';
-            showToast('Logging EP…', 'info');
-            try {
-                const res  = await fetch('/api/done', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel_id: currentChannelId, user_id: window._doneUserId || window._botId || '0' }) });
-                const data = await res.json();
-                showToast(data.error ? '❌ ' + data.error : '✅ ' + (data.text || 'EP logged'), data.error ? 'error' : 'success');
-                fetchMessages(false);
-            } catch (e) { showToast('❌ Error: ' + e.message, 'error'); }
-            msgInput.disabled = false; msgInput.focus();
-            return;
-        }
-
         if (content.startsWith('/deadline ')) {
             const targetId = content.slice('/deadline '.length).trim().replace(/[<@!>]/g, '').trim();
             if (targetId) { window.triggerWebDeadline(targetId); msgInput.value = ''; }
@@ -752,7 +756,14 @@
             const lines = parseInt(document.getElementById('logs-lines-input')?.value) || 200;
             const text  = await (await fetch('/api/logs?lines=' + lines)).text();
             const pre   = document.getElementById('logs-content');
-            if (pre) { pre.innerHTML = colorizeLogs(escapeHtml(text)); document.getElementById('logs-viewer').scrollTop = 999999; }
+            const scrollBox = document.getElementById('logs-scroll');
+            if (!pre) return;
+            // Only auto-scroll if user was already near the bottom
+            const nearBottom = scrollBox
+                ? (scrollBox.scrollHeight - scrollBox.scrollTop - scrollBox.clientHeight) < 80
+                : true;
+            pre.innerHTML = colorizeLogs(escapeHtml(text));
+            if (scrollBox && nearBottom) scrollBox.scrollTop = scrollBox.scrollHeight;
         } catch (e) { const pre = document.getElementById('logs-content'); if (pre) pre.textContent = 'Error loading logs: ' + e.message; }
     }
     function colorizeLogs(t) {
@@ -767,13 +778,24 @@
     }
 
     // ─── LOGIN ────────────────────────────────────────────────────────────────
-    window.toggleLogin = function () { document.getElementById('login-modal')?.classList.toggle('active'); };
+    window.toggleLogin = function () {
+        // If already logged in, this button acts as a logout
+        if (localStorage.getItem('blzt_mod') === '1') {
+            localStorage.removeItem('blzt_mod');
+            applyLoginState(false);
+            showToast('👋 Logged out', 'info');
+            return;
+        }
+        document.getElementById('login-modal')?.classList.toggle('active');
+    };
     window.doLogin = function () {
         const user = document.getElementById('login-user')?.value.trim();
         const pass = document.getElementById('login-pass')?.value;
         if (user === 'admin' && pass === 'blzt2024') {
             localStorage.setItem('blzt_mod', '1');
-            applyLoginState(true); toggleLogin(); showToast('✅ Logged in', 'success');
+            applyLoginState(true);
+            document.getElementById('login-modal')?.classList.remove('active');
+            showToast('✅ Logged in', 'success');
         } else { document.getElementById('login-error').textContent = '❌ Incorrect credentials'; }
     };
     function applyLoginState(loggedIn) {
