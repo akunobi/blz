@@ -122,16 +122,9 @@
     // ─── EVENTS ───────────────────────────────────────────────────────────────
     function setupEventListeners() {
         if (msgInput) {
-            const updateEmptyState = () => {
-                const wrap = msgInput.closest('.composer-inner');
-                if (wrap) wrap.classList.toggle('is-empty', msgInput.value.length === 0);
-            };
-            updateEmptyState();
             msgInput.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage(); });
-            msgInput.addEventListener('input',    () => { handleAcInput(); updateEmptyState(); });
+            msgInput.addEventListener('input',    handleAcInput);
             msgInput.addEventListener('keydown',  handleAcKeydown);
-            msgInput.addEventListener('focus',    updateEmptyState);
-            msgInput.addEventListener('blur',     updateEmptyState);
         }
         if (sendBtn) sendBtn.onclick = sendMessage;
         document.addEventListener('keydown', e => {
@@ -180,17 +173,7 @@
         span.className = 'ch-name';
         span.textContent = name.toUpperCase();
         div.appendChild(span);
-        div.onclick = (e) => {
-            // Ripple micro-interaction
-            try {
-                const rect = div.getBoundingClientRect();
-                const r = document.createElement('span');
-                r.className = 'ch-ripple';
-                r.style.left = (e.clientX - rect.left - 6) + 'px';
-                r.style.top  = (e.clientY - rect.top  - 6) + 'px';
-                div.appendChild(r);
-                setTimeout(() => r.remove(), 560);
-            } catch (_) {}
+        div.onclick = () => {
             currentChannelId = id;
             document.querySelectorAll('.channel-item').forEach(b => {
                 b.classList.toggle('active', b.dataset.channelId === String(id));
