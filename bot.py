@@ -432,11 +432,11 @@ async def escalate_user(member, guild, warn_count, reason):
     
     try:
         if had_ban3d:
-            await member.ban(reason=f"AutoMod: permanent ban after 3d ban ({reason})", delete_message_days=0)
+            await member.ban(reason=f"AutoMod: permanent ban after 3d ban ({reason})", delete_message_seconds=0)
             log_mod_action(uid, name, gid, "ban_permanent", reason)
             logger.info(f">>> [AUTOMOD] PERMANENT BAN: {name}")
         elif had_timeout and warn_count >= 1:
-            await member.ban(reason=f"AutoMod: 3-day ban after timeout | ({reason})", delete_message_days=0)
+            await member.ban(reason=f"AutoMod: 3-day ban after timeout | ({reason})", delete_message_seconds=0)
             log_mod_action(uid, name, gid, "ban_3d", reason, duration=259200)
             logger.info(f">>> [AUTOMOD] 3D BAN: {name}")
             async def unban():
@@ -448,7 +448,7 @@ async def escalate_user(member, guild, warn_count, reason):
                     logger.error(f"!!! [UNBAN ERROR]: {e}")
             asyncio.create_task(unban())
         elif warn_count >= WARN_TIMEOUT_AT:
-            until = datetime.datetime.utcnow() + datetime.timedelta(days=1)
+            until = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
             await member.timeout(until, reason=f"AutoMod: {warn_count} warnings ({reason})")
             log_mod_action(uid, name, gid, "timeout", reason, duration=86400)
             logger.info(f">>> [AUTOMOD] TIMEOUT 1D: {name}")
@@ -541,7 +541,7 @@ async def handle_deadline_interaction(interaction: discord.Interaction, user: di
     await interaction.response.defer(ephemeral=False)
     channel = interaction.channel
     mention_str = user.mention
-    deadline_dt = datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+    deadline_dt = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24)
     unix_ts = int(deadline_dt.timestamp())
     embed = discord.Embed(
         title="Deadline - Confirmation Required",
@@ -580,41 +580,7 @@ async def handle_deadline_interaction(interaction: discord.Interaction, user: di
     asyncio.create_task(watch())
     await interaction.followup.send("Deadline enviado.", ephemeral=True)
 
-async def handle_done_interaction(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=False)
-    member = interaction.user
-    region, col_u, col_ep, col_qw = _detect_region(member)
-    if not region:
-        await interaction.followup.send("No tienes rol de región (EU/NA/ASIA). Contacta a un moderador", ephemeral=True)
-        return
-    
-    embed = discord.Embed(title="Updating tracker", description=f"Registrando EP para {member.display_name} ({region})", color=0xF5A623)
-    msg = await interaction.channel.send(embed=embed)
-    
-    try:
-        loop = asyncio.get_running_loop()
-        success, msg_text = await asyncio.wait_for(
-            loop.run_in_executor(None, _sheet_add_ep, member.display_name, region, col_u, col_ep, col_qw),
-            timeout=20.0
-        )
-    except asyncio.TimeoutError:
-        success, msg_text = False, "Timeout al conectar con Google Sheets"
-    except Exception as e:
-        success, msg_text = False, f"{type(e).__name__}: {e}"
-        
-    if success:
-        ok_embed = discord.Embed(title="EP Recorded!", description=f"{member.display_name} Region: {region}\n{msg_text}", color=0x26C9B8)
-        ok_embed.set_footer(text="BLZ-T EP Tracker")
-        await msg.edit(embed=ok_embed)
-    else:
-        await msg.edit(embed=discord.Embed(title="Error", description=f"{msg_text[:900]}", color=0xFF6868))
-    await interaction.followup.send("Comando procesado.", ephemeral=True)
-
 # --- SLASH COMMANDS ---
-@client.tree.command(name="done", description="Registra tu EP semanal (debes tener rol EU/NA/ASIA)")
-async def slash_done(interaction: discord.Interaction):
-    await handle_done_interaction(interaction)
-
 @client.tree.command(name="deadline", description="Envia un deadline de 24h a un usuario (solo staff)")
 async def slash_deadline(interaction: discord.Interaction, user: discord.Member):
     allowed_roles = [1355062394547736675, 1355062394547736673, 1483349943962964068]
@@ -882,9 +848,14 @@ def api_deadline():
         try:
             channel = client.get_channel(int(channel_id))
             if not channel:
-                channel = await client.fetch_channel(int(channel_id))
+                try:
+                    channel = await client.fetch_channel(int(channel_id))
+                except discord.NotFound:
+                    return {"error": "Canal no encontrado"}
+                except discord.Forbidden:
+                    return {"error": "Sin permiso para acceder al canal"}
 
-            deadline_dt = datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+            deadline_dt = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24)
             unix_ts     = int(deadline_dt.timestamp())
 
             # Intentar obtener el nombre del usuario para el embed
@@ -903,8 +874,13 @@ def api_deadline():
                 color=0xF5A623
             )
             embed.set_footer(text="BLZ-T AutoMod · Web Panel")
-            sent = await channel.send(embed=embed)
-            await sent.add_reaction("✅")
+            try:
+                sent = await channel.send(embed=embed)
+                await sent.add_reaction("✅")
+            except discord.Forbidden:
+                return {"error": "Sin permiso para enviar mensajes en ese canal"}
+            except Exception as e:
+                return {"error": f"{type(e).__name__}: {e}"}
             logger.info(f">>> [DEADLINE WEB] Sent for user {target_id} in channel {channel_id}")
 
             # Watcher igual que el slash command
@@ -942,77 +918,16 @@ def api_deadline():
                     logger.error(f"!!! [DEADLINE WEB WATCH]: {e}")
 
             asyncio.create_task(watch())
+            return {"success": True, "status": "Deadline enviado"}
         except Exception as e:
             logger.error(f"!!! [API DEADLINE ERROR]: {e}")
-
-    asyncio.run_coroutine_threadsafe(trigger_deadline(), client.loop)
-    return jsonify({"status": "Deadline enviado ✅"})
-
-# ─── /done DESDE WEB ─────────────────────────────────────────────────────────
-@app.route("/api/done", methods=["POST"])
-def api_done():
-    data       = request.json or {}
-    user_id    = data.get("user_id")
-    channel_id = data.get("channel_id")
-    if not user_id or not channel_id:
-        return jsonify({"error": "Faltan user_id y channel_id"}), 400
-    if not bot_ready_event.is_set():
-        return jsonify({"error": "Bot no listo"}), 503
-
-    async def run_done():
-        try:
-            channel = client.get_channel(int(channel_id))
-            if not channel:
-                channel = await client.fetch_channel(int(channel_id))
-            guild = getattr(channel, 'guild', None) or (client.guilds[0] if client.guilds else None)
-            member = guild.get_member(int(user_id)) if guild else None
-            if not member:
-                try:
-                    member = await guild.fetch_member(int(user_id))
-                except Exception:
-                    return {"error": "No se pudo encontrar al miembro en el servidor"}
-
-            region, col_u, col_ep, col_qw = _detect_region(member)
-            if not region:
-                return {"error": "No tienes rol de región (EU/NA/ASIA). Contacta a un moderador."}
-
-            embed = discord.Embed(
-                title="Updating tracker",
-                description=f"Registrando EP para {member.display_name} ({region})",
-                color=0xF5A623
-            )
-            msg = await channel.send(embed=embed)
-
-            loop = asyncio.get_running_loop()
-            try:
-                success, msg_text = await asyncio.wait_for(
-                    loop.run_in_executor(None, _sheet_add_ep, member.display_name, region, col_u, col_ep, col_qw),
-                    timeout=20.0
-                )
-            except asyncio.TimeoutError:
-                success, msg_text = False, "Timeout al conectar con Google Sheets"
-            except Exception as e:
-                success, msg_text = False, f"{type(e).__name__}: {e}"
-
-            if success:
-                ok_embed = discord.Embed(
-                    title="EP Recorded!",
-                    description=f"{member.display_name} · {region}\n{msg_text}",
-                    color=0x26C9B8
-                )
-                ok_embed.set_footer(text="BLZ-T EP Tracker")
-                await msg.edit(embed=ok_embed)
-                return {"success": True, "text": msg_text}
-            else:
-                await msg.edit(embed=discord.Embed(title="Error", description=msg_text[:900], color=0xFF6868))
-                return {"error": msg_text}
-        except Exception as e:
-            logger.error(f"!!! [API DONE ERROR]: {e}")
             return {"error": str(e)}
 
     try:
-        future = asyncio.run_coroutine_threadsafe(run_done(), client.loop)
-        result = future.result(timeout=25)
+        future = asyncio.run_coroutine_threadsafe(trigger_deadline(), client.loop)
+        result = future.result(timeout=15)
+        if result.get("error"):
+            return jsonify(result), 500
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1093,7 +1008,9 @@ def mod_do_action():
                     guild = g; break
             if not guild and client.guilds:
                 guild = client.guilds[0]
-            member = guild.get_member(int(user_id)) if guild else None
+            if not guild:
+                return {"error": "Bot is not in any guild"}
+            member = guild.get_member(int(user_id))
 
             if action == "warn":
                 count = add_warning(user_id, user_name, guild_id, reason, mod_id="WEB", mod_name="WebPanel")
@@ -1109,7 +1026,7 @@ def mod_do_action():
 
             elif action == "timeout":
                 if not member: return {"error": "Member not found in server"}
-                until = datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+                until = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24)
                 await member.timeout(until, reason=reason)
                 log_mod_action(user_id, user_name, guild_id, "timeout", reason, duration=86400, mod_id="WEB", mod_name="WebPanel")
                 return {"success": True}
@@ -1122,7 +1039,7 @@ def mod_do_action():
 
             elif action == "ban":
                 if not member: return {"error": "Member not found in server (or already banned)"}
-                await member.ban(reason=reason, delete_message_days=0)
+                await member.ban(reason=reason, delete_message_seconds=0)
                 log_mod_action(user_id, user_name, guild_id, "ban", reason, mod_id="WEB", mod_name="WebPanel")
                 return {"success": True}
 
