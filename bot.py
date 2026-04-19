@@ -607,11 +607,11 @@ class TicketFormModal(discord.ui.Modal, title="Open Ticket"):
         required=True, max_length=100
     )
     style = discord.ui.TextInput(
-        label="Style", placeholder="e.g. Playmaker, Dribbler, Striker...",
+        label="Style", placeholder="Sae, NEL Bachira, Charles...",
         required=True, max_length=100
     )
     flow = discord.ui.TextInput(
-        label="Flow", placeholder="e.g. Ego Flow, Team Flow...",
+        label="Flow", placeholder="Godspeed, Demon King...",
         required=True, max_length=100
     )
     region = discord.ui.TextInput(
@@ -619,7 +619,7 @@ class TicketFormModal(discord.ui.Modal, title="Open Ticket"):
         required=True, max_length=50
     )
     position = discord.ui.TextInput(
-        label="Position", placeholder="e.g. ST, CAM, GK...",
+        label="Position", placeholder="CF / CM / LW / RG / GK",
         required=True, max_length=50
     )
 
