@@ -607,11 +607,19 @@ class TicketFormModal(discord.ui.Modal, title="Open Ticket"):
         required=True, max_length=100
     )
     style = discord.ui.TextInput(
+<<<<<<< HEAD
         label="Style", placeholder="e.g. Playmaker, Dribbler, Striker...",
         required=True, max_length=100
     )
     flow = discord.ui.TextInput(
         label="Flow", placeholder="e.g. Ego Flow, Team Flow...",
+=======
+        label="Style", placeholder="Sae, NEL Bachira, Charles...",
+        required=True, max_length=100
+    )
+    flow = discord.ui.TextInput(
+        label="Flow", placeholder="Godspeed, Demon King...",
+>>>>>>> 1cd630e38b627470fd9111ac92f1ffed3350bc24
         required=True, max_length=100
     )
     region = discord.ui.TextInput(
@@ -619,7 +627,11 @@ class TicketFormModal(discord.ui.Modal, title="Open Ticket"):
         required=True, max_length=50
     )
     position = discord.ui.TextInput(
+<<<<<<< HEAD
         label="Position", placeholder="e.g. ST, CAM, GK...",
+=======
+        label="Position", placeholder="CF / CM / LW / RG / GK",
+>>>>>>> 1cd630e38b627470fd9111ac92f1ffed3350bc24
         required=True, max_length=50
     )
 
@@ -934,6 +946,7 @@ async def on_message(message):
     await client.process_commands(message)
 
 # --- RUTAS FLASK API Y DASHBOARD ---
+<<<<<<< HEAD
 _MOBILE_UA_RE = re_mod.compile(
     r'(iPhone|iPod|iPad|Android.*Mobile|Mobile.*Android|Windows Phone|IEMobile|Opera Mini|BlackBerry|webOS|Silk)',
     re_mod.IGNORECASE
@@ -953,6 +966,10 @@ def _is_mobile_request():
 def index():
     if _is_mobile_request():
         return render_template("mobile.html")
+=======
+@app.route("/")
+def index():
+>>>>>>> 1cd630e38b627470fd9111ac92f1ffed3350bc24
     return render_template("index.html")
 
 @app.route("/api/channels")
