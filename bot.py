@@ -525,7 +525,21 @@ async def on_ready():
         logger.info(f">>> [SLASH] Synced {len(synced)} commands")
     except Exception as e:
         logger.error(f"!!! [SLASH SYNC ERROR]: {e}")
-    
+
+    # Register persistent views for the ticket system (buttons survive restarts)
+    try:
+        client.add_view(TicketPanelView())
+        client.add_view(TicketCloseView())
+        logger.info(">>> [TICKET] Persistent views registered")
+    except Exception as e:
+        logger.error(f"!!! [TICKET VIEW REGISTER]: {e}")
+
+    # Publish the ticket panel if it's not already there
+    try:
+        await ensure_ticket_panel()
+    except Exception as e:
+        logger.error(f"!!! [TICKET PANEL ON READY]: {e}")
+
     try:
         history_limit = int(os.getenv('HISTORY_LIMIT', '200'))
     except ValueError:
@@ -579,6 +593,229 @@ async def handle_deadline_interaction(interaction: discord.Interaction, user: di
             
     asyncio.create_task(watch())
     await interaction.followup.send("Deadline enviado.", ephemeral=True)
+
+# --- TICKET SYSTEM ---
+TICKET_PANEL_CHANNEL_ID = 1489288309367767282
+TICKET_CATEGORY_ID = 1355062395768410252
+TICKET_CLOSE_ROLE_IDS = {1355062394547736673, 1355062394547736675, 1355062394547736674}
+TICKET_DELETE_DELAY = 5  # seconds before closed ticket channel is deleted
+
+
+class TicketFormModal(discord.ui.Modal, title="Open Ticket"):
+    roblox_username = discord.ui.TextInput(
+        label="Roblox Username", placeholder="Your Roblox username",
+        required=True, max_length=100
+    )
+    style = discord.ui.TextInput(
+        label="Style", placeholder="e.g. Playmaker, Dribbler, Striker...",
+        required=True, max_length=100
+    )
+    flow = discord.ui.TextInput(
+        label="Flow", placeholder="e.g. Ego Flow, Team Flow...",
+        required=True, max_length=100
+    )
+    region = discord.ui.TextInput(
+        label="Region", placeholder="EU / NA / ASIA",
+        required=True, max_length=50
+    )
+    position = discord.ui.TextInput(
+        label="Position", placeholder="e.g. ST, CAM, GK...",
+        required=True, max_length=50
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        guild = interaction.guild
+        user = interaction.user
+        if not guild:
+            await interaction.response.send_message("Guild not available.", ephemeral=True)
+            return
+
+        category = guild.get_channel(TICKET_CATEGORY_ID)
+        if not isinstance(category, discord.CategoryChannel):
+            await interaction.response.send_message(
+                "Ticket category is not configured correctly. Contact a moderator.",
+                ephemeral=True
+            )
+            logger.error(f"!!! [TICKET] Category {TICKET_CATEGORY_ID} not found or invalid")
+            return
+
+        # Prevent a single user from spamming tickets: one open ticket at a time
+        for ch in category.text_channels:
+            if (ch.topic or "").startswith(f"ticket-owner:{user.id}"):
+                await interaction.response.send_message(
+                    f"You already have an open ticket: {ch.mention}",
+                    ephemeral=True
+                )
+                return
+
+        # Sanitize username for channel name (Discord: lowercase, no spaces/special chars)
+        safe_name = re_mod.sub(r'[^a-z0-9-]+', '-', user.name.lower()).strip('-') or 'user'
+        channel_name = f"ticket-{safe_name}"[:90]
+
+        try:
+            ticket_channel = await guild.create_text_channel(
+                name=channel_name,
+                category=category,
+                topic=f"ticket-owner:{user.id}",
+                reason=f"Ticket opened by {user.name} ({user.id})"
+            )
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                "I don't have permission to create ticket channels.",
+                ephemeral=True
+            )
+            return
+        except Exception as e:
+            await interaction.response.send_message(
+                f"Error creating ticket: {e}", ephemeral=True
+            )
+            logger.error(f"!!! [TICKET CREATE ERROR]: {e}")
+            return
+
+        embed = discord.Embed(
+            title="🎫 New Player Ticket",
+            description=f"Ticket opened by {user.mention}",
+            color=0xF5A623
+        )
+        embed.add_field(name="Roblox Username", value=self.roblox_username.value, inline=False)
+        embed.add_field(name="Style", value=self.style.value, inline=True)
+        embed.add_field(name="Flow", value=self.flow.value, inline=True)
+        embed.add_field(name="Region", value=self.region.value, inline=True)
+        embed.add_field(name="Position", value=self.position.value, inline=True)
+        embed.set_footer(text="BLZ-T Tickets · Click 'Close Ticket' when done")
+        if user.display_avatar:
+            embed.set_thumbnail(url=user.display_avatar.url)
+
+        try:
+            await ticket_channel.send(
+                content=user.mention,
+                embed=embed,
+                view=TicketCloseView(),
+                allowed_mentions=discord.AllowedMentions(users=True)
+            )
+            logger.info(f">>> [TICKET] Opened by {user.name} ({user.id}) in #{ticket_channel.name}")
+        except Exception as e:
+            logger.error(f"!!! [TICKET SEND ERROR]: {e}")
+
+        await interaction.response.send_message(
+            f"✅ Ticket created: {ticket_channel.mention}",
+            ephemeral=True
+        )
+
+
+class TicketPanelView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="Open Ticket",
+        style=discord.ButtonStyle.primary,
+        emoji="🎫",
+        custom_id="blz_ticket_open"
+    )
+    async def open_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        try:
+            await interaction.response.send_modal(TicketFormModal())
+        except Exception as e:
+            logger.error(f"!!! [TICKET MODAL ERROR]: {e}")
+            try:
+                await interaction.response.send_message(
+                    "Could not open the ticket form. Try again.",
+                    ephemeral=True
+                )
+            except Exception:
+                pass
+
+
+class TicketCloseView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="Close Ticket",
+        style=discord.ButtonStyle.danger,
+        emoji="🔒",
+        custom_id="blz_ticket_close"
+    )
+    async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        channel = interaction.channel
+        user = interaction.user
+
+        # Permission check: owner of the ticket OR allowed role
+        is_owner = False
+        topic = getattr(channel, 'topic', '') or ''
+        if topic.startswith("ticket-owner:"):
+            try:
+                owner_id = int(topic.split(":", 1)[1].strip())
+                if owner_id == user.id:
+                    is_owner = True
+            except (ValueError, IndexError):
+                pass
+
+        has_role = any(
+            getattr(r, 'id', None) in TICKET_CLOSE_ROLE_IDS
+            for r in getattr(user, 'roles', [])
+        )
+
+        if not (is_owner or has_role):
+            await interaction.response.send_message(
+                "❌ You don't have permission to close this ticket.",
+                ephemeral=True
+            )
+            return
+
+        # Disable the button and show the countdown
+        button.disabled = True
+        try:
+            await interaction.response.edit_message(view=self)
+        except Exception:
+            pass
+
+        try:
+            await channel.send(
+                f"🔒 Ticket closed by {user.mention}. Deleting in {TICKET_DELETE_DELAY} seconds..."
+            )
+        except Exception:
+            pass
+
+        logger.info(f">>> [TICKET] Closed by {user.name} ({user.id}) in #{channel.name}")
+        await asyncio.sleep(TICKET_DELETE_DELAY)
+        try:
+            await channel.delete(reason=f"Ticket closed by {user.name}")
+        except Exception as e:
+            logger.error(f"!!! [TICKET DELETE ERROR]: {e}")
+
+
+async def ensure_ticket_panel():
+    """Ensure the ticket panel message is posted in the configured channel."""
+    channel = client.get_channel(TICKET_PANEL_CHANNEL_ID)
+    if not channel:
+        try:
+            channel = await client.fetch_channel(TICKET_PANEL_CHANNEL_ID)
+        except Exception as e:
+            logger.error(f"!!! [TICKET PANEL] Channel {TICKET_PANEL_CHANNEL_ID} not found: {e}")
+            return
+
+    try:
+        # Check if the bot has already posted a panel message (has components) recently
+        async for msg in channel.history(limit=30):
+            if msg.author.id == client.user.id and msg.components:
+                logger.info(f">>> [TICKET PANEL] Panel already present in #{channel.name}")
+                return
+
+        embed = discord.Embed(
+            title="🎫 Ticket System",
+            description="Open a ticket to search players.",
+            color=0xF5A623
+        )
+        embed.set_footer(text="BLZ-T · Click the button below to open a ticket")
+        await channel.send(embed=embed, view=TicketPanelView())
+        logger.info(f">>> [TICKET PANEL] Published in #{channel.name}")
+    except discord.Forbidden:
+        logger.error(f"!!! [TICKET PANEL] No permission in #{channel.name}")
+    except Exception as e:
+        logger.error(f"!!! [TICKET PANEL] Error: {e}")
+
 
 # --- SLASH COMMANDS ---
 @client.tree.command(name="deadline", description="Envia un deadline de 24h a un usuario (solo staff)")
