@@ -1,0 +1,7 @@
+flask
+discord.py
+python-dotenv
+gunicorn
+aiohttp
+google-auth
+requests

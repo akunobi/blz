@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLZ-T // Command Relay</title>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&family=Noto+Serif+JP:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <div class="orb orb-1" aria-hidden="true"></div>
+    <div class="orb orb-2" aria-hidden="true"></div>
+    <div class="orb orb-3" aria-hidden="true"></div>
+
+    <div class="app">
+
+        <nav class="topnav">
+            <div class="topnav-brand">
+                <div class="brand-orb">
+                    <span class="brand-orb-kanji">封</span>
+                </div>
+                <span class="brand-name">BLZ-T</span>
+            </div>
+
+            <div class="topnav-actions">
+                <div class="uptime-chip">
+                    <span class="uptime-dot"></span>
+                    <span id="chat-uptime" class="uptime-val">00:00</span>
+                </div>
+                <button class="metrics-pill" onclick="toggleDrawer()">
+                    <svg class="metrics-pill-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    <span>Metrics</span>
+                </button>
+                <button class="cmds-btn" onclick="toggleCommands()" title="Commands" aria-label="Commands">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
+                    </svg>
+                </button>
+                <button class="mod-btn" onclick="toggleMod()" title="Mod Panel" id="mod-btn" style="display:none">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                </button>
+                <button class="login-btn" onclick="toggleLogin()" id="login-btn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    <span id="login-btn-label">Login</span>
+                </button>
+                <button class="settings-btn" onclick="toggleSettings()" title="Settings" aria-label="Settings">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                </button>
+            </div>
+        </nav>
+
+        <div class="body-row">
+
+            <div class="chat-col">
+
+                <div class="channel-bar">
+                    <div class="channel-bar-inner">
+                        <span class="channel-bar-hash">#</span>
+                        <span id="chat-channel-name" class="channel-bar-name">Select a channel</span>
+                        <button class="channel-drawer-trigger" onclick="toggleChannelDrawer()" aria-label="Open channels"></button>
+                        <span class="channel-bar-sub">作戦室 · Command Relay</span>
+                    </div>
+                </div>
+
+                <div id="chat-feed" class="feed">
+                    <div class="feed-empty">
+                        <div class="feed-empty-icon">無</div>
+                        <p class="feed-empty-title">Awaiting signal</p>
+                        <p class="feed-empty-sub">信号待機中 — Select a channel above</p>
+                    </div>
+                </div>
+
+                <div class="composer">
+                    <div class="composer-inner">
+                        <input id="msg-input" class="composer-input" type="text"
+                               placeholder="Write a message... (Use /deadline @User) メッセージを入力"
+                               autocomplete="off"/>
+                        <button id="send-btn" class="composer-send">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                <path d="M22 2L11 13" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                                <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+            </div><aside class="right-sidebar">
+                <div class="rsidebar-hdr">
+                    <span class="rsidebar-hdr-label">Channels</span>
+                    <span class="rsidebar-hdr-count" id="channel-count">—</span>
+                </div>
+                <div id="channel-list" class="rsidebar-list"></div>
+                <div class="rsidebar-ftr">作戦室</div>
+            </aside>
+
+        </div></div><div class="channel-drawer" id="channel-drawer">
+        <div class="channel-drawer-backdrop" onclick="toggleChannelDrawer()"></div>
+        <div class="channel-drawer-sheet">
+            <div class="channel-drawer-handle"></div>
+            <div class="channel-drawer-title">Channels</div>
+            <div class="channel-drawer-list" id="channel-drawer-list"></div>
+        </div>
+    </div>
+
+    <div class="login-overlay" id="login-modal">
+        <div class="login-backdrop" onclick="toggleLogin()"></div>
+        <div class="login-card">
+            <div class="login-hdr">
+                <div class="login-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    Mod Access
+                </div>
+            </div>
+            <div class="login-body">
+                <div class="login-field">
+                    <label>Username</label>
+                    <input type="text" id="login-user" class="login-input" placeholder="Enter username" autocomplete="off"/>
+                </div>
+                <div class="login-field">
+                    <label>Password</label>
+                    <input type="password" id="login-pass" class="login-input" placeholder="Enter password"/>
+                </div>
+                <div class="login-error" id="login-error"></div>
+                <button class="login-submit" onclick="doLogin()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                    Sign In
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="mod-overlay" id="mod-panel">
+        <div class="mod-backdrop" onclick="toggleMod()"></div>
+        <div class="mod-card">
+            <div class="mod-hdr">
+                <div class="mod-title">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    Mod Panel
+                </div>
+                <div class="mod-hdr-right">
+                    <span class="mod-automod-badge">AutoMod ON</span>
+                    <button class="mod-close" onclick="toggleMod()">✕</button>
+                </div>
+            </div>
+
+            <div class="mod-tabs">
+                <button class="mod-tab active" data-tab="warned" onclick="switchModTab('warned')">Warned Users</button>
+                <button class="mod-tab" data-tab="actions" onclick="switchModTab('actions')">Action Log</button>
+            </div>
+
+            <div id="mod-stats-bar" class="mod-stats-bar"></div>
+
+            <div class="mod-body" id="mod-body">
+                <div class="mod-loading">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="stats-drawer">
+        <div class="modal-backdrop" onclick="toggleDrawer()"></div>
+        <div class="modal-card">
+            <div class="modal-hdr">
+                <div class="modal-hdr-left">
+                    <span class="modal-kanji">戦</span>
+                    <div>
+                        <div class="modal-title">Battle Metrics</div>
+                        <div class="modal-subtitle">戦力分析</div>
+                    </div>
+                </div>
+                <button class="modal-close" onclick="toggleDrawer()">✕</button>
+            </div>
+
+            <div class="modal-body">
+                <div class="metric-group">
+                    <div class="mg-head mg-head--atk">
+                        <span class="mg-badge">ATK</span>
+                        <span>Offensive Stats</span>
+                    </div>
+                    <div class="mg-fields">
+                        <div class="mg-field"><label>SHT</label><input type="number" id="sht" placeholder="0"></div>
+                        <div class="mg-field"><label>DBL</label><input type="number" id="dbl" placeholder="0"></div>
+                        <div class="mg-field"><label>STL</label><input type="number" id="stl" placeholder="0"></div>
+                        <div class="mg-field"><label>PSN</label><input type="number" id="psn" placeholder="0"></div>
+                        <div class="mg-field"><label>DFD</label><input type="number" id="dfd" placeholder="0"></div>
+                    </div>
+                </div>
+
+                <div class="metric-group">
+                    <div class="mg-head mg-head--gk">
+                        <span class="mg-badge mg-badge--gk">GK</span>
+                        <span>Goalkeeper Stats</span>
+                    </div>
+                    <div class="mg-fields">
+                        <div class="mg-field"><label>DVG</label><input type="number" id="dvg" placeholder="—"></div>
+                        <div class="mg-field"><label>BIQ</label><input type="number" id="biq" placeholder="—"></div>
+                        <div class="mg-field"><label>RFX</label><input type="number" id="rfx" placeholder="—"></div>
+                        <div class="mg-field"><label>DTG</label><input type="number" id="dtg" placeholder="—"></div>
+                    </div>
+                </div>
+            </div>
+
+            <button id="ui-stats-btn" class="modal-submit" onclick="generateStats()">
+                <span class="modal-submit-kanji">解析</span>
+                Generate Stats
+            </button>
+        </div>
+    </div>
+
+    <div id="stats-modal" class="stats-overlay">
+        <div class="stats-card">
+            <div class="stats-hdr">
+                <span class="stats-title">Stats Seal <span class="stats-title-jp">封印</span></span>
+                <button id="close-modal" class="stats-close" onclick="document.getElementById('stats-modal').classList.remove('active')">✕</button>
+            </div>
+            <canvas id="stats-canvas" width="500" height="500"></canvas>
+            <div class="stats-actions">
+                <button id="copy-stats-btn" class="stats-btn">Copy Image</button>
+                <button id="copy-rank-btn" class="stats-btn stats-btn--accent">Copy Rank</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="cmds-overlay" id="commands-panel">
+        <div class="cmds-backdrop" onclick="toggleCommands()"></div>
+        <div class="cmds-card">
+            <div class="cmds-hdr">
+                <div class="cmds-title">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                    Commands
+                </div>
+                <button class="cmds-close" onclick="toggleCommands()">✕</button>
+            </div>
+
+            <div class="cmds-body">
+                <div class="cmd-card" id="cmd-deadline">
+                    <div class="cmd-header">
+                        <div class="cmd-name-wrap">
+                            <code class="cmd-name">/deadline</code>
+                            <span class="cmd-badge">Ticket</span>
+                        </div>
+                        <p class="cmd-desc">Sends a 24h confirmation deadline to a user. If not confirmed, marks ticket as ready to close.</p>
+                    </div>
+
+                    <div class="cmd-form">
+                        <div class="cmd-field">
+                            <label class="cmd-field-label">User ID</label>
+                            <div class="cmd-user-input-wrap">
+                                <input
+                                    type="text"
+                                    id="deadline-user"
+                                    class="cmd-input cmd-user-input"
+                                    placeholder="Paste User ID here..."
+                                    autocomplete="off"
+                                />
+                            </div>
+                        </div>
+                        <button class="cmd-send-btn" id="deadline-send" onclick="window.triggerWebDeadline(document.getElementById('deadline-user').value)">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9 22 2Z"/></svg>
+                            Execute /deadline
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-overlay" id="settings-panel">
+        <div class="settings-backdrop" onclick="toggleSettings()"></div>
+        <div class="settings-card">
+            <div class="settings-hdr">
+                <div class="settings-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    Settings
+                </div>
+                <button class="settings-close" onclick="toggleSettings()">✕</button>
+            </div>
+
+            <div class="settings-body">
+                <div class="settings-section">
+                    <div class="settings-section-label">Graphics Quality</div>
+                    <div class="settings-section-sub">Controls animations, blur effects and orbs</div>
+                    <div class="quality-options" id="quality-options">
+                        <button class="quality-btn" data-q="low">
+                            <span class="quality-name">Low</span>
+                            <span class="quality-desc">Minimal FX</span>
+                        </button>
+                        <button class="quality-btn" data-q="medium">
+                            <span class="quality-name">Medium</span>
+                            <span class="quality-desc">Balanced</span>
+                        </button>
+                        <button class="quality-btn active" data-q="high">
+                            <span class="quality-name">High</span>
+                            <span class="quality-desc">Full FX</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="logs-overlay" id="logs-panel">
+        <div class="logs-backdrop" onclick="closeLogs()"></div>
+        <div class="logs-card">
+            <div class="logs-hdr">
+                <div class="logs-title">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/>
+                    </svg>
+                    Console Logs
+                    <span style="font-size:10px;color:var(--t2);font-weight:400;margin-left:6px;">AltGr+0</span>
+                </div>
+                <button class="logs-close" onclick="closeLogs()">✕</button>
+            </div>
+            
+            <div class="logs-auth" id="logs-auth" style="display:flex;flex-direction:column;gap:10px;padding:20px;">
+                <div style="color:var(--t1);font-size:13px;margin-bottom:4px;">🔐 Acceso restringido</div>
+                <input type="text" id="logs-user" placeholder="Username" autocomplete="off"
+                    style="background:var(--surface);border:1px solid var(--border-hi);color:var(--t0);padding:8px 12px;border-radius:6px;font-size:13px;"
+                    onkeypress="if(event.key==='Enter')authLogs()">
+                <input type="password" id="logs-pass" placeholder="Password"
+                    style="background:var(--surface);border:1px solid var(--border-hi);color:var(--t0);padding:8px 12px;border-radius:6px;font-size:13px;"
+                    onkeypress="if(event.key==='Enter')authLogs()">
+                <button onclick="authLogs()" style="background:var(--amber);color:#000;border:none;padding:8px 16px;border-radius:6px;font-weight:700;cursor:pointer;">Desbloquear</button>
+                <div class="logs-error" id="logs-error" style="color:#ff4a4a;font-size:12px;min-height:16px;"></div>
+            </div>
+            
+            <div class="logs-viewer" id="logs-viewer" style="display:none;flex-direction:column;height:100%;">
+                <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--border);flex-shrink:0;">
+                    <span style="color:var(--t2);font-size:11px;">Líneas:</span>
+                    <input type="number" id="logs-lines-input" value="200" min="50" max="2000" step="50"
+                        style="width:70px;background:var(--surface);border:1px solid var(--border);color:var(--t0);padding:3px 6px;border-radius:4px;font-size:12px;"
+                        onchange="fetchLogs&&fetchLogs()">
+                    <span style="color:var(--teal);font-size:11px;margin-left:auto;">● Auto-refresh 3s</span>
+                </div>
+                <div id="logs-scroll" style="flex:1;overflow-y:auto;padding:12px 14px;background:rgba(0,0,0,0.45);">
+                    <pre id="logs-content" style="font-family:'JetBrains Mono',monospace;font-size:11px;white-space:pre-wrap;word-wrap:break-word;line-height:1.5;">Conectando...</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- WARN HISTORY MODAL -->
+    <div id="warn-history-modal">
+        <div class="wh-backdrop" onclick="closeWarnHistory()"></div>
+        <div class="wh-card">
+            <div class="wh-header">
+                <div class="wh-title" id="wh-title">Historial de Advertencias</div>
+                <button class="wh-close" onclick="closeWarnHistory()">✕</button>
+            </div>
+            <div id="wh-content" style="flex:1;overflow-y:auto;padding:16px;"></div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
