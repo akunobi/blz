@@ -109,6 +109,86 @@
         return w;
     }
 
+    // ─── EMBED RENDERER (mobile) ──────────────────────────────────────────────
+    function renderEmbed(embed) {
+        if (!embed || typeof embed !== 'object') return '';
+        const colorHex = (typeof embed.color === 'number' && embed.color > 0)
+            ? '#' + embed.color.toString(16).padStart(6, '0')
+            : 'var(--amber, #F5A623)';
+
+        let html = '<div class="m-msg-embed" style="border-left-color:' + colorHex + '">';
+
+        if (embed.author && embed.author.name) {
+            html += '<div class="m-embed-author">';
+            if (embed.author.icon_url) {
+                html += '<img class="m-embed-author-icon" src="' + escapeHtml(embed.author.icon_url) + '" alt="">';
+            }
+            const nameInner = embed.author.url
+                ? '<a href="' + escapeHtml(embed.author.url) + '" target="_blank" rel="noopener">' + escapeHtml(embed.author.name) + '</a>'
+                : escapeHtml(embed.author.name);
+            html += '<span class="m-embed-author-name">' + nameInner + '</span>';
+            html += '</div>';
+        }
+
+        if (embed.title) {
+            const titleInner = embed.url
+                ? '<a href="' + escapeHtml(embed.url) + '" target="_blank" rel="noopener">' + escapeHtml(embed.title) + '</a>'
+                : escapeHtml(embed.title);
+            html += '<div class="m-embed-title">' + titleInner + '</div>';
+        }
+
+        if (embed.description) {
+            html += '<div class="m-embed-description">' + renderContent(embed.description) + '</div>';
+        }
+
+        if (Array.isArray(embed.fields) && embed.fields.length) {
+            html += '<div class="m-embed-fields">';
+            embed.fields.forEach(f => {
+                if (!f) return;
+                html += '<div class="m-embed-field">';
+                if (f.name)  html += '<div class="m-embed-field-name">' + escapeHtml(f.name) + '</div>';
+                if (f.value) html += '<div class="m-embed-field-value">' + renderContent(f.value) + '</div>';
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+
+        if (embed.image && embed.image.url) {
+            html += '<img class="m-embed-image" src="' + escapeHtml(embed.image.url) + '" alt="">';
+        } else if (embed.thumbnail && embed.thumbnail.url) {
+            html += '<img class="m-embed-thumbnail" src="' + escapeHtml(embed.thumbnail.url) + '" alt="">';
+        }
+
+        const hasFooter = embed.footer && embed.footer.text;
+        const hasTs = !!embed.timestamp;
+        if (hasFooter || hasTs) {
+            html += '<div class="m-embed-footer">';
+            if (hasFooter && embed.footer.icon_url) {
+                html += '<img class="m-embed-footer-icon" src="' + escapeHtml(embed.footer.icon_url) + '" alt="">';
+            }
+            if (hasFooter) {
+                html += '<span>' + escapeHtml(embed.footer.text) + '</span>';
+            }
+            if (hasTs) {
+                try {
+                    const d = new Date(embed.timestamp);
+                    if (!isNaN(d.getTime())) {
+                        html += (hasFooter ? ' • ' : '') + '<span>' + d.toLocaleString() + '</span>';
+                    }
+                } catch (e) {}
+            }
+            html += '</div>';
+        }
+
+        html += '</div>';
+        return html;
+    }
+
+    function renderEmbeds(embeds) {
+        if (!Array.isArray(embeds) || !embeds.length) return '';
+        return embeds.map(renderEmbed).join('');
+    }
+
     function appendMessage(msg, isFresh) {
         if (feed.querySelector('[data-msg-id="' + CSS.escape(String(msg.message_id)) + '"]')) return;
 
@@ -139,7 +219,8 @@
             '</div>';
 
         el.innerHTML = headerHtml +
-            '<div class="m-msg-content">' + renderContent(msg.content || '') + '</div>';
+            '<div class="m-msg-content">' + renderContent(msg.content || '') + '</div>' +
+            renderEmbeds(msg.embeds);
 
         feed.appendChild(el);
     }

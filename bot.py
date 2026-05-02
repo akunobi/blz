@@ -1,6 +1,7 @@
 # bot.py - BLZ-T Bot completo con AutoMod, Slash Commands, Panel de Logs y todas las APIs necesarias
 import discord
-from discord.ext import commands
+from discord import app_commands
+from discord.ext import commands, tasks
 import sqlite3
 import threading
 import os
@@ -53,6 +54,15 @@ REGION_ROLES = [
 SHEET_DATA_START_ROW = 15
 SHEET_TAB = "Tracker"
 _gs_token_cache = {"token": None, "exp": 0}
+
+# --- THPING (ping recurrente cada 24h por región) ---
+THPING_ROLES = {
+    "eu":   [1355062394547736673, 1408492850701664316],
+    "na":   [1355062394547736675, 1408493003424661625],
+    "asia": [1355062394547736674, 1408493161319501904],
+}
+THPING_INTERVAL_SECONDS = 24 * 60 * 60  # 24 horas
+THPING_ALLOWED_ROLES = [1355062394547736675, 1355062394547736673, 1483349943962964068]
 
 def col_letter(n):
     s = ""
@@ -197,7 +207,8 @@ def init_db():
                 author_id INTEGER,
                 message_id INTEGER UNIQUE,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                components TEXT DEFAULT NULL
+                components TEXT DEFAULT NULL,
+                embeds TEXT DEFAULT NULL
             )
         """)
         conn.execute("""
@@ -226,6 +237,15 @@ def init_db():
                 moderator_id TEXT,
                 moderator_name TEXT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS thping_schedules (
+                guild_id TEXT NOT NULL,
+                channel_id TEXT NOT NULL,
+                region TEXT NOT NULL,
+                last_ping_ts INTEGER NOT NULL,
+                PRIMARY KEY (guild_id, region)
             )
         """)
         conn.commit()
@@ -262,6 +282,10 @@ def ensure_author_id_column():
             conn.execute("ALTER TABLE messages ADD COLUMN components TEXT DEFAULT NULL")
             conn.commit()
             logger.info(">>> [DB MIGRATION] Added column 'components'")
+        if 'embeds' not in cols:
+            conn.execute("ALTER TABLE messages ADD COLUMN embeds TEXT DEFAULT NULL")
+            conn.commit()
+            logger.info(">>> [DB MIGRATION] Added column 'embeds'")
         conn.close()
     except Exception as e:
         logger.error(f"!!! [DB CHECK ERROR]: {e}")
@@ -479,14 +503,21 @@ async def save_message_to_db(message):
                 ])
             except Exception as e:
                 logger.error(f"!!! [COMPONENTS SERIALIZE]: {e}")
-        
+
+        embeds_json = None
+        if message.embeds:
+            try:
+                embeds_json = json_mod.dumps([e.to_dict() for e in message.embeds])
+            except Exception as e:
+                logger.error(f"!!! [EMBEDS SERIALIZE]: {e}")
+
         conn.execute("""
             INSERT OR IGNORE INTO messages 
-            (channel_id, channel_name, author_name, author_avatar, content, author_id, message_id, timestamp, components) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", 
+            (channel_id, channel_name, author_name, author_avatar, content, author_id, message_id, timestamp, components, embeds) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", 
             (message.channel.id, message.channel.name, message.author.name, 
             str(message.author.avatar.url) if message.author.avatar else "https://cdn.discordapp.com/embed/avatars/0.png",
-            message.content, getattr(message.author, 'id', None), message.id, message.created_at.isoformat(), comps)
+            message.content, getattr(message.author, 'id', None), message.id, message.created_at.isoformat(), comps, embeds_json)
         )
         conn.commit()
         conn.close()
@@ -525,6 +556,14 @@ async def on_ready():
         logger.info(f">>> [SLASH] Synced {len(synced)} commands")
     except Exception as e:
         logger.error(f"!!! [SLASH SYNC ERROR]: {e}")
+
+    # Arrancar loop recurrente de thping (sólo una vez)
+    try:
+        if not thping_recurring_loop.is_running():
+            thping_recurring_loop.start()
+            logger.info(">>> [THPING] Loop recurrente iniciado")
+    except Exception as e:
+        logger.error(f"!!! [THPING LOOP START]: {e}")
 
     # Register persistent views for the ticket system (buttons survive restarts)
     try:
@@ -607,19 +646,11 @@ class TicketFormModal(discord.ui.Modal, title="Open Ticket"):
         required=True, max_length=100
     )
     style = discord.ui.TextInput(
-<<<<<<< HEAD
-        label="Style", placeholder="e.g. Playmaker, Dribbler, Striker...",
-        required=True, max_length=100
-    )
-    flow = discord.ui.TextInput(
-        label="Flow", placeholder="e.g. Ego Flow, Team Flow...",
-=======
         label="Style", placeholder="Sae, NEL Bachira, Charles...",
         required=True, max_length=100
     )
     flow = discord.ui.TextInput(
         label="Flow", placeholder="Godspeed, Demon King...",
->>>>>>> 1cd630e38b627470fd9111ac92f1ffed3350bc24
         required=True, max_length=100
     )
     region = discord.ui.TextInput(
@@ -627,11 +658,7 @@ class TicketFormModal(discord.ui.Modal, title="Open Ticket"):
         required=True, max_length=50
     )
     position = discord.ui.TextInput(
-<<<<<<< HEAD
-        label="Position", placeholder="e.g. ST, CAM, GK...",
-=======
         label="Position", placeholder="CF / CM / LW / RG / GK",
->>>>>>> 1cd630e38b627470fd9111ac92f1ffed3350bc24
         required=True, max_length=50
     )
 
@@ -830,6 +857,117 @@ async def ensure_ticket_panel():
 
 
 # --- SLASH COMMANDS ---
+
+# --- THPING: ping recurrente cada 24h por región ---
+def _thping_set_schedule(guild_id, channel_id, region, last_ping_ts):
+    try:
+        conn = get_db_connection()
+        conn.execute(
+            "INSERT INTO thping_schedules (guild_id, channel_id, region, last_ping_ts) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(guild_id, region) DO UPDATE SET channel_id=excluded.channel_id, last_ping_ts=excluded.last_ping_ts",
+            (str(guild_id), str(channel_id), region, int(last_ping_ts))
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"!!! [THPING DB SET]: {e}")
+
+def _thping_get_due(now_ts):
+    try:
+        conn = get_db_connection()
+        rows = conn.execute(
+            "SELECT guild_id, channel_id, region, last_ping_ts FROM thping_schedules "
+            "WHERE (? - last_ping_ts) >= ?",
+            (int(now_ts), THPING_INTERVAL_SECONDS)
+        ).fetchall()
+        conn.close()
+        return rows
+    except Exception as e:
+        logger.error(f"!!! [THPING DB GET]: {e}")
+        return []
+
+async def _thping_send(channel, region):
+    role_ids = THPING_ROLES.get(region.lower())
+    if not role_ids:
+        return False
+    mentions = " ".join(f"<@&{rid}>" for rid in role_ids)
+    try:
+        await channel.send(
+            mentions,
+            allowed_mentions=discord.AllowedMentions(roles=True)
+        )
+        return True
+    except Exception as e:
+        logger.error(f"!!! [THPING SEND] canal={getattr(channel,'id',None)} region={region}: {e}")
+        return False
+
+
+@client.tree.command(name="thping", description="Programa un ping recurrente cada 24h para una región")
+@app_commands.describe(region="Región a pingear (EU, NA o ASIA)")
+@app_commands.choices(region=[
+    app_commands.Choice(name="EU",   value="eu"),
+    app_commands.Choice(name="NA",   value="na"),
+    app_commands.Choice(name="ASIA", value="asia"),
+])
+async def slash_thping(interaction: discord.Interaction, region: app_commands.Choice[str]):
+    if not any(role.id in THPING_ALLOWED_ROLES for role in interaction.user.roles):
+        await interaction.response.send_message("No tienes permiso para usar este comando", ephemeral=True)
+        return
+
+    region_value = region.value
+    if region_value not in THPING_ROLES:
+        await interaction.response.send_message("Región no válida", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    sent_ok = await _thping_send(interaction.channel, region_value)
+    now_ts = int(time_gs.time())
+    _thping_set_schedule(interaction.guild_id, interaction.channel_id, region_value, now_ts)
+
+    if sent_ok:
+        next_ts = now_ts + THPING_INTERVAL_SECONDS
+        await interaction.followup.send(
+            f"Ping de **{region.name}** enviado y programado en este canal. "
+            f"Próximo ping automático: <t:{next_ts}:R> (<t:{next_ts}:F>).",
+            ephemeral=True
+        )
+        logger.info(f">>> [THPING] {interaction.user} programó {region_value} en canal {interaction.channel_id}")
+    else:
+        await interaction.followup.send(
+            "No se pudo enviar el ping en este canal. Revisa los permisos del bot.",
+            ephemeral=True
+        )
+
+
+@tasks.loop(minutes=5)
+async def thping_recurring_loop():
+    try:
+        now_ts = int(time_gs.time())
+        due = _thping_get_due(now_ts)
+        for row in due:
+            guild_id   = row["guild_id"]
+            channel_id = row["channel_id"]
+            region     = row["region"]
+            channel = client.get_channel(int(channel_id))
+            if channel is None:
+                try:
+                    channel = await client.fetch_channel(int(channel_id))
+                except Exception as e:
+                    logger.error(f"!!! [THPING LOOP] No se pudo obtener canal {channel_id}: {e}")
+                    continue
+            sent_ok = await _thping_send(channel, region)
+            if sent_ok:
+                _thping_set_schedule(guild_id, channel_id, region, now_ts)
+                logger.info(f">>> [THPING LOOP] Ping recurrente {region} enviado en canal {channel_id}")
+    except Exception as e:
+        logger.error(f"!!! [THPING LOOP]: {e}")
+
+@thping_recurring_loop.before_loop
+async def _thping_before():
+    await client.wait_until_ready()
+
+
 @client.tree.command(name="deadline", description="Envia un deadline de 24h a un usuario (solo staff)")
 async def slash_deadline(interaction: discord.Interaction, user: discord.Member):
     allowed_roles = [1355062394547736675, 1355062394547736673, 1483349943962964068]
@@ -946,7 +1084,6 @@ async def on_message(message):
     await client.process_commands(message)
 
 # --- RUTAS FLASK API Y DASHBOARD ---
-<<<<<<< HEAD
 _MOBILE_UA_RE = re_mod.compile(
     r'(iPhone|iPod|iPad|Android.*Mobile|Mobile.*Android|Windows Phone|IEMobile|Opera Mini|BlackBerry|webOS|Silk)',
     re_mod.IGNORECASE
@@ -966,10 +1103,6 @@ def _is_mobile_request():
 def index():
     if _is_mobile_request():
         return render_template("mobile.html")
-=======
-@app.route("/")
-def index():
->>>>>>> 1cd630e38b627470fd9111ac92f1ffed3350bc24
     return render_template("index.html")
 
 @app.route("/api/channels")
@@ -1060,6 +1193,16 @@ def get_messages():
             d['channel_id'] = str(d['channel_id']) if d.get('channel_id') else None
             d['message_id'] = str(d['message_id']) if d.get('message_id') else None
             d['author_id'] = str(d['author_id']) if d.get('author_id') else None
+            # Parsear embeds y components de string JSON a objeto
+            for fld in ('embeds', 'components'):
+                raw = d.get(fld)
+                if raw:
+                    try:
+                        d[fld] = json_mod.loads(raw)
+                    except Exception:
+                        d[fld] = None
+                else:
+                    d[fld] = None
             results.append(d)
         return jsonify(results)
     except Exception as e:

@@ -319,6 +319,105 @@
         return w;
     }
 
+    // ─── EMBED RENDERER ───────────────────────────────────────────────────────
+    function renderEmbed(embed) {
+        if (!embed || typeof embed !== 'object') return '';
+        const colorHex = (typeof embed.color === 'number' && embed.color > 0)
+            ? '#' + embed.color.toString(16).padStart(6, '0')
+            : 'var(--amber)';
+
+        let html = '<div class="msg-embed" style="border-left-color:' + colorHex + '">';
+
+        // Author
+        if (embed.author && embed.author.name) {
+            html += '<div class="embed-author">';
+            if (embed.author.icon_url) {
+                html += '<img class="embed-author-icon" src="' + escapeHtml(embed.author.icon_url) + '" alt="">';
+            }
+            const nameInner = embed.author.url
+                ? '<a href="' + escapeHtml(embed.author.url) + '" target="_blank" rel="noopener">' + escapeHtml(embed.author.name) + '</a>'
+                : escapeHtml(embed.author.name);
+            html += '<span class="embed-author-name">' + nameInner + '</span>';
+            html += '</div>';
+        }
+
+        // Title
+        if (embed.title) {
+            const titleInner = embed.url
+                ? '<a href="' + escapeHtml(embed.url) + '" target="_blank" rel="noopener">' + escapeHtml(embed.title) + '</a>'
+                : escapeHtml(embed.title);
+            html += '<div class="embed-title">' + titleInner + '</div>';
+        }
+
+        // Body container with optional thumbnail on the right
+        html += '<div class="embed-body">';
+        html += '<div class="embed-body-main">';
+
+        // Description (markdown via renderDiscordContent)
+        if (embed.description) {
+            html += '<div class="embed-description">' + renderDiscordContent(embed.description) + '</div>';
+        }
+
+        // Fields
+        if (Array.isArray(embed.fields) && embed.fields.length) {
+            html += '<div class="embed-fields">';
+            embed.fields.forEach(f => {
+                if (!f) return;
+                const inlineCls = f.inline ? ' embed-field-inline' : '';
+                html += '<div class="embed-field' + inlineCls + '">';
+                if (f.name)  html += '<div class="embed-field-name">' + escapeHtml(f.name) + '</div>';
+                if (f.value) html += '<div class="embed-field-value">' + renderDiscordContent(f.value) + '</div>';
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+
+        html += '</div>'; // .embed-body-main
+
+        // Thumbnail
+        if (embed.thumbnail && embed.thumbnail.url) {
+            html += '<img class="embed-thumbnail" src="' + escapeHtml(embed.thumbnail.url) + '" alt="">';
+        }
+
+        html += '</div>'; // .embed-body
+
+        // Image
+        if (embed.image && embed.image.url) {
+            html += '<img class="embed-image" src="' + escapeHtml(embed.image.url) + '" alt="">';
+        }
+
+        // Footer + timestamp
+        const hasFooter = embed.footer && embed.footer.text;
+        const hasTs = !!embed.timestamp;
+        if (hasFooter || hasTs) {
+            html += '<div class="embed-footer">';
+            if (hasFooter && embed.footer.icon_url) {
+                html += '<img class="embed-footer-icon" src="' + escapeHtml(embed.footer.icon_url) + '" alt="">';
+            }
+            if (hasFooter) {
+                html += '<span class="embed-footer-text">' + escapeHtml(embed.footer.text) + '</span>';
+            }
+            if (hasFooter && hasTs) html += '<span class="embed-footer-sep">•</span>';
+            if (hasTs) {
+                try {
+                    const d = new Date(embed.timestamp);
+                    if (!isNaN(d.getTime())) {
+                        html += '<span class="embed-footer-ts" title="' + d.toISOString() + '">' + d.toLocaleString() + '</span>';
+                    }
+                } catch (e) {}
+            }
+            html += '</div>';
+        }
+
+        html += '</div>'; // .msg-embed
+        return html;
+    }
+
+    function renderEmbeds(embeds) {
+        if (!Array.isArray(embeds) || !embeds.length) return '';
+        return embeds.map(renderEmbed).join('');
+    }
+
     // ─── APPEND MESSAGE ───────────────────────────────────────────────────────
     function appendMessage(msg, isNew) {
         if (chatFeed.querySelector('[data-msg-id="' + msg.message_id + '"]')) return;
@@ -338,7 +437,8 @@
                 '<div class="msg-time">' + formatTimestamp(msg.timestamp) + '</div>' +
                 '<div class="msg-author">' + escapeHtml(msg.author_name || 'Unknown') + '</div>' +
             '</div>' +
-            '<div class="msg-content">' + renderDiscordContent(msg.content || '') + '</div>';
+            '<div class="msg-content">' + renderDiscordContent(msg.content || '') + '</div>' +
+            renderEmbeds(msg.embeds);
 
         decorateMessage(el);
         chatFeed.appendChild(el);
