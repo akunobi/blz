@@ -449,7 +449,6 @@
         }
         const el = document.getElementById(id);
         if (el) el.classList.add('m-sheet-open');
-        if (id === 'm-mod-sheet') loadModPanel('warned');
     }
     function closeSheet(id) {
         const el = document.getElementById(id);
@@ -460,136 +459,6 @@
         document.querySelectorAll('.m-drawer.m-drawer-open').forEach(el => el.classList.remove('m-drawer-open'));
     }
 
-    // ─── LOGIN / MOD STATE ───────────────────────────────────────────
-    function applyLoginState(loggedIn) {
-        const modItem = document.getElementById('m-menu-mod');
-        const loginLabel = document.getElementById('m-menu-login-label');
-        if (modItem) modItem.style.display = loggedIn ? '' : 'none';
-        if (loginLabel) loginLabel.textContent = loggedIn ? 'Logout' : 'Login';
-    }
-
-    function doLogin() {
-        const user = document.getElementById('login-user').value.trim();
-        const pass = document.getElementById('login-pass').value;
-        if (user === 'admin' && pass === 'blzt2024') {
-            localStorage.setItem('blzt_mod', '1');
-            applyLoginState(true);
-            document.getElementById('login-error').textContent = '';
-            document.getElementById('login-user').value = '';
-            document.getElementById('login-pass').value = '';
-            closeSheet('m-login-sheet');
-            showToast('Logged in', 'success');
-        } else {
-            document.getElementById('login-error').textContent = 'Incorrect credentials';
-        }
-    }
-
-    // ─── MOD PANEL ───────────────────────────────────────────────────
-    async function loadModPanel(tab) {
-        document.querySelectorAll('.m-tab').forEach(t => {
-            t.classList.toggle('m-tab-active', t.dataset.tab === tab);
-        });
-        const body = document.getElementById('m-mod-body');
-        if (!body) return;
-        body.innerHTML = '<div class="m-mod-loading">Loading…</div>';
-
-        try {
-            // Load stats bar
-            try {
-                const stats = await (await fetch('/api/stats')).json();
-                const bar = document.getElementById('m-mod-stats-bar');
-                if (bar) bar.innerHTML =
-                    '<span class="m-stat-pill">💬 ' + stats.total_messages + ' msgs</span>' +
-                    '<span class="m-stat-pill">⚠ ' + stats.total_warnings + ' warns</span>' +
-                    '<span class="m-stat-pill">👤 ' + stats.unique_warned_users + ' users</span>' +
-                    '<span class="m-stat-pill">🔨 ' + stats.total_mod_actions + ' actions</span>';
-            } catch (_) {}
-
-            if (tab === 'warned') {
-                const data = await (await fetch('/api/mod/users')).json();
-                if (data.error) throw new Error(data.error);
-                if (!data.length) {
-                    body.innerHTML = '<div class="m-mod-empty">No sanctioned users ✅</div>';
-                    return;
-                }
-                body.innerHTML = data.map(u => {
-                    const initial = escapeHtml((u.user_name || '?')[0].toUpperCase());
-                    const lastAct = u.last_action ? u.last_action.action.toUpperCase() : null;
-                    return (
-                        '<div class="m-mod-user">' +
-                            '<div class="m-mod-user-top">' +
-                                '<div class="m-mod-user-avatar">' + initial + '</div>' +
-                                '<div class="m-mod-user-info">' +
-                                    '<div class="m-mod-user-name">' + escapeHtml(u.user_name || 'Unknown') + '</div>' +
-                                    '<div class="m-mod-user-meta">ID: ' + escapeHtml(u.user_id) + '</div>' +
-                                '</div>' +
-                            '</div>' +
-                            '<div class="m-mod-user-badges">' +
-                                '<span class="m-badge-warn">⚠ ' + u.warn_count + ' warn' + (u.warn_count !== 1 ? 's' : '') + '</span>' +
-                                (lastAct ? '<span class="m-badge-action">' + escapeHtml(lastAct) + '</span>' : '') +
-                            '</div>' +
-                            '<div class="m-mod-user-actions">' +
-                                '<button class="m-mod-action" data-action="warn"    data-uid="' + escapeHtml(u.user_id) + '" data-uname="' + escapeHtml(u.user_name || '') + '" data-gid="' + escapeHtml(u.guild_id || '') + '">Warn</button>' +
-                                '<button class="m-mod-action" data-action="timeout" data-uid="' + escapeHtml(u.user_id) + '" data-uname="' + escapeHtml(u.user_name || '') + '" data-gid="' + escapeHtml(u.guild_id || '') + '">Timeout</button>' +
-                                '<button class="m-mod-action" data-action="kick"    data-uid="' + escapeHtml(u.user_id) + '" data-uname="' + escapeHtml(u.user_name || '') + '" data-gid="' + escapeHtml(u.guild_id || '') + '">Kick</button>' +
-                                '<button class="m-mod-action" data-action="ban"     data-uid="' + escapeHtml(u.user_id) + '" data-uname="' + escapeHtml(u.user_name || '') + '" data-gid="' + escapeHtml(u.guild_id || '') + '">Ban</button>' +
-                                '<button class="m-mod-action" data-action="clear"   data-uid="' + escapeHtml(u.user_id) + '" data-uname="' + escapeHtml(u.user_name || '') + '" data-gid="' + escapeHtml(u.guild_id || '') + '" style="grid-column: span 2;">Clear warns</button>' +
-                            '</div>' +
-                        '</div>'
-                    );
-                }).join('');
-
-                body.querySelectorAll('.m-mod-action').forEach(btn => {
-                    btn.addEventListener('click', () => {
-                        modAction(btn.dataset.action, btn.dataset.uid, btn.dataset.uname, btn.dataset.gid);
-                    });
-                });
-            } else {
-                const data = await (await fetch('/api/mod/action_log')).json();
-                if (data.error) throw new Error(data.error);
-                if (!data.length) {
-                    body.innerHTML = '<div class="m-mod-empty">No actions recorded</div>';
-                    return;
-                }
-                body.innerHTML = data.map(a =>
-                    '<div class="m-log-entry">' +
-                        '<div class="m-log-row">' +
-                            '<span class="m-log-user">' + escapeHtml(a.user_name || a.user_id) + '</span>' +
-                            '<span class="m-log-action ' + escapeHtml(a.action) + '">' + escapeHtml(a.action) + '</span>' +
-                            '<span class="m-log-time">' + escapeHtml((a.timestamp || '').slice(0, 16)) + '</span>' +
-                        '</div>' +
-                        '<div class="m-log-reason">' + escapeHtml(a.reason || '—') + '</div>' +
-                        '<div class="m-log-mod">by ' + escapeHtml(a.moderator_name || '—') + '</div>' +
-                    '</div>'
-                ).join('');
-            }
-        } catch (e) {
-            body.innerHTML = '<div class="m-mod-empty">Error: ' + escapeHtml(e.message) + '</div>';
-        }
-    }
-
-    async function modAction(action, uid, uname, gid) {
-        const labels = { warn: 'warn', timeout: 'timeout (24h)', kick: 'kick', ban: 'ban', clear: 'clear warns for' };
-        let reason = 'Manual action from mobile panel';
-        if (action !== 'clear') {
-            const input = prompt('Reason for ' + (labels[action] || action) + ' on ' + uname + ':', reason);
-            if (input === null) return;
-            reason = input.trim() || reason;
-        }
-        if (!confirm((labels[action] || action) + ' ' + uname + '?')) return;
-
-        try {
-            const data = await (await fetch('/api/mod/action', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action, user_id: uid, user_name: uname, guild_id: gid, reason })
-            })).json();
-            if (data.error) throw new Error(data.error);
-            showToast(action.toUpperCase() + ' applied', 'success');
-            setTimeout(() => loadModPanel('warned'), 500);
-        } catch (e) {
-            showToast('Error: ' + e.message, 'error');
-        }
-    }
 
     // ─── STATS GENERATION (same algorithm as desktop) ───────────────
     function generateStats() {
@@ -755,27 +624,8 @@
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
         });
 
-        document.querySelectorAll('.m-tab').forEach(t => {
-            t.addEventListener('click', () => loadModPanel(t.dataset.tab));
-        });
-
         document.getElementById('m-copy-stats-btn')?.addEventListener('click', copyStats);
         document.getElementById('m-copy-rank-btn')?.addEventListener('click', copyRank);
-
-        // Login button toggles login <-> logout based on state
-        const loginMenu = document.getElementById('m-menu-login');
-        loginMenu.onclick = () => {
-            if (localStorage.getItem('blzt_mod') === '1') {
-                localStorage.removeItem('blzt_mod');
-                applyLoginState(false);
-                showToast('Logged out', 'info');
-                closeSheet('m-menu-sheet');
-            } else {
-                openSheet('m-login-sheet');
-            }
-        };
-
-        applyLoginState(localStorage.getItem('blzt_mod') === '1');
 
         await fetchBotInfo();
         await fetchChannels();
@@ -810,7 +660,6 @@
             if (el) el.value = '';
             closeSheet('m-commands-sheet');
         },
-        doLogin,
         generateStats
     };
 

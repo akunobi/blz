@@ -66,7 +66,6 @@
             a.click();
             showToast('📥 Stats image downloaded!', 'info');
         }
-        applyLoginState(localStorage.getItem('blzt_mod') === '1');
     }
 
     // ─── CURSOR ───────────────────────────────────────────────────────────────
@@ -138,10 +137,8 @@
     }
 
     function closeAllModals() {
-        ['stats-drawer','stats-modal','commands-panel','settings-panel','mod-panel','login-modal','logs-panel']
+        ['stats-drawer','stats-modal','commands-panel','settings-panel','logs-panel']
             .forEach(id => document.getElementById(id)?.classList.remove('active'));
-        const wh = document.getElementById('warn-history-modal');
-        if (wh) wh.classList.remove('wh-visible', 'wh-open');
     }
 
     // ─── CHANNELS ─────────────────────────────────────────────────────────────
@@ -853,165 +850,12 @@
         return t.split('\n').map(line => {
             if (line.includes('[ERROR]') || line.includes('!!!'))       return '<span style="color:#ff6b6b">' + line + '</span>';
             if (line.includes('[WARNING]') || line.includes('[WARN]'))  return '<span style="color:#f5a623">' + line + '</span>';
-            if (line.includes('[AUTOMOD]') || line.includes('SPAM'))    return '<span style="color:#a78bfa">' + line + '</span>';
             if (line.includes('[SLASH]') || line.includes('>>>'))       return '<span style="color:#26c9b8">' + line + '</span>';
             if (line.includes('[HISTORY]') || line.includes('[SHEETS]')) return '<span style="color:#f5a623aa">' + line + '</span>';
             return '<span style="color:#5a5575">' + line + '</span>';
         }).join('\n');
     }
 
-    // ─── LOGIN ────────────────────────────────────────────────────────────────
-    window.toggleLogin = function () {
-        // If already logged in, this button acts as a logout
-        if (localStorage.getItem('blzt_mod') === '1') {
-            localStorage.removeItem('blzt_mod');
-            applyLoginState(false);
-            showToast('👋 Logged out', 'info');
-            return;
-        }
-        document.getElementById('login-modal')?.classList.toggle('active');
-    };
-    window.doLogin = function () {
-        const user = document.getElementById('login-user')?.value.trim();
-        const pass = document.getElementById('login-pass')?.value;
-        if (user === 'admin' && pass === 'blzt2024') {
-            localStorage.setItem('blzt_mod', '1');
-            applyLoginState(true);
-            document.getElementById('login-modal')?.classList.remove('active');
-            showToast('✅ Logged in', 'success');
-        } else { document.getElementById('login-error').textContent = '❌ Incorrect credentials'; }
-    };
-    function applyLoginState(loggedIn) {
-        const btn = document.getElementById('login-btn'), lbl = document.getElementById('login-btn-label'), modB = document.getElementById('mod-btn');
-        if (btn)  btn.classList.toggle('logged-in', loggedIn);
-        if (lbl)  lbl.textContent = loggedIn ? 'Logout' : 'Login';
-        if (modB) modB.style.display = loggedIn ? 'flex' : 'none';
-        if (!loggedIn) document.getElementById('mod-panel')?.classList.remove('active');
-    }
-
-    // ─── MOD PANEL ────────────────────────────────────────────────────────────
-    window.toggleMod = function () {
-        const panel = document.getElementById('mod-panel'); if (!panel) return;
-        const opening = !panel.classList.contains('active');
-        panel.classList.toggle('active');
-        if (opening) { loadModPanel('warned'); loadModStats(); }
-    };
-    window.switchModTab = function (tab) {
-        document.querySelectorAll('.mod-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-        loadModPanel(tab);
-    };
-    async function loadModStats() {
-        try {
-            const s = await (await fetch('/api/stats')).json();
-            const el = document.getElementById('mod-stats-bar');
-            if (el) el.innerHTML =
-                '<span class="mod-stat">💬 ' + s.total_messages + ' msgs</span>' +
-                '<span class="mod-stat">⚠ ' + s.total_warnings + ' warns</span>' +
-                '<span class="mod-stat">👤 ' + s.unique_warned_users + ' sanctioned</span>' +
-                '<span class="mod-stat">🔨 ' + s.total_mod_actions + ' actions</span>';
-        } catch (e) {}
-    }
-    async function loadModPanel(tab) {
-        const body = document.getElementById('mod-body'); if (!body) return;
-        body.innerHTML = '<div class="mod-loading">Loading...</div>';
-        try {
-            if (tab === 'warned') { const data = await (await fetch('/api/mod/users')).json(); if (data.error) throw new Error(data.error); renderWarnedUsers(data, body); }
-            else { const data = await (await fetch('/api/mod/action_log')).json(); if (data.error) throw new Error(data.error); renderActionLog(data, body); }
-        } catch (e) { body.innerHTML = '<div class="mod-empty">❌ Error: ' + escapeHtml(e.message) + '</div>'; }
-    }
-    function renderWarnedUsers(users, container) {
-        if (!users.length) { container.innerHTML = '<div class="mod-empty">✅ No sanctioned users</div>'; return; }
-        container.innerHTML = '';
-        users.forEach(u => {
-            const card = document.createElement('div'); card.className = 'mod-user-card';
-            const initial = (u.user_name || '?')[0].toUpperCase();
-            const lastAct = u.last_action ? u.last_action.action.toUpperCase() : null;
-            const recentHtml = (u.recent_warnings || []).slice(0, 2).map(w => {
-                const reason = escapeHtml(w.reason || '—');
-                const mc = w.message_content ? '<div class="warn-msg-preview"><span class="warn-msg-label">💬</span><span class="warn-msg-text">' + escapeHtml(w.message_content).substring(0, 100) + (w.message_content.length > 100 ? '…' : '') + '</span></div>' : '';
-                const lnk = w.message_link ? '<a class="warn-msg-link" href="' + escapeHtml(w.message_link) + '" target="_blank">🔗</a>' : '';
-                return '<div class="warn-entry"><span class="warn-entry-reason">' + reason + '</span>' + lnk + mc + '</div>';
-            }).join('');
-            card.innerHTML =
-                '<div class="mod-user-avatar">' + initial + '</div>' +
-                '<div class="mod-user-info">' +
-                    '<div class="mod-user-name">' + escapeHtml(u.user_name || 'Unknown') + '</div>' +
-                    '<div class="mod-user-meta">ID: ' + escapeHtml(u.user_id) + '</div>' +
-                    '<div class="warn-badges"><span class="warn-badge warn-badge-count">⚠ ' + u.warn_count + ' warn' + (u.warn_count !== 1 ? 's' : '') + '</span>' + (lastAct ? '<span class="warn-badge warn-badge-action">' + lastAct + '</span>' : '') + '</div>' +
-                    recentHtml +
-                    '<button class="warn-history-btn js-warn-hist">📋 Full history (' + u.warn_count + ')</button>' +
-                '</div>' +
-                '<div class="mod-user-actions">' +
-                    '<button class="mod-action-btn warn"    data-action="warn">Warn</button>' +
-                    '<button class="mod-action-btn timeout" data-action="timeout">Timeout</button>' +
-                    '<button class="mod-action-btn kick"    data-action="kick">Kick</button>' +
-                    '<button class="mod-action-btn ban"     data-action="ban">Ban</button>' +
-                    '<button class="mod-action-btn clear"   data-action="clear">Clear</button>' +
-                '</div>';
-            card.querySelector('.js-warn-hist').addEventListener('click', () => showWarnHistory(u.user_id, u.user_name || 'Unknown'));
-            card.querySelectorAll('.mod-action-btn[data-action]').forEach(btn => {
-                btn.addEventListener('click', () => modAction(btn.dataset.action, u.user_id, u.user_name || '', u.guild_id || '', btn));
-            });
-            container.appendChild(card);
-        });
-    }
-    function renderActionLog(actions, container) {
-        if (!actions.length) { container.innerHTML = '<div class="mod-empty">No actions recorded</div>'; return; }
-        const table = document.createElement('table'); table.className = 'mod-log-table';
-        table.innerHTML = '<thead><tr><th>User</th><th>Action</th><th>Reason</th><th>Moderator</th><th>Date</th></tr></thead><tbody>' +
-            actions.map(a => '<tr><td>' + escapeHtml(a.user_name || a.user_id) + '</td><td><span class="log-action-badge ' + escapeHtml(a.action) + '">' + escapeHtml(a.action) + '</span></td><td title="' + escapeHtml(a.reason||'') + '">' + escapeHtml((a.reason||'—').substring(0,60)) + ((a.reason||'').length>60?'…':'') + '</td><td>' + escapeHtml(a.moderator_name||'—') + '</td><td>' + (a.timestamp?a.timestamp.slice(0,16):'—') + '</td></tr>').join('') +
-            '</tbody>';
-        container.innerHTML = ''; container.appendChild(table);
-    }
-
-    // ─── WARN HISTORY MODAL ───────────────────────────────────────────────────
-    window.showWarnHistory = async function (userId, userName) {
-        const modal = document.getElementById('warn-history-modal'); if (!modal) return;
-        modal.classList.add('wh-open');
-        requestAnimationFrame(() => modal.classList.add('wh-visible'));
-        const title = document.getElementById('wh-title'), content = document.getElementById('wh-content');
-        if (title) title.textContent = '📋 History: ' + userName;
-        if (content) content.innerHTML = '<div class="mod-loading">Loading...</div>';
-        try {
-            const data = await (await fetch('/api/mod/warn_history/' + encodeURIComponent(userId))).json();
-            if (data.error) throw new Error(data.error);
-            if (!data.length) { content.innerHTML = '<div class="mod-empty">No warnings on record</div>'; return; }
-            content.innerHTML = data.map((w, i) => {
-                const msgBlock = w.message_content
-                    ? '<div class="wh-msg-content"><span class="wh-msg-label">💬 Message that triggered the action:</span><pre class="wh-msg-pre">' + escapeHtml(w.message_content) + '</pre></div>'
-                    : '<div class="wh-msg-content"><em style="color:var(--t2)">No message saved</em></div>';
-                const link = w.message_link ? '<a class="warn-msg-link" href="' + escapeHtml(w.message_link) + '" target="_blank" rel="noopener">🔗 View in Discord</a>' : '';
-                return '<div class="wh-entry"><div class="wh-entry-header"><span class="wh-num">#' + (data.length - i) + '</span><span class="wh-reason">' + escapeHtml(w.reason||'—') + '</span><span class="wh-mod">by ' + escapeHtml(w.moderator_name||'AutoMod') + '</span><span class="wh-ts">' + (w.timestamp?w.timestamp.slice(0,16):'—') + '</span></div>' + msgBlock + link + '</div>';
-            }).join('');
-        } catch (e) { if (content) content.innerHTML = '<div class="mod-empty">❌ Error: ' + escapeHtml(e.message) + '</div>'; }
-    };
-    window.closeWarnHistory = function () {
-        const modal = document.getElementById('warn-history-modal'); if (!modal) return;
-        modal.classList.remove('wh-visible');
-        setTimeout(() => modal.classList.remove('wh-open'), 280);
-    };
-
-    // ─── MOD ACTIONS ──────────────────────────────────────────────────────────
-    window.modAction = async function (action, uid, uname, gid, btn) {
-        const labels = { warn:'warn', timeout:'timeout (24h)', kick:'kick', ban:'ban', clear:'clear warns for' };
-        let reason = 'Manual action from web panel';
-        if (action === 'clear') {
-            if (!confirm('Clear all warns for ' + uname + '?')) return;
-        } else {
-            const input = prompt('Reason for ' + (labels[action]||action) + ' on ' + uname + ':', reason);
-            if (input === null) return;
-            reason = input.trim() || reason;
-            if (!confirm((labels[action]||action) + ' ' + uname + '?\nReason: ' + reason)) return;
-        }
-        if (btn) { btn.disabled = true; btn.textContent = '…'; }
-        try {
-            const data = await (await fetch('/api/mod/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, user_id: uid, user_name: uname, guild_id: gid, reason }) })).json();
-            if (data.error) throw new Error(data.error);
-            showToast('✅ ' + action.toUpperCase() + ' applied to ' + uname, 'success');
-            setTimeout(() => { loadModPanel('warned'); loadModStats(); }, 600);
-        } catch (e) { showToast('❌ Error: ' + e.message, 'error'); }
-        finally { if (btn) { btn.disabled = false; btn.textContent = { warn:'Warn', timeout:'Timeout', kick:'Kick', ban:'Ban', clear:'Clear' }[action] || action; } }
-    };
 
     // ─── TOAST ────────────────────────────────────────────────────────────────
     function showToast(message, type) {

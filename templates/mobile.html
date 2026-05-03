@@ -94,16 +94,6 @@
                     <span class="m-menu-label">Commands</span>
                     <span class="m-menu-arrow">›</span>
                 </button>
-                <button class="m-menu-item" id="m-menu-mod" style="display:none" onclick="mobileApp.openSheet('m-mod-sheet')">
-                    <span class="m-menu-icon">🛡</span>
-                    <span class="m-menu-label">Mod Panel</span>
-                    <span class="m-menu-arrow">›</span>
-                </button>
-                <button class="m-menu-item" onclick="mobileApp.openSheet('m-login-sheet')" id="m-menu-login">
-                    <span class="m-menu-icon">👤</span>
-                    <span class="m-menu-label" id="m-menu-login-label">Login</span>
-                    <span class="m-menu-arrow">›</span>
-                </button>
                 <button class="m-menu-item" onclick="mobileApp.openSheet('m-settings-sheet')">
                     <span class="m-menu-icon">⚙</span>
                     <span class="m-menu-label">Settings</span>
@@ -201,50 +191,6 @@
                     <button class="m-btn m-btn-ghost" id="m-copy-stats-btn">Copy Image</button>
                     <button class="m-btn m-btn-primary" id="m-copy-rank-btn">Copy Rank</button>
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ───── BOTTOM SHEET: LOGIN ───── -->
-    <div class="m-sheet" id="m-login-sheet">
-        <div class="m-sheet-backdrop" onclick="mobileApp.closeSheet('m-login-sheet')"></div>
-        <div class="m-sheet-panel">
-            <div class="m-sheet-handle"></div>
-            <div class="m-sheet-hdr">
-                <span class="m-sheet-title">Mod Access</span>
-                <button class="m-sheet-close" onclick="mobileApp.closeSheet('m-login-sheet')">✕</button>
-            </div>
-            <div class="m-sheet-body">
-                <div class="m-field">
-                    <label>Username</label>
-                    <input type="text" id="login-user" class="m-input" autocomplete="username">
-                </div>
-                <div class="m-field">
-                    <label>Password</label>
-                    <input type="password" id="login-pass" class="m-input" autocomplete="current-password">
-                </div>
-                <div class="m-login-error" id="login-error"></div>
-                <button class="m-btn m-btn-primary m-btn-large" onclick="mobileApp.doLogin()">Sign In</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- ───── BOTTOM SHEET: MOD PANEL ───── -->
-    <div class="m-sheet" id="m-mod-sheet">
-        <div class="m-sheet-backdrop" onclick="mobileApp.closeSheet('m-mod-sheet')"></div>
-        <div class="m-sheet-panel m-sheet-panel-full">
-            <div class="m-sheet-handle"></div>
-            <div class="m-sheet-hdr">
-                <span class="m-sheet-title">Mod Panel</span>
-                <button class="m-sheet-close" onclick="mobileApp.closeSheet('m-mod-sheet')">✕</button>
-            </div>
-            <div class="m-tabs">
-                <button class="m-tab m-tab-active" data-tab="warned">Warned</button>
-                <button class="m-tab" data-tab="actions">Action Log</button>
-            </div>
-            <div class="m-stats-bar" id="m-mod-stats-bar"></div>
-            <div class="m-sheet-body m-mod-body" id="m-mod-body">
-                <div class="m-mod-loading">Loading…</div>
             </div>
         </div>
     </div>

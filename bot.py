@@ -1,4 +1,4 @@
-# bot.py - BLZ-T Bot completo con AutoMod, Slash Commands, Panel de Logs y todas las APIs necesarias
+# bot.py - BLZ-T Bot completo con Slash Commands, Panel de Logs y todas las APIs necesarias
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
@@ -16,9 +16,6 @@ from dotenv import load_dotenv
 import logging
 from logging.handlers import RotatingFileHandler
 import re as re_mod
-import unicodedata as ud
-import collections
-import hashlib
 import datetime
 
 load_dotenv()
@@ -40,12 +37,10 @@ app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-OPENAI_MODERATION_KEY = os.getenv("OPENAI_API_KEY", "")
 
 # --- GOOGLE SHEETS EP TRACKER ---
 SHEET_ID = os.getenv("GOOGLE_SHEET_ID", "19YQVEMF2NoDDLAdvqok8Nko3Hw1405G@AmneOcMdUdE")
 SHEETS_CREDS_JSON = os.getenv("GOOGLE_SHEETS_CREDENTIALS", "")
-WARN_DM_ADMIN_IDS = [1898579360720764999, 10754634698659062161]
 REGION_ROLES = [
     (1355062394547736673, "EU", 3, 4, 5),
     (1355062394547736675, "NA", 7, 8, 9),
@@ -212,34 +207,6 @@ def init_db():
             )
         """)
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS warnings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                user_name TEXT,
-                guild_id TEXT,
-                reason TEXT,
-                message_content TEXT DEFAULT NULL,
-                message_link TEXT DEFAULT NULL,
-                moderator_id TEXT,
-                moderator_name TEXT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS mod_actions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                user_name TEXT,
-                guild_id TEXT,
-                action TEXT NOT NULL,
-                reason TEXT,
-                duration_seconds INTEGER,
-                moderator_id TEXT,
-                moderator_name TEXT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.execute("""
             CREATE TABLE IF NOT EXISTS thping_schedules (
                 guild_id TEXT NOT NULL,
                 channel_id TEXT NOT NULL,
@@ -252,22 +219,6 @@ def init_db():
         conn.close()
     except Exception as e:
         logger.error(f"[DB ERROR]: {e}")
-
-def ensure_warnings_columns():
-    conn = get_db_connection()
-    try:
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(warnings)").fetchall()]
-        if 'message_content' not in cols:
-            conn.execute("ALTER TABLE warnings ADD COLUMN message_content TEXT DEFAULT NULL")
-            logger.info(">>> [DB MIGRATION] warnings.message_content added")
-        if 'message_link' not in cols:
-            conn.execute("ALTER TABLE warnings ADD COLUMN message_link TEXT DEFAULT NULL")
-            logger.info(">>> [DB MIGRATION] warnings.message_link added")
-        conn.commit()
-    except Exception as e:
-        logger.error(f"!!! [DB MIGRATION warnings]: {e}")
-    finally:
-        conn.close()
 
 def ensure_author_id_column():
     try:
@@ -291,195 +242,7 @@ def ensure_author_id_column():
         logger.error(f"!!! [DB CHECK ERROR]: {e}")
 
 init_db()
-ensure_warnings_columns()
 ensure_author_id_column()
-
-# --- AUTO MODERACION (Funciones Logicas) ---
-_LEET_DIGITS = str.maketrans({'0':'o','1':'i','3':'e','4':'a','5':'s','6':'g','7':'t','8':'b'})
-
-def _norm_text(text: str) -> str:
-    t = ud.normalize('NFKD', text)
-    t = "".join(c for c in t if not ud.combining(c))
-    t = t.lower().translate(_LEET_DIGITS)
-    t = re_mod.sub(r'[^a-z0-9 ]+', ' ', t)
-    return re_mod.sub(r'\s+', ' ', t).strip()
-
-def _norm_sym(text: str) -> str:
-    t = ud.normalize('NFKD', text)
-    t = "".join(c for c in t if not ud.combining(c))
-    t = t.lower()
-    t = t.replace('@','a').replace('$','s').replace('!','i').replace('+','t')
-    t = t.translate(_LEET_DIGITS)
-    return re_mod.sub(r'[^a-z0-9 ]+', ' ', t).strip()
-
-def _norm_c32(text: str) -> str:
-    return re_mod.sub(r'(.)\1{2,}', r'\1\1', _norm_text(text))
-
-def levenshtein(a: str, b: str) -> int:
-    if len(a) > len(b):
-        a, b = b, a
-    row = list(range(len(a) + 1))
-    for cb in b:
-        nr = [row[0] + 1]
-        for i, ca in enumerate(a):
-            nr.append(min(row[i] + (ca != cb), nr[-1] + 1, row[i+1] + 1))
-        row = nr
-    return row[-1]
-
-def _join_single_chars(tokens):
-    chunks, buf = [], []
-    for t in tokens:
-        if len(t) == 1:
-            buf.append(t)
-        else:
-            if len(buf) >= 3:
-                chunks.append("".join(buf))
-            buf = []
-    if len(buf) >= 3:
-        chunks.append("".join(buf))
-    return chunks
-
-TOKEN_WHITELIST = frozenset((
-    'retardant', 'retardation', 'cockpit', 'cocktail', 'cockatoo', 'cockerel', 'cockroach', 'cockatiel',
-    'dickens', 'dickinson', 'dickson', 'heilung', 'heilongjiang', 'cumulative', 'cumulatively', 'cumbia',
-    'cumulonimbus', 'cumulonimbi', 'cummings', 'cumulus'
-))
-
-EXACT_ONLY = frozenset(('spic', 'cock', 'dick', 'cum', 'gay', 'kys', 'fag', 'heil'))
-
-BAD_SINGLE = (
-    'nigger', 'nigga', 'niga', 'negger', 'faggot', 'fagot', 'fager', 'fag', 'retard',
-    'chink', 'spic', 'wetback', 'kike', 'gook', 'coon', 'jigaboo', 'beaner', 'tranny',
-    'porn', 'pron', 'cumshot', 'blowjob', 'handjob', 'pussy', 'cunt', 'cum', 'cock', 'cocksucker', 'dick', 'dickhead',
-    'kys', 'nazi', 'kkk', 'heil', 'bitch', 'asshole', 'motherfucker', 'cuck', 'gay'
-)
-
-BAD_PHRASES = (
-    'kill yourself', 'kill your self', 'hang yourself', 'hang your self', 'white power', 'heil hitler'
-)
-
-def contains_bad_word(text: str):
-    ns = _norm_text(text)
-    nl = _norm_sym(text)
-    nc = _norm_c32(text)
-    toks = set(ns.split() + nl.split() + nc.split())
-
-    for phrase in BAD_PHRASES:
-        pn = _norm_text(phrase)
-        pat = r'(?<![a-z0-9])' + re_mod.escape(pn) + r'(?![a-z0-9])'
-        if re_mod.search(pat, ns) or re_mod.search(pat, nl):
-            return phrase
-
-    for word in BAD_SINGLE:
-        wn = _norm_text(word)
-        exact = word in EXACT_ONLY
-        for tok in toks:
-            if tok in TOKEN_WHITELIST: continue
-            if exact:
-                if tok == wn: return word
-            else:
-                if tok == wn or tok.startswith(wn): return word
-
-    for chunk in _join_single_chars(ns.split()):
-        for word in BAD_SINGLE:
-            if _norm_text(word) in chunk:
-                return word
-
-    for word in BAD_SINGLE:
-        wn = _norm_text(word)
-        if len(wn) <= 5: continue
-        for tok in toks:
-            if tok in TOKEN_WHITELIST: continue
-            if len(tok) < 2: continue
-            if tok[:2] != wn[:2]: continue
-            if abs(len(tok) - len(wn)) >= 2: continue
-            if levenshtein(tok, wn) <= 1: return word
-    return None
-
-spam_cache = collections.defaultdict(lambda: collections.defaultdict(collections.deque))
-SPAM_WINDOW = 10
-SPAM_MAX_SAME = 3
-WARN_TIMEOUT_AT = 3
-
-def add_warning(user_id, user_name, guild_id, reason, mod_id="BOT", mod_name="AutoMod", message_content=None, message_link=None):
-    conn = get_db_connection()
-    conn.execute(
-        "INSERT INTO warnings (user_id, user_name, guild_id, reason, message_content, message_link, moderator_id, moderator_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (str(user_id), user_name, str(guild_id), reason, message_content, message_link, str(mod_id), mod_name)
-    )
-    conn.commit()
-    count = conn.execute("SELECT COUNT(*) FROM warnings WHERE user_id=? AND guild_id=?", (str(user_id), str(guild_id))).fetchone()[0]
-    conn.close()
-    return count
-
-def log_mod_action(user_id, user_name, guild_id, action, reason, duration=None, mod_id="BOT", mod_name="AutoMod"):
-    conn = get_db_connection()
-    conn.execute(
-        "INSERT INTO mod_actions (user_id, user_name, guild_id, action, reason, duration_seconds, moderator_id, moderator_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (str(user_id), user_name, str(guild_id), action, reason, duration, str(mod_id), mod_name)
-    )
-    conn.commit()
-    conn.close()
-
-def get_recent_mod_action(user_id, guild_id, action):
-    conn = get_db_connection()
-    row = conn.execute(
-        "SELECT * FROM mod_actions WHERE user_id=? AND guild_id=? AND action=? ORDER BY timestamp DESC LIMIT 1",
-        (str(user_id), str(guild_id), action)
-    ).fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-async def notify_warn_admins(member, guild, warn_count):
-    if warn_count < 2: return
-    for admin_id in WARN_DM_ADMIN_IDS:
-        try:
-            admin = await client.fetch_user(admin_id)
-            embed = discord.Embed(
-                title="Warning Alert",
-                description=f"**{member.display_name}** ({member.id}) has reached {warn_count} warnings.\nServer: {guild.name}\nAction may be required.",
-                color=0xF5A623
-            )
-            embed.set_footer(text="BLZ-T AutoMod")
-            await admin.send(embed=embed)
-            logger.info(f">>> [WARN DM] Notified admin {admin_id} about {member.display_name}")
-        except Exception as e:
-            logger.error(f"!!! [WARN DM] Failed to DM admin {admin_id}: {e}")
-
-async def escalate_user(member, guild, warn_count, reason):
-    uid = str(member.id)
-    gid = str(guild.id)
-    name = member.name
-    logger.info(f">>> [ESCALATE] {name} | warn_count={warn_count}")
-    had_timeout = get_recent_mod_action(uid, gid, 'timeout')
-    had_ban3d = get_recent_mod_action(uid, gid, 'ban_3d')
-    
-    try:
-        if had_ban3d:
-            await member.ban(reason=f"AutoMod: permanent ban after 3d ban ({reason})", delete_message_seconds=0)
-            log_mod_action(uid, name, gid, "ban_permanent", reason)
-            logger.info(f">>> [AUTOMOD] PERMANENT BAN: {name}")
-        elif had_timeout and warn_count >= 1:
-            await member.ban(reason=f"AutoMod: 3-day ban after timeout | ({reason})", delete_message_seconds=0)
-            log_mod_action(uid, name, gid, "ban_3d", reason, duration=259200)
-            logger.info(f">>> [AUTOMOD] 3D BAN: {name}")
-            async def unban():
-                await asyncio.sleep(259200)
-                try:
-                    user = await client.fetch_user(int(uid))
-                    await guild.unban(user, reason="AutoMod: 3d ban expired")
-                except Exception as e:
-                    logger.error(f"!!! [UNBAN ERROR]: {e}")
-            asyncio.create_task(unban())
-        elif warn_count >= WARN_TIMEOUT_AT:
-            until = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
-            await member.timeout(until, reason=f"AutoMod: {warn_count} warnings ({reason})")
-            log_mod_action(uid, name, gid, "timeout", reason, duration=86400)
-            logger.info(f">>> [AUTOMOD] TIMEOUT 1D: {name}")
-    except discord.Forbidden:
-        logger.error(f"!!! [ESCALATE] Missing permissions to act on {name}")
-    except Exception as e:
-        logger.error(f"!!! [ESCALATE ERROR {name}]: {e}")
 
 async def save_message_to_db(message):
     try:
@@ -977,110 +740,16 @@ async def slash_deadline(interaction: discord.Interaction, user: discord.Member)
     await handle_deadline_interaction(interaction, user)
 
 
-# --- ON_MESSAGE (Automod + logs, sin prefijos ! ) ---
+# --- ON_MESSAGE (logs, sin prefijos ! ) ---
 @client.event
 async def on_message(message):
     if message.author.bot:
         return
 
-    # Guardar SIEMPRE los mensajes si el canal tiene categoría target
-    # (antes de cualquier borrado de automod)
+    # Guardar mensajes si el canal pertenece a la categoría target
     if hasattr(message.channel, 'category') and message.channel.category and message.channel.category.id == TARGET_CATEGORY_ID:
         await save_message_to_db(message)
 
-    guild = getattr(message.channel, 'guild', None)
-    
-    # 1. Automod - Bad Words
-    if guild and message.content:
-        found_word = contains_bad_word(message.content)
-        if found_word:
-            try:
-                await message.delete()
-            except Exception as e:
-                logger.error(f"!!! [AUTOMOD DELETE ERROR]: {e}")
-            msg_link = f"https://discord.com/channels/{guild.id}/{message.channel.id}/{message.id}"
-            warn_count = add_warning(
-                message.author.id, message.author.name, guild.id, 
-                reason=f"Bad word: {found_word}", 
-                message_content=message.content[:500], 
-                message_link=msg_link
-            )
-            logger.info(f">>> [AUTOMOD] {message.author.name} warned ({warn_count}) word={found_word}")
-            try:
-                await message.channel.send(f"{message.author.mention} Your message was removed. Warning {warn_count}", delete_after=8)
-            except Exception:
-                pass
-            
-            member = guild.get_member(message.author.id)
-            if member:
-                await notify_warn_admins(member, guild, warn_count)
-                await escalate_user(member, guild, warn_count, f"Bad word: {found_word}")
-            return
-
-    # 2. Automod - Spam Detection
-    now = time_gs.time()
-    gid = str(guild.id) if guild else "0"
-    uid = str(message.author.id)
-    norm = re_mod.sub(r'\s+', '', message.content.lower().strip())
-    h = hashlib.md5(norm.encode()).hexdigest()
-    dq = spam_cache[gid][uid]
-    
-    while dq and now - dq[0][1] > SPAM_WINDOW:
-        dq.popleft()
-    dq.append((h, now))
-    
-    same_count = sum(1 for hh, _ in dq if hh == h)
-    if same_count > SPAM_MAX_SAME:
-        dq.clear()
-        try:
-            await message.delete()
-        except Exception:
-            pass
-        msg_link = f"https://discord.com/channels/{gid}/{message.channel.id}/{message.id}"
-        warn_count = add_warning(
-            message.author.id, message.author.name, gid, 
-            reason=f"Spam ({same_count} identical messages)", 
-            message_content=message.content[:500], 
-            message_link=msg_link
-        )
-        logger.info(f">>> [AUTOMOD SPAM] {message.author.name} warned ({warn_count})")
-        try:
-            await message.channel.send(f"{message.author.mention} Spam detected. Warning {warn_count}", delete_after=8)
-        except Exception:
-            pass
-        
-        if guild:
-            member = guild.get_member(message.author.id)
-            if member:
-                await notify_warn_admins(member, guild, warn_count)
-                await escalate_user(member, guild, warn_count, "Spam")
-        return
-
-    # 3. OpenAI Moderation
-    if guild and message.content and OPENAI_MODERATION_KEY:
-        async def openai_moderate(msg):
-            if not OPENAI_MODERATION_KEY or not aiohttp: return
-            text = msg.content.strip()
-            if not text or len(text) < 3: return
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.post("https://api.openai.com/v1/moderations", headers={"Authorization": f"Bearer {OPENAI_MODERATION_KEY}", "Content-Type": "application/json"}, json={"input": text}, timeout=aiohttp.ClientTimeout(total=5)) as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            result = data.get("results", [{}])[0]
-                            scores = result.get("category_scores", {})
-                            threshold = float(os.getenv("MOD_AI_THRESHOLD", "0.80"))
-                            over_threshold = {c: scores[c] for c in scores if scores[c] >= threshold}
-                            if over_threshold:
-                                top_cat = max(over_threshold, key=over_threshold.get)
-                                top_score = over_threshold[top_cat]
-                                warn_count = add_warning(msg.author.id, msg.author.name, gid, reason=f"IA: {top_cat} ({top_score:.0%})", message_content=text[:500])
-                                await msg.delete()
-                                await msg.channel.send(f"{msg.author.mention} Tu mensaje fue eliminado por IA. Advertencia {warn_count}", delete_after=8)
-            except Exception:
-                pass
-        asyncio.create_task(openai_moderate(message))
-        
     await client.process_commands(message)
 
 # --- RUTAS FLASK API Y DASHBOARD ---
@@ -1287,7 +956,7 @@ def api_deadline():
                 ),
                 color=0xF5A623
             )
-            embed.set_footer(text="BLZ-T AutoMod · Web Panel")
+            embed.set_footer(text="BLZ-T · Web Panel")
             try:
                 sent = await channel.send(embed=embed)
                 await sent.add_reaction("✅")
@@ -1343,136 +1012,6 @@ def api_deadline():
         if result.get("error"):
             return jsonify(result), 500
         return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-# ─── MOD PANEL: usuarios con historial de warns ───────────────────────────────
-@app.route("/api/mod/users")
-def mod_users():
-    try:
-        conn = get_db_connection()
-        rows = conn.execute("""
-            SELECT user_id, user_name, guild_id,
-                   COUNT(*) as warn_count, MAX(timestamp) as last_warn
-            FROM warnings
-            GROUP BY user_id, guild_id
-            ORDER BY warn_count DESC, last_warn DESC
-            LIMIT 100
-        """).fetchall()
-        results = []
-        for row in rows:
-            d = dict(row)
-            action = conn.execute(
-                "SELECT * FROM mod_actions WHERE user_id=? AND guild_id=? ORDER BY timestamp DESC LIMIT 1",
-                (d['user_id'], d['guild_id'])
-            ).fetchone()
-            d['last_action'] = dict(action) if action else None
-            warns = conn.execute(
-                "SELECT * FROM warnings WHERE user_id=? AND guild_id=? ORDER BY timestamp DESC LIMIT 10",
-                (d['user_id'], d['guild_id'])
-            ).fetchall()
-            d['recent_warnings'] = [dict(w) for w in warns]
-            results.append(d)
-        conn.close()
-        return jsonify(results)
-    except Exception as e:
-        logger.error(f"!!! [MOD USERS ERROR]: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/api/mod/action_log")
-def mod_action_log():
-    try:
-        conn = get_db_connection()
-        rows = conn.execute("SELECT * FROM mod_actions ORDER BY timestamp DESC LIMIT 100").fetchall()
-        conn.close()
-        return jsonify([dict(r) for r in rows])
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/api/mod/warn_history/<user_id>")
-def warn_history(user_id):
-    try:
-        conn = get_db_connection()
-        rows = conn.execute(
-            "SELECT * FROM warnings WHERE user_id=? ORDER BY timestamp DESC", (user_id,)
-        ).fetchall()
-        conn.close()
-        return jsonify([dict(r) for r in rows])
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/api/mod/action", methods=["POST"])
-def mod_do_action():
-    data = request.json or {}
-    action   = data.get("action")
-    user_id  = data.get("user_id")
-    user_name = data.get("user_name", "Unknown")
-    guild_id = data.get("guild_id")
-    reason   = data.get("reason", "Manual action from web panel")
-    if not all([action, user_id, guild_id]):
-        return jsonify({"error": "Missing parameters"}), 400
-    if not bot_ready_event.is_set():
-        return jsonify({"error": "Bot not ready"}), 503
-
-    async def execute_action():
-        try:
-            guild = None
-            for g in client.guilds:
-                if str(g.id) == str(guild_id):
-                    guild = g; break
-            if not guild and client.guilds:
-                guild = client.guilds[0]
-            if not guild:
-                return {"error": "Bot is not in any guild"}
-            member = guild.get_member(int(user_id))
-
-            if action == "warn":
-                count = add_warning(user_id, user_name, guild_id, reason, mod_id="WEB", mod_name="WebPanel")
-                if member:
-                    try:
-                        e = discord.Embed(title="Warning Received",
-                            description=f"You have received a warning in **{guild.name}**.\n\n**Reason:** {reason}",
-                            color=0xF5A623)
-                        e.set_footer(text="BLZ-T AutoMod")
-                        await member.send(embed=e)
-                    except Exception: pass
-                return {"success": True, "warn_count": count}
-
-            elif action == "timeout":
-                if not member: return {"error": "Member not found in server"}
-                until = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24)
-                await member.timeout(until, reason=reason)
-                log_mod_action(user_id, user_name, guild_id, "timeout", reason, duration=86400, mod_id="WEB", mod_name="WebPanel")
-                return {"success": True}
-
-            elif action == "kick":
-                if not member: return {"error": "Member not found in server"}
-                await member.kick(reason=reason)
-                log_mod_action(user_id, user_name, guild_id, "kick", reason, mod_id="WEB", mod_name="WebPanel")
-                return {"success": True}
-
-            elif action == "ban":
-                if not member: return {"error": "Member not found in server (or already banned)"}
-                await member.ban(reason=reason, delete_message_seconds=0)
-                log_mod_action(user_id, user_name, guild_id, "ban", reason, mod_id="WEB", mod_name="WebPanel")
-                return {"success": True}
-
-            elif action == "clear":
-                conn = get_db_connection()
-                conn.execute("DELETE FROM warnings WHERE user_id=? AND guild_id=?", (str(user_id), str(guild_id)))
-                conn.commit(); conn.close()
-                log_mod_action(user_id, user_name, guild_id, "clear_warns", reason, mod_id="WEB", mod_name="WebPanel")
-                return {"success": True}
-
-            return {"error": f"Unknown action: {action}"}
-        except discord.Forbidden as e:
-            return {"error": f"Permission denied: {e}"}
-        except Exception as e:
-            return {"error": str(e)}
-
-    try:
-        future = asyncio.run_coroutine_threadsafe(execute_action(), client.loop)
-        return jsonify(future.result(timeout=10))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1570,15 +1109,9 @@ def api_stats():
     try:
         conn = get_db_connection()
         total_msgs = conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
-        total_warns = conn.execute("SELECT COUNT(*) FROM warnings").fetchone()[0]
-        total_actions = conn.execute("SELECT COUNT(*) FROM mod_actions").fetchone()[0]
-        unique_warned = conn.execute("SELECT COUNT(DISTINCT user_id) FROM warnings").fetchone()[0]
         conn.close()
         return jsonify({
-            "total_messages": total_msgs,
-            "total_warnings": total_warns,
-            "total_mod_actions": total_actions,
-            "unique_warned_users": unique_warned
+            "total_messages": total_msgs
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
