@@ -7,8 +7,8 @@ import re
 import random
 import threading
 import asyncio
-import sqlite3
 import logging
+from pymongo import MongoClient, ASCENDING, DESCENDING
 from logging.handlers import RotatingFileHandler
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -68,52 +68,32 @@ client = commands.Bot(command_prefix="!", intents=intents)
 bot_ready_event = threading.Event()
 
 # =====================================================================================
-# DATABASE (SQLite) — player ELO, records, and duel history for anti-farming checks
-# NOTE: on Render's free tier the filesystem is ephemeral, so this file is wiped on
-# every deploy/restart unless you attach a persistent disk. See README for details.
+# DATABASE (MongoDB Atlas via pymongo) — player ELO, records, and duel history for
+# anti-farming checks. Connection string comes from the DATABASE_URL env var (set in
+# Render), read with os.environ.get() so it works the same locally (via .env) and in
+# production. This replaces the old SQLite file, which was wiped on every Render
+# restart/redeploy since the free tier's filesystem is ephemeral — that's why ELO and
+# duel history looked like they were "not saving."
 # =====================================================================================
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "elo.db")
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL environment variable is not set.")
 
+_mongo_client = MongoClient(DATABASE_URL)
+# get_default_database() uses the DB name embedded in the URI (e.g. ".../blz_bot?...").
+# Falls back to an explicit name if the URI doesn't include one.
+try:
+    db = _mongo_client.get_default_database()
+except Exception:
+    db = _mongo_client["blz_bot"]
 
-def _get_conn():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+players_col = db["players"]
+duel_history_col = db["duel_history"]
 
-
-def _init_db():
-    conn = _get_conn()
-    try:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS players (
-                user_id INTEGER PRIMARY KEY,
-                username TEXT NOT NULL,
-                elo INTEGER NOT NULL DEFAULT 1000,
-                ranked_wins INTEGER NOT NULL DEFAULT 0,
-                ranked_losses INTEGER NOT NULL DEFAULT 0,
-                ranked_draws INTEGER NOT NULL DEFAULT 0,
-                friendly_wins INTEGER NOT NULL DEFAULT 0,
-                friendly_losses INTEGER NOT NULL DEFAULT 0,
-                friendly_draws INTEGER NOT NULL DEFAULT 0
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS duel_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                player_low INTEGER NOT NULL,
-                player_high INTEGER NOT NULL,
-                mode TEXT NOT NULL,
-                counted_for_elo INTEGER NOT NULL,
-                created_at TEXT NOT NULL
-            )
-        """)
-        conn.commit()
-    finally:
-        conn.close()
-
-
-_init_db()
+# Helpful indexes (no-ops if they already exist)
+players_col.create_index([("elo", DESCENDING)])
+duel_history_col.create_index([("player_low", ASCENDING), ("player_high", ASCENDING), ("mode", ASCENDING), ("created_at", DESCENDING)])
 
 
 @dataclass
@@ -130,23 +110,24 @@ class PlayerRow:
 
 
 def _get_or_create_player_sync(user_id: int, username: str) -> PlayerRow:
-    conn = _get_conn()
-    try:
-        row = conn.execute("SELECT * FROM players WHERE user_id = ?", (user_id,)).fetchone()
-        if row is None:
-            conn.execute("INSERT INTO players (user_id, username, elo) VALUES (?, ?, 1000)", (user_id, username))
-            conn.commit()
-            return PlayerRow(user_id, username, 1000, 0, 0, 0, 0, 0, 0)
-        if row["username"] != username:
-            conn.execute("UPDATE players SET username = ? WHERE user_id = ?", (username, user_id))
-            conn.commit()
-        return PlayerRow(
-            row["user_id"], username, row["elo"],
-            row["ranked_wins"], row["ranked_losses"], row["ranked_draws"],
-            row["friendly_wins"], row["friendly_losses"], row["friendly_draws"],
-        )
-    finally:
-        conn.close()
+    doc = players_col.find_one({"_id": user_id})
+    if doc is None:
+        doc = {
+            "_id": user_id,
+            "username": username,
+            "elo": 1000,
+            "ranked_wins": 0, "ranked_losses": 0, "ranked_draws": 0,
+            "friendly_wins": 0, "friendly_losses": 0, "friendly_draws": 0,
+        }
+        players_col.insert_one(doc)
+    elif doc.get("username") != username:
+        players_col.update_one({"_id": user_id}, {"$set": {"username": username}})
+
+    return PlayerRow(
+        user_id, username, doc["elo"],
+        doc["ranked_wins"], doc["ranked_losses"], doc["ranked_draws"],
+        doc["friendly_wins"], doc["friendly_losses"], doc["friendly_draws"],
+    )
 
 
 async def get_or_create_player(user: discord.abc.User) -> PlayerRow:
@@ -154,27 +135,21 @@ async def get_or_create_player(user: discord.abc.User) -> PlayerRow:
 
 
 def _apply_result_sync(user_id: int, elo_delta: int, mode: str, win_inc: int, loss_inc: int, draw_inc: int) -> int:
-    conn = _get_conn()
-    try:
-        row = conn.execute("SELECT elo FROM players WHERE user_id = ?", (user_id,)).fetchone()
-        current = row["elo"] if row else 1000
-        new_elo = max(0, current + elo_delta)
-        if mode == "ranked":
-            conn.execute(
-                "UPDATE players SET elo = ?, ranked_wins = ranked_wins + ?, "
-                "ranked_losses = ranked_losses + ?, ranked_draws = ranked_draws + ? WHERE user_id = ?",
-                (new_elo, win_inc, loss_inc, draw_inc, user_id)
-            )
-        else:
-            conn.execute(
-                "UPDATE players SET elo = ?, friendly_wins = friendly_wins + ?, "
-                "friendly_losses = friendly_losses + ?, friendly_draws = friendly_draws + ? WHERE user_id = ?",
-                (new_elo, win_inc, loss_inc, draw_inc, user_id)
-            )
-        conn.commit()
-        return new_elo
-    finally:
-        conn.close()
+    doc = players_col.find_one({"_id": user_id}, {"elo": 1})
+    current = doc["elo"] if doc else 1000
+    new_elo = max(0, current + elo_delta)
+
+    if mode == "ranked":
+        inc_fields = {"ranked_wins": win_inc, "ranked_losses": loss_inc, "ranked_draws": draw_inc}
+    else:
+        inc_fields = {"friendly_wins": win_inc, "friendly_losses": loss_inc, "friendly_draws": draw_inc}
+
+    players_col.update_one(
+        {"_id": user_id},
+        {"$set": {"elo": new_elo}, "$inc": inc_fields},
+        upsert=True,
+    )
+    return new_elo
 
 
 async def apply_result(user_id: int, elo_delta: int, mode: str, win_inc=0, loss_inc=0, draw_inc=0) -> int:
@@ -182,16 +157,10 @@ async def apply_result(user_id: int, elo_delta: int, mode: str, win_inc=0, loss_
 
 
 def _get_ranked_record_sync(user_id: int):
-    conn = _get_conn()
-    try:
-        row = conn.execute(
-            "SELECT ranked_wins, ranked_losses FROM players WHERE user_id = ?", (user_id,)
-        ).fetchone()
-        if row is None:
-            return 0, 0
-        return row["ranked_wins"], row["ranked_losses"]
-    finally:
-        conn.close()
+    doc = players_col.find_one({"_id": user_id}, {"ranked_wins": 1, "ranked_losses": 1})
+    if doc is None:
+        return 0, 0
+    return doc["ranked_wins"], doc["ranked_losses"]
 
 
 async def get_ranked_record(user_id: int):
@@ -200,17 +169,13 @@ async def get_ranked_record(user_id: int):
 
 def _count_recent_ranked_duels_sync(id_a: int, id_b: int, hours: int) -> int:
     lo, hi = sorted((id_a, id_b))
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
-    conn = _get_conn()
-    try:
-        row = conn.execute(
-            "SELECT COUNT(*) AS c FROM duel_history "
-            "WHERE player_low = ? AND player_high = ? AND mode = 'ranked' AND created_at >= ?",
-            (lo, hi, cutoff)
-        ).fetchone()
-        return row["c"] if row else 0
-    finally:
-        conn.close()
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    return duel_history_col.count_documents({
+        "player_low": lo,
+        "player_high": hi,
+        "mode": "ranked",
+        "created_at": {"$gte": cutoff},
+    })
 
 
 async def count_recent_ranked_duels(id_a: int, id_b: int, hours: int = FARMING_LOOKBACK_HOURS) -> int:
@@ -219,16 +184,13 @@ async def count_recent_ranked_duels(id_a: int, id_b: int, hours: int = FARMING_L
 
 def _record_duel_sync(id_a: int, id_b: int, mode: str, counted: bool):
     lo, hi = sorted((id_a, id_b))
-    conn = _get_conn()
-    try:
-        conn.execute(
-            "INSERT INTO duel_history (player_low, player_high, mode, counted_for_elo, created_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (lo, hi, mode, 1 if counted else 0, datetime.now(timezone.utc).isoformat())
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    duel_history_col.insert_one({
+        "player_low": lo,
+        "player_high": hi,
+        "mode": mode,
+        "counted_for_elo": counted,
+        "created_at": datetime.now(timezone.utc),
+    })
 
 
 async def record_duel(id_a: int, id_b: int, mode: str, counted: bool):
@@ -236,19 +198,15 @@ async def record_duel(id_a: int, id_b: int, mode: str, counted: bool):
 
 
 def _get_top_players_sync(limit: int) -> list:
-    conn = _get_conn()
-    try:
-        rows = conn.execute("SELECT * FROM players ORDER BY elo DESC LIMIT ?", (limit,)).fetchall()
-        return [
-            PlayerRow(
-                r["user_id"], r["username"], r["elo"],
-                r["ranked_wins"], r["ranked_losses"], r["ranked_draws"],
-                r["friendly_wins"], r["friendly_losses"], r["friendly_draws"],
-            )
-            for r in rows
-        ]
-    finally:
-        conn.close()
+    docs = players_col.find().sort("elo", DESCENDING).limit(limit)
+    return [
+        PlayerRow(
+            d["_id"], d["username"], d["elo"],
+            d["ranked_wins"], d["ranked_losses"], d["ranked_draws"],
+            d["friendly_wins"], d["friendly_losses"], d["friendly_draws"],
+        )
+        for d in docs
+    ]
 
 
 async def get_top_players(limit: int = 10) -> list:
@@ -256,16 +214,11 @@ async def get_top_players(limit: int = 10) -> list:
 
 
 def _adjust_elo_sync(user_id: int, delta: int) -> int:
-    conn = _get_conn()
-    try:
-        row = conn.execute("SELECT elo FROM players WHERE user_id = ?", (user_id,)).fetchone()
-        current = row["elo"] if row else 1000
-        new_elo = max(0, current + delta)
-        conn.execute("UPDATE players SET elo = ? WHERE user_id = ?", (new_elo, user_id))
-        conn.commit()
-        return new_elo
-    finally:
-        conn.close()
+    doc = players_col.find_one({"_id": user_id}, {"elo": 1})
+    current = doc["elo"] if doc else 1000
+    new_elo = max(0, current + delta)
+    players_col.update_one({"_id": user_id}, {"$set": {"elo": new_elo}}, upsert=True)
+    return new_elo
 
 
 async def adjust_elo(user_id: int, delta: int) -> int:
