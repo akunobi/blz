@@ -1527,15 +1527,21 @@ def _run_with_backoff():
         raise
     except discord.errors.HTTPException as e:
         if e.status == 429:
-            retry_after = None
+            requested = None
             try:
-                retry_after = float(e.response.headers.get("Retry-After", 0))
+                requested = int(float(e.response.headers.get("Retry-After", 0)))
             except Exception:
-                retry_after = None
-            backoff = min(max(int(retry_after or 0), 60), 900)
+                requested = None
+            # Respect what Discord actually asked for — only a floor (in case the header is
+            # missing/zero) and a generous safety ceiling (in case it's a nonsense value), no
+            # silent truncation. A capped-but-mislabeled wait just means we come back too soon,
+            # 429 again, and repeat — logging the real number is also what makes it possible to
+            # tell "this is a short IDENTIFY cooldown" apart from "this is an hours-long ban."
+            backoff = max(requested or 60, 60)
+            backoff = min(backoff, 3600)
             logger.error(
-                f"!!! [DISCORD LOGIN] Rate limited (429). Waiting {backoff}s, then exiting "
-                "so Render restarts with a clean process..."
+                f"!!! [DISCORD LOGIN] Rate limited (429). Discord asked for a {requested}s "
+                f"cooldown — waiting {backoff}s, then exiting so Render restarts with a clean process..."
             )
             time.sleep(backoff)
             raise SystemExit(1)
