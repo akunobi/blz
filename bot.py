@@ -7,6 +7,7 @@ import re
 import random
 import threading
 import asyncio
+import time
 import logging
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from logging.handlers import RotatingFileHandler
@@ -1471,6 +1472,29 @@ async def on_ready():
         logger.error(f"!!! [MATCHMAKING PANEL ON READY]: {e}")
 
 
+def _run_with_backoff():
+    """Runs the bot. If Discord's login endpoint 429s us (e.g. after Render restarts
+    it too many times in a row), sleep it off with growing backoff INSTEAD of crashing —
+    crashing just makes Render restart immediately, which hits the 429 again and extends
+    the ban. A bad token still fails fast instead of retrying forever."""
+    backoff = 60          # start at 1 minute
+    max_backoff = 900     # cap at 15 minutes
+    while True:
+        try:
+            client.run(TOKEN)
+            break  # clean shutdown (e.g. CTRL+C) — don't loop
+        except discord.errors.LoginFailure:
+            logger.error("!!! [DISCORD LOGIN] Invalid token — check DISCORD_TOKEN and redeploy.")
+            raise
+        except discord.errors.HTTPException as e:
+            if e.status == 429:
+                logger.error(f"!!! [DISCORD LOGIN] Rate limited (429). Waiting {backoff}s before retrying...")
+                time.sleep(backoff)
+                backoff = min(backoff * 2, max_backoff)
+                continue
+            raise
+
+
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
-    client.run(TOKEN)
+    _run_with_backoff()
