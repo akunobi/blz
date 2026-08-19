@@ -39,7 +39,7 @@ QUEUE_CHANNEL_ID = 1539158063116984361  # Channel where the permanent matchmakin
 DUEL_CATEGORY_ID = 1539157638925918238  # Category where private duel channels are created
 RESULTS_CHANNEL_ID = 1538589354790887452  # Channel where ranked/friendly results are posted
 ELO_COMMAND_CHANNEL_ID = 1538589353800900626  # Only channel where /elo can be used
-ADDELO_ROLE_ID = 1538589345856884736    # Only members with this role can use /addelo
+ADDELO_ROLE_ID = 1538589345991360527    # Only members with this role can use /addelo
 
 # --- ELO / ANTI-FARMING TUNING ---
 FARMING_LOOKBACK_HOURS = 24     # Window used to detect repeated dueling between the same 2 players
