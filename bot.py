@@ -81,7 +81,21 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL environment variable is not set.")
 
-_mongo_client = MongoClient(DATABASE_URL)
+# A short serverSelectionTimeoutMS means a bad URI / unreachable Atlas cluster (e.g. its
+# Network Access list doesn't include Render's IPs) fails fast with a clear error instead of
+# hanging for the ~30s pymongo default — which, left uncaught, looks like a silent startup
+# freeze rather than the actual misconfiguration.
+try:
+    _mongo_client = MongoClient(DATABASE_URL, serverSelectionTimeoutMS=8000)
+    _mongo_client.admin.command("ping")
+except Exception as e:
+    raise RuntimeError(
+        f"Could not connect to MongoDB using DATABASE_URL: {e}\n"
+        "Check that the connection string is correct and that your Atlas cluster's "
+        "Network Access list allows connections from anywhere (0.0.0.0/0), since Render "
+        "does not use a static outbound IP on standard plans."
+    ) from e
+
 # get_default_database() uses the DB name embedded in the URI (e.g. ".../blz_bot?...").
 # Falls back to an explicit name if the URI doesn't include one.
 try:
@@ -140,14 +154,24 @@ def _apply_result_sync(user_id: int, elo_delta: int, mode: str, win_inc: int, lo
     current = doc["elo"] if doc else 1000
     new_elo = max(0, current + elo_delta)
 
+    # $inc and $setOnInsert can't target the same field in one update, so only the fields
+    # NOT touched by $inc for this mode go in $setOnInsert. This makes update_one() safe to
+    # call even if get_or_create_player() hasn't run for this user yet (upsert=True would
+    # otherwise create a document missing "username" and the other mode's counters).
     if mode == "ranked":
         inc_fields = {"ranked_wins": win_inc, "ranked_losses": loss_inc, "ranked_draws": draw_inc}
+        other_defaults = {"friendly_wins": 0, "friendly_losses": 0, "friendly_draws": 0}
     else:
         inc_fields = {"friendly_wins": win_inc, "friendly_losses": loss_inc, "friendly_draws": draw_inc}
+        other_defaults = {"ranked_wins": 0, "ranked_losses": 0, "ranked_draws": 0}
 
     players_col.update_one(
         {"_id": user_id},
-        {"$set": {"elo": new_elo}, "$inc": inc_fields},
+        {
+            "$set": {"elo": new_elo},
+            "$inc": inc_fields,
+            "$setOnInsert": {"username": str(user_id), **other_defaults},
+        },
         upsert=True,
     )
     return new_elo
@@ -218,7 +242,18 @@ def _adjust_elo_sync(user_id: int, delta: int) -> int:
     doc = players_col.find_one({"_id": user_id}, {"elo": 1})
     current = doc["elo"] if doc else 1000
     new_elo = max(0, current + delta)
-    players_col.update_one({"_id": user_id}, {"$set": {"elo": new_elo}}, upsert=True)
+    players_col.update_one(
+        {"_id": user_id},
+        {
+            "$set": {"elo": new_elo},
+            "$setOnInsert": {
+                "username": str(user_id),
+                "ranked_wins": 0, "ranked_losses": 0, "ranked_draws": 0,
+                "friendly_wins": 0, "friendly_losses": 0, "friendly_draws": 0,
+            },
+        },
+        upsert=True,
+    )
     return new_elo
 
 
@@ -1473,26 +1508,38 @@ async def on_ready():
 
 
 def _run_with_backoff():
-    """Runs the bot. If Discord's login endpoint 429s us (e.g. after Render restarts
-    it too many times in a row), sleep it off with growing backoff INSTEAD of crashing —
-    crashing just makes Render restart immediately, which hits the 429 again and extends
-    the ban. A bad token still fails fast instead of retrying forever."""
-    backoff = 60          # start at 1 minute
-    max_backoff = 900     # cap at 15 minutes
-    while True:
-        try:
-            client.run(TOKEN)
-            break  # clean shutdown (e.g. CTRL+C) — don't loop
-        except discord.errors.LoginFailure:
-            logger.error("!!! [DISCORD LOGIN] Invalid token — check DISCORD_TOKEN and redeploy.")
-            raise
-        except discord.errors.HTTPException as e:
-            if e.status == 429:
-                logger.error(f"!!! [DISCORD LOGIN] Rate limited (429). Waiting {backoff}s before retrying...")
-                time.sleep(backoff)
-                backoff = min(backoff * 2, max_backoff)
-                continue
-            raise
+    """Runs the bot once. If Discord's login endpoint 429s us (e.g. after Render restarted
+    the process too many times in a row and burned through the session-start limit), this
+    waits out the backoff and then EXITS the process (non-zero) instead of looping back to
+    call client.run() again on the same object.
+
+    Reusing one discord.py Client/Bot instance across multiple run() calls is fragile —
+    sockets/HTTP sessions from the failed attempt don't reliably tear down, so a second
+    in-process retry can raise a *different*, unhandled error and crash again anyway. Exiting
+    lets Render restart the process with a completely fresh Client — we just make sure we've
+    already waited out Discord's requested cooldown first, so that restart doesn't instantly
+    re-trigger the same rate limit. A bad token still fails fast rather than retrying forever.
+    """
+    try:
+        client.run(TOKEN)
+    except discord.errors.LoginFailure:
+        logger.error("!!! [DISCORD LOGIN] Invalid token — check DISCORD_TOKEN and redeploy.")
+        raise
+    except discord.errors.HTTPException as e:
+        if e.status == 429:
+            retry_after = None
+            try:
+                retry_after = float(e.response.headers.get("Retry-After", 0))
+            except Exception:
+                retry_after = None
+            backoff = min(max(int(retry_after or 0), 60), 900)
+            logger.error(
+                f"!!! [DISCORD LOGIN] Rate limited (429). Waiting {backoff}s, then exiting "
+                "so Render restarts with a clean process..."
+            )
+            time.sleep(backoff)
+            raise SystemExit(1)
+        raise
 
 
 if __name__ == "__main__":
