@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from flask import Flask, jsonify
 from dotenv import load_dotenv
+from PIL import Image
+from easy_pil import Editor, Canvas, Font, LinearGradient, load_image_async
 
 load_dotenv()
 
@@ -37,6 +39,7 @@ QUEUE_CHANNEL_ID = 1539158063116984361  # Channel where the permanent matchmakin
 DUEL_CATEGORY_ID = 1539157638925918238  # Category where private duel channels are created
 RESULTS_CHANNEL_ID = 1538589354790887452  # Channel where ranked/friendly results are posted
 ELO_COMMAND_CHANNEL_ID = 1538589353800900626  # Only channel where /elo can be used
+ADDELO_ROLE_ID = 1538589345856884736    # Only members with this role can use /addelo
 
 # --- ELO / ANTI-FARMING TUNING ---
 FARMING_LOOKBACK_HOURS = 24     # Window used to detect repeated dueling between the same 2 players
@@ -232,6 +235,44 @@ async def record_duel(id_a: int, id_b: int, mode: str, counted: bool):
     await asyncio.to_thread(_record_duel_sync, id_a, id_b, mode, counted)
 
 
+def _get_top_players_sync(limit: int) -> list:
+    conn = _get_conn()
+    try:
+        rows = conn.execute("SELECT * FROM players ORDER BY elo DESC LIMIT ?", (limit,)).fetchall()
+        return [
+            PlayerRow(
+                r["user_id"], r["username"], r["elo"],
+                r["ranked_wins"], r["ranked_losses"], r["ranked_draws"],
+                r["friendly_wins"], r["friendly_losses"], r["friendly_draws"],
+            )
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
+async def get_top_players(limit: int = 10) -> list:
+    return await asyncio.to_thread(_get_top_players_sync, limit)
+
+
+def _adjust_elo_sync(user_id: int, delta: int) -> int:
+    conn = _get_conn()
+    try:
+        row = conn.execute("SELECT elo FROM players WHERE user_id = ?", (user_id,)).fetchone()
+        current = row["elo"] if row else 1000
+        new_elo = max(0, current + delta)
+        conn.execute("UPDATE players SET elo = ? WHERE user_id = ?", (new_elo, user_id))
+        conn.commit()
+        return new_elo
+    finally:
+        conn.close()
+
+
+async def adjust_elo(user_id: int, delta: int) -> int:
+    """Directly nudges a player's ELO without touching win/loss/draw counters. Used by /addelo."""
+    return await asyncio.to_thread(_adjust_elo_sync, user_id, delta)
+
+
 # =====================================================================================
 # ELO MATH
 #
@@ -323,6 +364,219 @@ def get_rank(elo: int):
 def _rank_display(elo: int) -> str:
     name, emoji = get_rank(elo)
     return f"{emoji} **{name}**" if emoji else f"**{name}**"
+
+
+TIER_BOUNDS = [
+    (float('-inf'), 999, "Below Bronze"),
+    (1000, 1099, "Bronze"),
+    (1100, 1199, "Silver"),
+    (1200, 1299, "Gold"),
+    (1300, 1399, "Platinum"),
+    (1400, 1499, "Diamond"),
+    (1500, 1599, "Elite"),
+    (1600, 1699, "Master"),
+    (1700, float('inf'), "Blazing"),
+]
+
+
+def get_rank_progress(elo: int):
+    """Returns (percent_through_tier, progress_label, rank_name) for the ELO card's bar."""
+    for i, (lo, hi, name) in enumerate(TIER_BOUNDS):
+        if lo <= elo <= hi:
+            if name == "Blazing":
+                return 100, "MAX RANK", name
+            if name == "Below Bronze":
+                pct = max(0, min(100, round((elo / 1000) * 100)))
+                return pct, f"{1000 - elo} ELO to Bronze", name
+            span = hi - lo + 1
+            pct = max(0, min(100, round(((elo - lo) / span) * 100)))
+            next_name = TIER_BOUNDS[i + 1][2]
+            return pct, f"{hi + 1 - elo} ELO to {next_name}", name
+    return 0, "", "Below Bronze"
+
+
+# =====================================================================================
+# VISUAL CARDS (easy-pil) — /elo and /leaderboard render PNG cards instead of plain text.
+# Everything here runs fully in-memory: no files are read from or written to disk.
+# =====================================================================================
+
+def _placeholder_avatar(accent) -> Image.Image:
+    """Fallback used when an avatar can't be downloaded."""
+    return Image.new("RGBA", (256, 256), (*accent, 255))
+
+
+def get_role_accent_color(member: discord.Member):
+    """Top role color, falling back to Discord Blurple when the role has no color set."""
+    if isinstance(member, discord.Member):
+        role_color = member.top_role.color
+        if role_color.value != 0:
+            return (role_color.r, role_color.g, role_color.b)
+    return (88, 101, 242)
+
+
+def draw_rank_badge(size: int, rank_name: str) -> Editor:
+    """Draws a small procedural icon for a rank tier — no external image assets needed."""
+    ed = Editor(Canvas((size, size), color=(0, 0, 0, 0)))
+    cx = cy = size / 2
+    r = size * 0.42
+
+    if rank_name == "Below Bronze":
+        ed.regular_polygon((cx, cy), sides=3, radius=r, rotation=180, fill="#5b5f66", outline="#3d4046", stroke_width=3)
+    elif rank_name == "Bronze":
+        ed.donut((cx, cy), inner_radius=r * 0.55, outer_radius=r, fill="#cd7f32", outline="#8a531f", stroke_width=3)
+    elif rank_name == "Silver":
+        ed.donut((cx, cy), inner_radius=r * 0.55, outer_radius=r, fill="#c7cdd6", outline="#8a919c", stroke_width=3)
+    elif rank_name == "Gold":
+        ed.donut((cx, cy), inner_radius=r * 0.55, outer_radius=r, fill="#ffd447", outline="#c9962a", stroke_width=3)
+    elif rank_name == "Platinum":
+        ed.squircle((cx - r, cy - r), width=r * 2, height=r * 2, radius_ratio=0.35, fill="#7fe3d8", outline="#3fa89c", stroke_width=3)
+    elif rank_name == "Diamond":
+        ed.regular_polygon((cx, cy), sides=4, radius=r, rotation=0, fill="#63b8ff", outline="#2f7fce", stroke_width=3)
+    elif rank_name == "Elite":
+        ed.star((cx, cy), points=5, outer_radius=r, inner_radius=r * 0.45, fill="#c084fc", outline="#8b3fe0", stroke_width=3)
+    elif rank_name == "Master":
+        ed.star((cx, cy), points=6, outer_radius=r, inner_radius=r * 0.55, fill="#ffd700", outline="#a9781a", stroke_width=3)
+    elif rank_name == "Blazing":
+        flame_points = [
+            (cx, cy - r), (cx + r * 0.55, cy - r * 0.1), (cx + r * 0.35, cy - r * 0.05),
+            (cx + r * 0.65, cy + r * 0.5), (cx, cy + r), (cx - r * 0.65, cy + r * 0.5),
+            (cx - r * 0.35, cy - r * 0.05), (cx - r * 0.55, cy - r * 0.1),
+        ]
+        ed.polygon(flame_points, fill=LinearGradient(["#ff7b00", "#ff2e2e"], direction="vertical"), outline="#7a1500")
+    return ed
+
+
+def _overlay_rounded_rect(base: Editor, position, width, height, radius, rgba_color):
+    """Draws a translucent rounded rect that properly blends against what's already on the
+    card. (Drawing translucent shapes directly on top of existing content doesn't blend in
+    Pillow — it overwrites — so this renders on its own transparent layer and pastes it,
+    which does composite correctly.)"""
+    layer = Editor(Canvas((int(width), int(height)), color=(0, 0, 0, 0)))
+    layer.rectangle((0, 0), width=width, height=height, fill=rgba_color, radius=radius)
+    base.paste(layer, position)
+
+
+def build_elo_card(username: str, row: "PlayerRow", accent, avatar_img: Image.Image) -> Editor:
+    pct, progress_label, rank_name = get_rank_progress(row.elo)
+
+    W, H = 1000, 400
+    base = Editor(Canvas((W, H), color=(16, 17, 20, 255)))
+    base.rectangle((10, 10), width=W - 20, height=H - 20, fill=(26, 27, 31, 255), outline=accent, stroke_width=4, radius=28)
+
+    glow = Editor(Canvas((340, 340), color=(0, 0, 0, 0)))
+    glow.ellipse((0, 0), 340, 340, fill=(*accent, 110))
+    glow = glow.blur(45)
+    base.paste(glow, (-40, -40))
+
+    glow2 = Editor(Canvas((300, 300), color=(0, 0, 0, 0)))
+    glow2.ellipse((0, 0), 300, 300, fill=(*accent, 70))
+    glow2 = glow2.blur(45)
+    base.paste(glow2, (W - 230, H - 230))
+
+    base.rectangle((10, 10), width=W - 20, height=H - 20, fill=None, outline=accent, stroke_width=4, radius=28)
+
+    avatar = Editor(avatar_img).resize((176, 176)).circle_image()
+    base.paste(avatar, (48, 60))
+    base.ellipse((48, 60), 176, 176, outline=accent, stroke_width=6)
+    base.ellipse((48, 60), 176, 176, outline=(255, 255, 255, 60), stroke_width=1)
+
+    kicker_font = Font.poppins(variant="bold", size=18)
+    name_font = Font.poppins(variant="bold", size=42)
+    label_font = Font.poppins(variant="regular", size=20)
+    big_font = Font.poppins(variant="bold", size=62)
+    small_font = Font.poppins(variant="regular", size=18)
+    chip_label_font = Font.poppins(variant="bold", size=15)
+    chip_val_font = Font.poppins(variant="regular", size=20)
+
+    base.text((250, 55), "BLAZING LOCK ELO", font=kicker_font, color=accent)
+    base.text((248, 82), username, font=name_font, color="white")
+
+    badge = draw_rank_badge(110, rank_name)
+    base.paste(badge, (W - 170, 40))
+    base.text((W - 115, 155), rank_name, font=label_font, color="white", align="center", anchor="ma")
+
+    base.text((250, 165), "ELO", font=kicker_font, color=(200, 200, 205))
+    base.text((248, 185), str(row.elo), font=big_font, color="white")
+
+    bar_y = 272
+    base.rounded_bar((250, bar_y), width=560, height=22, percentage=pct, fill=(42, 44, 50), color=accent, radius=11)
+    base.text((250, bar_y + 32), progress_label, font=small_font, color=(190, 190, 195))
+
+    chip_y = 335
+    _overlay_rounded_rect(base, (48, chip_y), 430, 50, 18, (255, 255, 255, 24))
+    base.ellipse((70, chip_y + 20), 10, 10, fill=accent)
+    base.text((90, chip_y + 11), "RANKED", font=chip_label_font, color=accent)
+    base.text((90, chip_y + 29), f"{row.ranked_wins}W  ·  {row.ranked_losses}L  ·  {row.ranked_draws}D", font=chip_val_font, color="white")
+
+    _overlay_rounded_rect(base, (500, chip_y), 430, 50, 18, (255, 255, 255, 24))
+    base.ellipse((522, chip_y + 20), 10, 10, fill=(88, 101, 242))
+    base.text((542, chip_y + 11), "FRIENDLY", font=chip_label_font, color=(130, 148, 255))
+    base.text((542, chip_y + 29), f"{row.friendly_wins}W  ·  {row.friendly_losses}L  ·  {row.friendly_draws}D", font=chip_val_font, color="white")
+
+    return base
+
+
+async def build_elo_card_file(username: str, row: "PlayerRow", accent, avatar_img: Image.Image) -> discord.File:
+    editor = await asyncio.to_thread(build_elo_card, username, row, accent, avatar_img)
+    return discord.File(fp=editor.image_bytes, filename="blazing_lock_elo.png")
+
+
+LEADERBOARD_MEDAL_COLORS = {1: (255, 215, 0), 2: (200, 205, 212), 3: (205, 127, 50)}
+LEADERBOARD_ACCENT = (230, 57, 70)
+
+
+def build_leaderboard_card(entries: list) -> Editor:
+    """entries: list of dicts with rank, username, elo, rank_name, record (w,l,d), avatar_img."""
+    row_h = 66
+    header_h = 90
+    W = 1000
+    H = header_h + row_h * len(entries) + 30
+
+    base = Editor(Canvas((W, H), color=(16, 17, 20, 255)))
+    base.rectangle((10, 10), width=W - 20, height=H - 20, fill=(26, 27, 31, 255), outline=LEADERBOARD_ACCENT, stroke_width=4, radius=28)
+
+    glow = Editor(Canvas((420, 260), color=(0, 0, 0, 0)))
+    glow.ellipse((0, 0), 420, 260, fill=(*LEADERBOARD_ACCENT, 90))
+    glow = glow.blur(50)
+    base.paste(glow, (W // 2 - 210, -120))
+    base.rectangle((10, 10), width=W - 20, height=H - 20, fill=None, outline=LEADERBOARD_ACCENT, stroke_width=4, radius=28)
+
+    title_font = Font.poppins(variant="bold", size=32)
+    sub_font = Font.poppins(variant="regular", size=16)
+    base.text((W / 2, 28), "BLAZING LOCK — LEADERBOARD", font=title_font, color="white", align="center", anchor="ma")
+    base.text((W / 2, 66), "Top Ranked Players", font=sub_font, color=LEADERBOARD_ACCENT, align="center", anchor="ma")
+
+    rank_font = Font.poppins(variant="bold", size=26)
+    name_font = Font.poppins(variant="bold", size=22)
+    elo_font = Font.poppins(variant="bold", size=24)
+    tier_font = Font.poppins(variant="regular", size=15)
+    record_font = Font.poppins(variant="regular", size=15)
+
+    y = header_h
+    for e in entries:
+        rank = e["rank"]
+        _overlay_rounded_rect(base, (30, y + 4), W - 60, row_h - 12, 16, (255, 255, 255, 20))
+
+        medal = LEADERBOARD_MEDAL_COLORS.get(rank)
+        rank_color = medal if medal else (190, 190, 195)
+        base.text((60, y + row_h / 2 - 16), f"#{rank}", font=rank_font, color=rank_color)
+
+        avatar_img = e.get("avatar_img") or _placeholder_avatar((90, 90, 100))
+        avatar = Editor(avatar_img).resize((48, 48)).circle_image()
+        avatar_y = int(y + (row_h - 48) / 2)
+        base.paste(avatar, (135, avatar_y))
+        base.ellipse((135, avatar_y), 48, 48, outline=(medal if medal else (255, 255, 255, 40)), stroke_width=3 if medal else 1)
+
+        base.text((200, y + 12), e["username"], font=name_font, color="white")
+        w, l, d = e["record"]
+        base.text((200, y + 38), f"{e['rank_name']}   ·   {w}W {l}L {d}D", font=record_font, color=(180, 180, 185))
+
+        base.text((W - 60, y + row_h / 2 - 15), str(e["elo"]), font=elo_font, color=LEADERBOARD_ACCENT, align="right", anchor="ra")
+        base.text((W - 60, y + row_h / 2 + 10), "ELO", font=tier_font, color=(150, 150, 155), align="right", anchor="ra")
+
+        y += row_h
+
+    return base
 
 
 # =====================================================================================
@@ -924,6 +1178,10 @@ class MatchmakingView(discord.ui.View):
     async def join_friendly(self, interaction: discord.Interaction, button: discord.ui.Button):
         await handle_queue_join(interaction, "friendly")
 
+    @discord.ui.button(label="Leave Queue", style=discord.ButtonStyle.gray, emoji="🚪", custom_id="blz_queue_leave")
+    async def leave_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await handle_leave_queue(interaction)
+
 
 async def create_duel_channel(guild: discord.Guild, user1: discord.Member, user2: discord.Member, mode: str):
     category = guild.get_channel(DUEL_CATEGORY_ID)
@@ -990,6 +1248,26 @@ async def create_duel_channel(guild: discord.Guild, user1: discord.Member, user2
 
     logger.info(f">>> [DUEL] Channel created: #{channel.name} ({mode}, {user1.name} vs {user2.name})")
     return channel
+
+
+async def handle_leave_queue(interaction: discord.Interaction):
+    user = interaction.user
+    removed_from = []
+
+    for mode in ("ranked", "friendly"):
+        async with QUEUE_LOCKS[mode]:
+            if user.id in QUEUES[mode]:
+                QUEUES[mode].remove(user.id)
+                removed_from.append(mode)
+
+    if not removed_from:
+        await interaction.response.send_message("You're not currently in a queue.", ephemeral=True)
+        return
+
+    await interaction.response.send_message(
+        f"🚪 You left the {' and '.join(removed_from)} queue.", ephemeral=True
+    )
+    await update_queue_panel()
 
 
 async def handle_queue_join(interaction: discord.Interaction, mode: str):
@@ -1096,20 +1374,115 @@ async def elo_command(interaction: discord.Interaction, player: discord.Member =
         )
         return
 
+    # Card generation + avatar download takes a moment, so acknowledge immediately.
+    await interaction.response.defer()
+
     target = player or interaction.user
     row = await get_or_create_player(target)
-    rank_name, rank_emoji = get_rank(row.elo)
+    accent = get_role_accent_color(target)
+
+    try:
+        avatar_url = str(target.display_avatar.replace(size=256, format="png"))
+        avatar_img = await load_image_async(avatar_url)
+    except Exception as e:
+        logger.error(f"!!! [ELO CARD] Avatar download failed for {target.id}: {e}")
+        avatar_img = _placeholder_avatar(accent)
+
+    try:
+        file = await build_elo_card_file(target.display_name, row, accent, avatar_img)
+    except Exception as e:
+        logger.error(f"!!! [ELO CARD] Render failed for {target.id}: {e}")
+        await interaction.followup.send("Couldn't generate the ELO card right now. Try again in a moment.")
+        return
+
+    await interaction.followup.send(file=file)
+
+
+@client.tree.command(name="addelo", description="Manually adjust a player's ELO (staff only)")
+@app_commands.describe(
+    player="The player to adjust",
+    amount="ELO to add — use a negative number to subtract",
+    reason="Optional reason, included in the log"
+)
+async def addelo_command(interaction: discord.Interaction, player: discord.Member, amount: int, reason: str = None):
+    member_roles = getattr(interaction.user, "roles", [])
+    if not any(r.id == ADDELO_ROLE_ID for r in member_roles):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    await get_or_create_player(player)  # make sure a row (with username) exists first
+    new_elo = await adjust_elo(player.id, amount)
+    rank_name, rank_emoji = get_rank(new_elo)
     rank_display = f"{rank_emoji} {rank_name}".strip()
 
-    embed = discord.Embed(title=f"📊 {target.display_name}'s Blazing Lock ELO", color=0xE63946)
-    embed.add_field(name="ELO", value=str(row.elo), inline=True)
-    embed.add_field(name="Rank", value=rank_display, inline=True)
-    embed.add_field(name="Ranked Record", value=f"{row.ranked_wins}W / {row.ranked_losses}L / {row.ranked_draws}D", inline=False)
-    embed.add_field(name="Friendly Record", value=f"{row.friendly_wins}W / {row.friendly_losses}L / {row.friendly_draws}D", inline=False)
-    if isinstance(target, discord.Member) and target.display_avatar:
-        embed.set_thumbnail(url=target.display_avatar.url)
+    embed = discord.Embed(
+        title="🛠️ ELO Adjusted",
+        description=f"{interaction.user.mention} adjusted {player.mention}'s ELO.",
+        color=0xE63946
+    )
+    embed.add_field(name="Change", value=f"{'+' if amount >= 0 else ''}{amount}", inline=True)
+    embed.add_field(name="New ELO", value=f"{new_elo} ({rank_display})", inline=True)
+    if reason:
+        embed.add_field(name="Reason", value=reason, inline=False)
 
     await interaction.response.send_message(embed=embed)
+
+    log_line = (
+        f"🛠️ **Manual ELO adjustment** — {player.mention}: "
+        f"{'+' if amount >= 0 else ''}{amount} ELO (now {new_elo}) by {interaction.user.mention}."
+    )
+    if reason:
+        log_line += f" Reason: {reason}"
+    try:
+        await post_result(interaction.guild, log_line)
+    except Exception as e:
+        logger.error(f"!!! [ADDELO LOG ERROR]: {e}")
+
+
+@client.tree.command(name="leaderboard", description="Show the top 10 Blazing Lock ranked players")
+async def leaderboard_command(interaction: discord.Interaction):
+    await interaction.response.defer()
+
+    top_players = await get_top_players(10)
+    if not top_players:
+        await interaction.followup.send("No ranked duels have been recorded yet — be the first!")
+        return
+
+    guild = interaction.guild
+    entries = []
+    for i, row in enumerate(top_players, start=1):
+        member = guild.get_member(row.user_id) if guild else None
+        display_name = member.display_name if member else row.username
+
+        try:
+            if member is not None:
+                avatar_url = str(member.display_avatar.replace(size=128, format="png"))
+                avatar_img = await load_image_async(avatar_url)
+            else:
+                avatar_img = _placeholder_avatar((90, 90, 100))
+        except Exception as e:
+            logger.error(f"!!! [LEADERBOARD] Avatar download failed for {row.user_id}: {e}")
+            avatar_img = _placeholder_avatar((90, 90, 100))
+
+        rank_name, _ = get_rank(row.elo)
+        entries.append({
+            "rank": i,
+            "username": display_name,
+            "elo": row.elo,
+            "rank_name": rank_name,
+            "record": (row.ranked_wins, row.ranked_losses, row.ranked_draws),
+            "avatar_img": avatar_img,
+        })
+
+    try:
+        editor = await asyncio.to_thread(build_leaderboard_card, entries)
+        file = discord.File(fp=editor.image_bytes, filename="blazing_lock_leaderboard.png")
+    except Exception as e:
+        logger.error(f"!!! [LEADERBOARD] Render failed: {e}")
+        await interaction.followup.send("Couldn't generate the leaderboard right now. Try again in a moment.")
+        return
+
+    await interaction.followup.send(file=file)
 
 
 # =====================================================================================
