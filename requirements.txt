@@ -4,3 +4,4 @@ python-dotenv
 gunicorn
 easy-pil
 pymongo
+dnspython
