@@ -3,5 +3,5 @@ flask
 python-dotenv
 gunicorn
 easy-pil
-pymongo
-dnspython
+Pillow
+pymongo[srv]
