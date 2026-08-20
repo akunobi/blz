@@ -455,6 +455,44 @@ def get_striker_rank(overall: float):
     return None, None
 
 
+# =====================================================================================
+# GK RANKING SYSTEM (Tryouts) — mirrors the "GK Rank System" posted in #「✨」ranking.
+# Separate scale/tiers from the striker system above; D Tier has no lower bound.
+# =====================================================================================
+
+GK_RANKS = [
+    # (min_overall, max_overall, tier_name, role_id)
+    (9.5, 10.0, "S+ Tier", 1538589345345314854),
+    (9.0, 9.4, "S Tier", 1538589345345314848),
+    (8.5, 8.9, "A Tier", 1538589345181859983),
+    (8.0, 8.4, "B Tier", 1538589345114497073),
+    (7.0, 7.9, "C Tier", 1538589345114497065),
+    (float("-inf"), 6.9, "D Tier", 1538589345039257704),
+]
+
+GK_RANK_ROLE_IDS = {role_id for _, _, _, role_id in GK_RANKS}
+
+
+def get_gk_rank(overall: float):
+    """Returns (tier_name, role_id) for the GK tier whose range contains `overall`.
+    D Tier catches everything at or below 6.9, so this always returns a match."""
+    for lo, hi, tier_name, role_id in GK_RANKS:
+        if lo <= overall <= hi:
+            return tier_name, role_id
+    return None, None
+
+
+def get_position_rank(position_key: str, overall: float):
+    """Routes to the right rank table (GK vs. everyone else) for a tryout position."""
+    if position_key == "gk":
+        return get_gk_rank(overall)
+    return get_striker_rank(overall)
+
+
+def get_position_rank_role_ids(position_key: str):
+    return GK_RANK_ROLE_IDS if position_key == "gk" else STRIKER_RANK_ROLE_IDS
+
+
 # Stat labels per position, matching the tryout result template. Order matters — it's the
 # order the fields appear in both the modal and the posted result.
 POSITION_STATS = {
@@ -1516,7 +1554,8 @@ class TryoutResultModal(discord.ui.Modal):
             ratings.append((stat_name, value))
 
         overall = round(sum(v for _, v in ratings) / len(ratings), 1)
-        tier_name, role_id = get_striker_rank(overall)
+        tier_name, role_id = get_position_rank(self.position_key, overall)
+        rank_role_pool = get_position_rank_role_ids(self.position_key)
 
         role_note = ""
         new_role = None
@@ -1526,7 +1565,7 @@ class TryoutResultModal(discord.ui.Modal):
                 if new_role is None:
                     role_note = "\n⚠️ Rank role not found on this server — couldn't assign it."
                 else:
-                    roles_to_remove = [r for r in self.player.roles if r.id in STRIKER_RANK_ROLE_IDS and r.id != role_id]
+                    roles_to_remove = [r for r in self.player.roles if r.id in rank_role_pool and r.id != role_id]
                     if roles_to_remove:
                         await self.player.remove_roles(*roles_to_remove, reason="Tryout result — rank updated")
                     if new_role not in self.player.roles:
@@ -1539,11 +1578,11 @@ class TryoutResultModal(discord.ui.Modal):
 
         # Show the rank as plain text (the exact role name, e.g. "Elite -⭐⭐") instead of a
         # role mention, so posting the result doesn't ping everyone with that rank.
-        if role_id:
+        if tier_name is None:
+            rank_display = "*Unranked (below 4.6 — no tier yet)*"
+        else:
             rank_name_display = new_role.name if new_role is not None else tier_name
             rank_display = f"**{rank_name_display}**"
-        else:
-            rank_display = "*Unranked (below 4.6 — no tier yet)*"
 
         text = build_tryout_result_text(
             player=self.player, host=self.host, position_label=self.position_label,
