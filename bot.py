@@ -40,6 +40,7 @@ QUEUE_CHANNEL_ID = 1539158063116984361  # Channel where the permanent matchmakin
 DUEL_CATEGORY_ID = 1539157638925918238  # Category where private duel channels are created
 RESULTS_CHANNEL_ID = 1538589354790887452  # Channel where ranked/friendly results are posted
 TRYOUT_RESULTS_CHANNEL_ID = 1538589355176890403  # Channel where /tdone tryout results are posted
+TRYOUT_HOST_STATS_CHANNEL_ID = 1538867672937275475  # Channel where per-host tryout tallies are posted
 ELO_COMMAND_CHANNEL_ID = 1538589353800900626  # Only channel where /elo can be used
 ADDELO_ROLE_ID = 1538589345991360527    # Only members with this role can use /addelo
 TDONE_ALLOWED_ROLE_IDS = {               # Only members with one of these roles can use /tdone
@@ -111,6 +112,7 @@ except Exception:
 
 players_col = db["players"]
 duel_history_col = db["duel_history"]
+tryout_host_stats_col = db["tryout_host_stats"]  # Per-host tryout tallies (today + all-time)
 
 # Helpful indexes (no-ops if they already exist)
 players_col.create_index([("elo", DESCENDING)])
@@ -196,6 +198,28 @@ def _get_ranked_record_sync(user_id: int):
 
 async def get_ranked_record(user_id: int):
     return await asyncio.to_thread(_get_ranked_record_sync, user_id)
+
+
+def _record_tryout_host_sync(host_id: int):
+    """Increments a host's tryout tally and returns (today_count, total_count).
+    'Today' resets based on the UTC calendar date."""
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    doc = tryout_host_stats_col.find_one({"_id": host_id})
+    if doc is None or doc.get("daily_date") != today_str:
+        new_daily = 1
+    else:
+        new_daily = doc.get("daily_count", 0) + 1
+    new_total = (doc.get("total", 0) if doc else 0) + 1
+    tryout_host_stats_col.update_one(
+        {"_id": host_id},
+        {"$set": {"total": new_total, "daily_count": new_daily, "daily_date": today_str}},
+        upsert=True,
+    )
+    return new_daily, new_total
+
+
+async def record_tryout_host(host_id: int):
+    return await asyncio.to_thread(_record_tryout_host_sync, host_id)
 
 
 def _count_recent_ranked_duels_sync(id_a: int, id_b: int, hours: int) -> int:
@@ -460,6 +484,16 @@ def build_tryout_result_text(player: discord.Member, host: discord.abc.User, pos
         "",
         "**Feedback:**",
         feedback,
+    ]
+    return "\n".join(lines)
+
+
+def build_tryout_host_stats_text(host: discord.abc.User, today_count: int, total_count: int) -> str:
+    lines = [
+        f"**Tryout host:** {host.mention}",
+        "",
+        f"Tryouts completed today: {today_count}",
+        f"Tryouts completed total: {total_count}",
     ]
     return "\n".join(lines)
 
@@ -833,7 +867,11 @@ async def post_result(guild: discord.Guild, text: str, channel_id: int = RESULTS
             logger.error(f"!!! [RESULTS CHANNEL] {channel_id} not found: {e}")
             return
     try:
-        await channel.send(content=text)
+        # roles=False keeps rank names from ever pinging the role, even if a mention slips into `text`.
+        await channel.send(
+            content=text,
+            allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True),
+        )
     except Exception as e:
         logger.error(f"!!! [RESULTS POST ERROR]: {e}")
 
@@ -1479,9 +1517,9 @@ class TryoutResultModal(discord.ui.Modal):
 
         overall = round(sum(v for _, v in ratings) / len(ratings), 1)
         tier_name, role_id = get_striker_rank(overall)
-        rank_display = f"**{tier_name}** — <@&{role_id}>" if role_id else "*Unranked (below 4.6 — no tier yet)*"
 
         role_note = ""
+        new_role = None
         if role_id and isinstance(self.player, discord.Member) and interaction.guild:
             try:
                 new_role = interaction.guild.get_role(role_id)
@@ -1499,6 +1537,14 @@ class TryoutResultModal(discord.ui.Modal):
                 logger.error(f"!!! [TDONE ROLE ASSIGN ERROR]: {e}")
                 role_note = "\n⚠️ Couldn't assign the rank role due to an error."
 
+        # Show the rank as plain text (the exact role name, e.g. "Elite -⭐⭐") instead of a
+        # role mention, so posting the result doesn't ping everyone with that rank.
+        if role_id:
+            rank_name_display = new_role.name if new_role is not None else tier_name
+            rank_display = f"**{rank_name_display}**"
+        else:
+            rank_display = "*Unranked (below 4.6 — no tier yet)*"
+
         text = build_tryout_result_text(
             player=self.player, host=self.host, position_label=self.position_label,
             ratings=ratings, overall=overall, rank_display=rank_display,
@@ -1508,6 +1554,11 @@ class TryoutResultModal(discord.ui.Modal):
         try:
             await interaction.response.defer(ephemeral=True)
             await post_result(interaction.guild, text, channel_id=TRYOUT_RESULTS_CHANNEL_ID)
+
+            today_count, total_count = await record_tryout_host(self.host.id)
+            host_stats_text = build_tryout_host_stats_text(self.host, today_count, total_count)
+            await post_result(interaction.guild, host_stats_text, channel_id=TRYOUT_HOST_STATS_CHANNEL_ID)
+
             confirmation = f"✅ Tryout result posted in <#{TRYOUT_RESULTS_CHANNEL_ID}>."
             if role_note:
                 confirmation += role_note
