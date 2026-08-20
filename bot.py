@@ -39,6 +39,7 @@ GUILD_ID = 1538589344368164905          # Server
 QUEUE_CHANNEL_ID = 1539158063116984361  # Channel where the permanent matchmaking embed lives
 DUEL_CATEGORY_ID = 1539157638925918238  # Category where private duel channels are created
 RESULTS_CHANNEL_ID = 1538589354790887452  # Channel where ranked/friendly results are posted
+TRYOUT_RESULTS_CHANNEL_ID = 1538589355176890403  # Channel where /tdone tryout results are posted
 ELO_COMMAND_CHANNEL_ID = 1538589353800900626  # Only channel where /elo can be used
 ADDELO_ROLE_ID = 1538589345991360527    # Only members with this role can use /addelo
 TDONE_ALLOWED_ROLE_IDS = {               # Only members with one of these roles can use /tdone
@@ -823,13 +824,13 @@ def build_friendly_draw_result_text(p1, p2, rounds, score, summary):
     return "\n".join(lines)
 
 
-async def post_result(guild: discord.Guild, text: str):
-    channel = guild.get_channel(RESULTS_CHANNEL_ID)
+async def post_result(guild: discord.Guild, text: str, channel_id: int = RESULTS_CHANNEL_ID):
+    channel = guild.get_channel(channel_id)
     if channel is None:
         try:
-            channel = await guild.fetch_channel(RESULTS_CHANNEL_ID)
+            channel = await guild.fetch_channel(channel_id)
         except Exception as e:
-            logger.error(f"!!! [RESULTS CHANNEL] {RESULTS_CHANNEL_ID} not found: {e}")
+            logger.error(f"!!! [RESULTS CHANNEL] {channel_id} not found: {e}")
             return
     try:
         await channel.send(content=text)
@@ -1505,13 +1506,18 @@ class TryoutResultModal(discord.ui.Modal):
         )
 
         try:
-            await interaction.response.send_message(content=text)
+            await interaction.response.defer(ephemeral=True)
+            await post_result(interaction.guild, text, channel_id=TRYOUT_RESULTS_CHANNEL_ID)
+            confirmation = f"✅ Tryout result posted in <#{TRYOUT_RESULTS_CHANNEL_ID}>."
             if role_note:
-                await interaction.followup.send(role_note.strip(), ephemeral=True)
+                confirmation += role_note
+            await interaction.followup.send(confirmation, ephemeral=True)
         except Exception as e:
             logger.error(f"!!! [TDONE POST ERROR]: {e}")
             if not interaction.response.is_done():
                 await interaction.response.send_message(f"❌ Couldn't post the result: {e}", ephemeral=True)
+            else:
+                await interaction.followup.send(f"❌ Couldn't post the result: {e}", ephemeral=True)
 
 
 @client.tree.command(name="tdone", description="Post a tryout result and calculate the player's overall + rank")
