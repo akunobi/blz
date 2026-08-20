@@ -262,6 +262,49 @@ async def adjust_elo(user_id: int, delta: int) -> int:
     return await asyncio.to_thread(_adjust_elo_sync, user_id, delta)
 
 
+# --- BANNER CUSTOMIZATION (/cbanner) ---
+# A player's chosen accent color overrides their role color on their /elo card.
+# Stored as a "custom_accent" field on their existing player doc (no new collection needed).
+
+def _get_custom_accent_sync(user_id: int):
+    doc = players_col.find_one({"_id": user_id}, {"custom_accent": 1})
+    if doc and doc.get("custom_accent"):
+        r, g, b = doc["custom_accent"]
+        return (r, g, b)
+    return None
+
+
+async def get_custom_accent(user_id: int):
+    return await asyncio.to_thread(_get_custom_accent_sync, user_id)
+
+
+def _set_custom_accent_sync(user_id: int, username: str, rgb: tuple):
+    players_col.update_one(
+        {"_id": user_id},
+        {
+            "$set": {"custom_accent": list(rgb)},
+            "$setOnInsert": {
+                "username": username, "elo": 1000,
+                "ranked_wins": 0, "ranked_losses": 0, "ranked_draws": 0,
+                "friendly_wins": 0, "friendly_losses": 0, "friendly_draws": 0,
+            },
+        },
+        upsert=True,
+    )
+
+
+async def set_custom_accent(user_id: int, username: str, rgb: tuple):
+    await asyncio.to_thread(_set_custom_accent_sync, user_id, username, rgb)
+
+
+def _clear_custom_accent_sync(user_id: int):
+    players_col.update_one({"_id": user_id}, {"$unset": {"custom_accent": ""}})
+
+
+async def clear_custom_accent(user_id: int):
+    await asyncio.to_thread(_clear_custom_accent_sync, user_id)
+
+
 # =====================================================================================
 # ELO MATH
 #
@@ -401,6 +444,14 @@ def get_role_accent_color(member: discord.Member):
         if role_color.value != 0:
             return (role_color.r, role_color.g, role_color.b)
     return (88, 101, 242)
+
+
+async def get_accent_color(member: discord.Member):
+    """A player's /cbanner color takes priority over their role color, if they've set one."""
+    custom = await get_custom_accent(member.id)
+    if custom:
+        return custom
+    return get_role_accent_color(member)
 
 
 def draw_rank_badge(size: int, rank_name: str) -> Editor:
@@ -1351,6 +1402,157 @@ async def ensure_matchmaking_panel():
 
 
 # =====================================================================================
+# /cbanner COMMAND — lets a player pick the accent color used on their /elo card
+# =====================================================================================
+
+BANNER_PRESETS = [
+    ("Blazing Red", "🔴", (230, 57, 70)),
+    ("Inferno Orange", "🟠", (255, 123, 0)),
+    ("Solar Gold", "🟡", (255, 196, 0)),
+    ("Toxic Green", "🟢", (57, 230, 120)),
+    ("Cyber Cyan", "🔵", (0, 200, 220)),
+    ("Royal Blue", "🔷", (59, 108, 255)),
+    ("Amethyst Purple", "🟣", (168, 85, 247)),
+    ("Hot Pink", "🌸", (255, 92, 168)),
+    ("Discord Blurple", "🔘", (88, 101, 242)),
+    ("Ghost White", "⚪", (230, 230, 235)),
+]
+
+HEX_COLOR_RE = re.compile(r"^#?([0-9A-Fa-f]{6})$")
+
+
+class CustomColorModal(discord.ui.Modal, title="Custom Banner Color"):
+    hex_input = discord.ui.TextInput(
+        label="Hex color code",
+        placeholder="e.g. FF5733 or #FF5733",
+        min_length=3,
+        max_length=7,
+    )
+
+    def __init__(self, parent_view: "BannerCustomizeView"):
+        super().__init__()
+        self.parent_view = parent_view
+
+    async def on_submit(self, interaction: discord.Interaction):
+        match = HEX_COLOR_RE.match(self.hex_input.value.strip())
+        if not match:
+            await interaction.response.send_message(
+                "❌ That's not a valid hex color. Use a 6-digit code like `FF5733` or `#FF5733`.",
+                ephemeral=True
+            )
+            return
+
+        hex_code = match.group(1)
+        rgb = tuple(int(hex_code[i:i + 2], 16) for i in (0, 2, 4))
+        await self.parent_view.apply_color(interaction, rgb, f"Custom `#{hex_code.upper()}`")
+
+
+class BannerColorSelect(discord.ui.Select):
+    def __init__(self, parent_view: "BannerCustomizeView"):
+        options = [
+            discord.SelectOption(label=name, emoji=emoji, value=str(i))
+            for i, (name, emoji, _rgb) in enumerate(BANNER_PRESETS)
+        ]
+        super().__init__(placeholder="🎨 Choose a preset color...", options=options, min_values=1, max_values=1, row=0)
+        self.parent_view = parent_view
+
+    async def callback(self, interaction: discord.Interaction):
+        name, emoji, rgb = BANNER_PRESETS[int(self.values[0])]
+        await self.parent_view.apply_color(interaction, rgb, f"{emoji} {name}")
+
+
+class BannerCustomizeView(discord.ui.View):
+    def __init__(self, member: discord.Member):
+        super().__init__(timeout=180)
+        self.member = member
+        self.message: discord.Message | None = None
+        self.add_item(BannerColorSelect(self))
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.member.id:
+            await interaction.response.send_message(
+                "This menu isn't for you — run `/cbanner` yourself.", ephemeral=True
+            )
+            return False
+        return True
+
+    async def on_timeout(self):
+        for child in self.children:
+            child.disabled = True
+        if self.message:
+            try:
+                await self.message.edit(view=self)
+            except Exception:
+                pass
+
+    async def _build_preview(self, rgb: tuple) -> discord.File:
+        row = await get_or_create_player(self.member)
+        try:
+            avatar_url = str(self.member.display_avatar.replace(size=256, format="png"))
+            avatar_img = await load_image_async(avatar_url)
+        except Exception:
+            avatar_img = _placeholder_avatar(rgb)
+        return await build_elo_card_file(self.member.display_name, row, rgb, avatar_img)
+
+    async def _finish(self, interaction: discord.Interaction, content: str, rgb: tuple):
+        try:
+            file = await self._build_preview(rgb)
+            content += "\nHere's how your `/elo` card looks now:"
+        except Exception as e:
+            logger.error(f"!!! [CBANNER PREVIEW] Render failed for {self.member.id}: {e}")
+            file = None
+            content += "\n(Preview unavailable right now — check with `/elo`.)"
+
+        for child in self.children:
+            child.disabled = False
+
+        if file:
+            await interaction.edit_original_response(content=content, attachments=[file], view=self)
+        else:
+            await interaction.edit_original_response(content=content, view=self)
+
+    async def apply_color(self, interaction: discord.Interaction, rgb: tuple, label: str):
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(content=f"🎨 Applying **{label}**...", attachments=[], view=self)
+
+        await set_custom_accent(self.member.id, str(self.member), rgb)
+        await self._finish(interaction, f"✅ Banner color set to **{label}**.", rgb)
+
+    @discord.ui.button(label="Custom Hex Color", style=discord.ButtonStyle.secondary, emoji="✏️", row=1)
+    async def custom_color(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(CustomColorModal(self))
+
+    @discord.ui.button(label="Reset to Role Color", style=discord.ButtonStyle.gray, emoji="↩️", row=1)
+    async def reset_color(self, interaction: discord.Interaction, button: discord.ui.Button):
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(content="↩️ Resetting to your role color...", attachments=[], view=self)
+
+        await clear_custom_accent(self.member.id)
+        rgb = get_role_accent_color(self.member)
+        await self._finish(interaction, "✅ Banner reset to your role color.", rgb)
+
+
+@client.tree.command(name="cbanner", description="Customize the accent color on your /elo card")
+async def cbanner_command(interaction: discord.Interaction):
+    if interaction.channel_id != ELO_COMMAND_CHANNEL_ID:
+        await interaction.response.send_message(
+            f"This command can only be used in <#{ELO_COMMAND_CHANNEL_ID}>.", ephemeral=True
+        )
+        return
+
+    view = BannerCustomizeView(interaction.user)
+    await interaction.response.send_message(
+        "🎨 **Customize your ELO card banner**\n"
+        "Pick a preset color below, set your own custom hex code, or reset to your role color.",
+        view=view,
+        ephemeral=True,
+    )
+    view.message = await interaction.original_response()
+
+
+# =====================================================================================
 # /elo COMMAND
 # =====================================================================================
 
@@ -1368,7 +1570,7 @@ async def elo_command(interaction: discord.Interaction, player: discord.Member =
 
     target = player or interaction.user
     row = await get_or_create_player(target)
-    accent = get_role_accent_color(target)
+    accent = await get_accent_color(target)
 
     try:
         avatar_url = str(target.display_avatar.replace(size=256, format="png"))
