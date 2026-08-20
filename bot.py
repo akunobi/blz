@@ -41,6 +41,11 @@ DUEL_CATEGORY_ID = 1539157638925918238  # Category where private duel channels a
 RESULTS_CHANNEL_ID = 1538589354790887452  # Channel where ranked/friendly results are posted
 ELO_COMMAND_CHANNEL_ID = 1538589353800900626  # Only channel where /elo can be used
 ADDELO_ROLE_ID = 1538589345991360527    # Only members with this role can use /addelo
+TDONE_ALLOWED_ROLE_IDS = {               # Only members with one of these roles can use /tdone
+    1538589345458692198,
+    1538589345458692196,
+    1538589345441648669,
+}
 
 # --- ELO / ANTI-FARMING TUNING ---
 FARMING_LOOKBACK_HOURS = 24     # Window used to detect repeated dueling between the same 2 players
@@ -262,49 +267,6 @@ async def adjust_elo(user_id: int, delta: int) -> int:
     return await asyncio.to_thread(_adjust_elo_sync, user_id, delta)
 
 
-# --- BANNER CUSTOMIZATION (/cbanner) ---
-# A player's chosen accent color overrides their role color on their /elo card.
-# Stored as a "custom_accent" field on their existing player doc (no new collection needed).
-
-def _get_custom_accent_sync(user_id: int):
-    doc = players_col.find_one({"_id": user_id}, {"custom_accent": 1})
-    if doc and doc.get("custom_accent"):
-        r, g, b = doc["custom_accent"]
-        return (r, g, b)
-    return None
-
-
-async def get_custom_accent(user_id: int):
-    return await asyncio.to_thread(_get_custom_accent_sync, user_id)
-
-
-def _set_custom_accent_sync(user_id: int, username: str, rgb: tuple):
-    players_col.update_one(
-        {"_id": user_id},
-        {
-            "$set": {"custom_accent": list(rgb)},
-            "$setOnInsert": {
-                "username": username, "elo": 1000,
-                "ranked_wins": 0, "ranked_losses": 0, "ranked_draws": 0,
-                "friendly_wins": 0, "friendly_losses": 0, "friendly_draws": 0,
-            },
-        },
-        upsert=True,
-    )
-
-
-async def set_custom_accent(user_id: int, username: str, rgb: tuple):
-    await asyncio.to_thread(_set_custom_accent_sync, user_id, username, rgb)
-
-
-def _clear_custom_accent_sync(user_id: int):
-    players_col.update_one({"_id": user_id}, {"$unset": {"custom_accent": ""}})
-
-
-async def clear_custom_accent(user_id: int):
-    await asyncio.to_thread(_clear_custom_accent_sync, user_id)
-
-
 # =====================================================================================
 # ELO MATH
 #
@@ -428,6 +390,80 @@ def get_rank_progress(elo: int):
 
 
 # =====================================================================================
+# STRIKER RANKING SYSTEM (Tryouts) — mirrors "Blaze Strikers – Striker Ranking System".
+# Each sub-range maps to its own Discord role. The two top-level roles (Top 5 in the club /
+# Top 1 in the server) aren't tied to a numeric range, so they're granted manually by staff
+# and are intentionally left out of this table.
+# =====================================================================================
+
+STRIKER_RANKS = [
+    # (min_overall, max_overall, tier_name, role_id)
+    (4.6, 4.8, "Rookie Striker", 1538589345039257701),
+    (4.9, 5.1, "Rookie Striker", 1538589345039257702),
+    (5.2, 5.4, "Rookie Striker", 1538589345039257703),
+    (5.5, 5.7, "Amateur Striker", 1538589345039257709),
+    (5.8, 6.0, "Amateur Striker", 1538589345039257710),
+    (6.1, 6.3, "Amateur Striker", 1538589345114497064),
+    (6.4, 6.6, "Elite", 1538589345114497070),
+    (6.7, 6.9, "Elite", 1538589345114497071),
+    (7.0, 7.2, "Elite", 1538589345114497072),
+    (7.3, 7.5, "Prodigy", 1538589345181859980),
+    (7.6, 7.8, "Prodigy", 1538589345181859981),
+    (7.9, 8.1, "Prodigy", 1538589345181859982),
+    (8.2, 8.4, "New Gen XI", 1538589345181859988),
+    (8.5, 8.7, "New Gen XI", 1538589345181859989),
+    (8.8, 9.0, "New Gen XI", 1538589345345314847),
+    (9.1, 9.3, "World Class", 1538589345345314851),
+    (9.4, 9.6, "World Class", 1538589345345314852),
+    (9.7, 10.0, "World Class", 1538589345345314853),
+]
+
+STRIKER_RANK_ROLE_IDS = {role_id for _, _, _, role_id in STRIKER_RANKS}
+
+
+def get_striker_rank(overall: float):
+    """Returns (tier_name, role_id) for the sub-rank whose range contains `overall`,
+    or (None, None) if it falls below 4.6 (there's no tier for that yet)."""
+    for lo, hi, tier_name, role_id in STRIKER_RANKS:
+        if lo <= overall <= hi:
+            return tier_name, role_id
+    return None, None
+
+
+# Stat labels per position, matching the tryout result template. Order matters — it's the
+# order the fields appear in both the modal and the posted result.
+POSITION_STATS = {
+    "cf_wing": {"label": "CF / WING", "stats": ["Shooting", "Dribbling", "Passing", "Positioning"]},
+    "cm": {"label": "CM", "stats": ["Passing", "Vision", "Defending", "Positioning"]},
+    "gk": {"label": "GK", "stats": ["Saves", "Positioning", "1v1", "Distribution"]},
+}
+
+
+def build_tryout_result_text(player: discord.Member, host: discord.abc.User, position_label: str,
+                              ratings: list, overall: float, rank_display: str, feedback: str) -> str:
+    stat_lines = "\n".join(f"{name}: {value}" for name, value in ratings)
+    lines = [
+        "# 📋 TRYOUT RESULT",
+        "",
+        f"**Player:** {player.mention}",
+        f"**Hosted By:** {host.mention}",
+        "",
+        f"### {position_label}",
+        "",
+        f"«{stat_lines}\nOverall: {overall}»",
+        "",
+        "### FINAL RESULT",
+        f"**Position:** {position_label}",
+        f"**Result:** {overall} / 10",
+        f"**Rank:** {rank_display}",
+        "",
+        "**Feedback:**",
+        feedback,
+    ]
+    return "\n".join(lines)
+
+
+# =====================================================================================
 # VISUAL CARDS (easy-pil) — /elo and /leaderboard render PNG cards instead of plain text.
 # Everything here runs fully in-memory: no files are read from or written to disk.
 # =====================================================================================
@@ -444,14 +480,6 @@ def get_role_accent_color(member: discord.Member):
         if role_color.value != 0:
             return (role_color.r, role_color.g, role_color.b)
     return (88, 101, 242)
-
-
-async def get_accent_color(member: discord.Member):
-    """A player's /cbanner color takes priority over their role color, if they've set one."""
-    custom = await get_custom_accent(member.id)
-    if custom:
-        return custom
-    return get_role_accent_color(member)
 
 
 def draw_rank_badge(size: int, rank_name: str) -> Editor:
@@ -1402,154 +1430,105 @@ async def ensure_matchmaking_panel():
 
 
 # =====================================================================================
-# /cbanner COMMAND — lets a player pick the accent color used on their /elo card
+# /tdone COMMAND — post a tryout result, calculate the overall, and assign the rank role
 # =====================================================================================
 
-BANNER_PRESETS = [
-    ("Blazing Red", "🔴", (230, 57, 70)),
-    ("Inferno Orange", "🟠", (255, 123, 0)),
-    ("Solar Gold", "🟡", (255, 196, 0)),
-    ("Toxic Green", "🟢", (57, 230, 120)),
-    ("Cyber Cyan", "🔵", (0, 200, 220)),
-    ("Royal Blue", "🔷", (59, 108, 255)),
-    ("Amethyst Purple", "🟣", (168, 85, 247)),
-    ("Hot Pink", "🌸", (255, 92, 168)),
-    ("Discord Blurple", "🔘", (88, 101, 242)),
-    ("Ghost White", "⚪", (230, 230, 235)),
-]
+class TryoutResultModal(discord.ui.Modal):
+    def __init__(self, player: discord.Member, host: discord.abc.User, position_key: str):
+        config = POSITION_STATS[position_key]
+        super().__init__(title=f"Tryout Result — {config['label']}")
+        self.player = player
+        self.host = host
+        self.position_key = position_key
+        self.position_label = config["label"]
 
-HEX_COLOR_RE = re.compile(r"^#?([0-9A-Fa-f]{6})$")
+        self.stat_inputs = []
+        for stat_name in config["stats"]:
+            text_input = discord.ui.TextInput(
+                label=f"{stat_name} (0-10)", placeholder="e.g. 7.5", max_length=4, required=True,
+            )
+            self.add_item(text_input)
+            self.stat_inputs.append((stat_name, text_input))
 
-
-class CustomColorModal(discord.ui.Modal, title="Custom Banner Color"):
-    hex_input = discord.ui.TextInput(
-        label="Hex color code",
-        placeholder="e.g. FF5733 or #FF5733",
-        min_length=3,
-        max_length=7,
-    )
-
-    def __init__(self, parent_view: "BannerCustomizeView"):
-        super().__init__()
-        self.parent_view = parent_view
+        self.feedback_input = discord.ui.TextInput(
+            label="Feedback", style=discord.TextStyle.paragraph,
+            placeholder="Short feedback for the player", max_length=1000, required=True,
+        )
+        self.add_item(self.feedback_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        match = HEX_COLOR_RE.match(self.hex_input.value.strip())
-        if not match:
-            await interaction.response.send_message(
-                "❌ That's not a valid hex color. Use a 6-digit code like `FF5733` or `#FF5733`.",
-                ephemeral=True
-            )
-            return
-
-        hex_code = match.group(1)
-        rgb = tuple(int(hex_code[i:i + 2], 16) for i in (0, 2, 4))
-        await self.parent_view.apply_color(interaction, rgb, f"Custom `#{hex_code.upper()}`")
-
-
-class BannerColorSelect(discord.ui.Select):
-    def __init__(self, parent_view: "BannerCustomizeView"):
-        options = [
-            discord.SelectOption(label=name, emoji=emoji, value=str(i))
-            for i, (name, emoji, _rgb) in enumerate(BANNER_PRESETS)
-        ]
-        super().__init__(placeholder="🎨 Choose a preset color...", options=options, min_values=1, max_values=1, row=0)
-        self.parent_view = parent_view
-
-    async def callback(self, interaction: discord.Interaction):
-        name, emoji, rgb = BANNER_PRESETS[int(self.values[0])]
-        await self.parent_view.apply_color(interaction, rgb, f"{emoji} {name}")
-
-
-class BannerCustomizeView(discord.ui.View):
-    def __init__(self, member: discord.Member):
-        super().__init__(timeout=180)
-        self.member = member
-        self.message: discord.Message | None = None
-        self.add_item(BannerColorSelect(self))
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id != self.member.id:
-            await interaction.response.send_message(
-                "This menu isn't for you — run `/cbanner` yourself.", ephemeral=True
-            )
-            return False
-        return True
-
-    async def on_timeout(self):
-        for child in self.children:
-            child.disabled = True
-        if self.message:
+        ratings = []
+        for stat_name, text_input in self.stat_inputs:
+            raw = text_input.value.strip().replace(",", ".")
             try:
-                await self.message.edit(view=self)
-            except Exception:
-                pass
+                value = float(raw)
+            except ValueError:
+                await interaction.response.send_message(
+                    f"❌ '{text_input.value}' isn't a valid number for **{stat_name}**. Please run /tdone again.",
+                    ephemeral=True,
+                )
+                return
+            if not (0 <= value <= 10):
+                await interaction.response.send_message(
+                    f"❌ **{stat_name}** must be between 0 and 10 (got {value}). Please run /tdone again.",
+                    ephemeral=True,
+                )
+                return
+            ratings.append((stat_name, value))
 
-    async def _build_preview(self, rgb: tuple) -> discord.File:
-        row = await get_or_create_player(self.member)
-        try:
-            avatar_url = str(self.member.display_avatar.replace(size=256, format="png"))
-            avatar_img = await load_image_async(avatar_url)
-        except Exception:
-            avatar_img = _placeholder_avatar(rgb)
-        return await build_elo_card_file(self.member.display_name, row, rgb, avatar_img)
+        overall = round(sum(v for _, v in ratings) / len(ratings), 1)
+        tier_name, role_id = get_striker_rank(overall)
+        rank_display = f"**{tier_name}** — <@&{role_id}>" if role_id else "*Unranked (below 4.6 — no tier yet)*"
 
-    async def _finish(self, interaction: discord.Interaction, content: str, rgb: tuple):
-        try:
-            file = await self._build_preview(rgb)
-            content += "\nHere's how your `/elo` card looks now:"
-        except Exception as e:
-            logger.error(f"!!! [CBANNER PREVIEW] Render failed for {self.member.id}: {e}")
-            file = None
-            content += "\n(Preview unavailable right now — check with `/elo`.)"
+        role_note = ""
+        if role_id and isinstance(self.player, discord.Member) and interaction.guild:
+            try:
+                new_role = interaction.guild.get_role(role_id)
+                if new_role is None:
+                    role_note = "\n⚠️ Rank role not found on this server — couldn't assign it."
+                else:
+                    roles_to_remove = [r for r in self.player.roles if r.id in STRIKER_RANK_ROLE_IDS and r.id != role_id]
+                    if roles_to_remove:
+                        await self.player.remove_roles(*roles_to_remove, reason="Tryout result — rank updated")
+                    if new_role not in self.player.roles:
+                        await self.player.add_roles(new_role, reason="Tryout result — rank assigned")
+            except discord.Forbidden:
+                role_note = "\n⚠️ Couldn't assign the rank role — check the bot's role position/permissions."
+            except Exception as e:
+                logger.error(f"!!! [TDONE ROLE ASSIGN ERROR]: {e}")
+                role_note = "\n⚠️ Couldn't assign the rank role due to an error."
 
-        for child in self.children:
-            child.disabled = False
-
-        if file:
-            await interaction.edit_original_response(content=content, attachments=[file], view=self)
-        else:
-            await interaction.edit_original_response(content=content, view=self)
-
-    async def apply_color(self, interaction: discord.Interaction, rgb: tuple, label: str):
-        for child in self.children:
-            child.disabled = True
-        await interaction.response.edit_message(content=f"🎨 Applying **{label}**...", attachments=[], view=self)
-
-        await set_custom_accent(self.member.id, str(self.member), rgb)
-        await self._finish(interaction, f"✅ Banner color set to **{label}**.", rgb)
-
-    @discord.ui.button(label="Custom Hex Color", style=discord.ButtonStyle.secondary, emoji="✏️", row=1)
-    async def custom_color(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(CustomColorModal(self))
-
-    @discord.ui.button(label="Reset to Role Color", style=discord.ButtonStyle.gray, emoji="↩️", row=1)
-    async def reset_color(self, interaction: discord.Interaction, button: discord.ui.Button):
-        for child in self.children:
-            child.disabled = True
-        await interaction.response.edit_message(content="↩️ Resetting to your role color...", attachments=[], view=self)
-
-        await clear_custom_accent(self.member.id)
-        rgb = get_role_accent_color(self.member)
-        await self._finish(interaction, "✅ Banner reset to your role color.", rgb)
-
-
-@client.tree.command(name="cbanner", description="Customize the accent color on your /elo card")
-async def cbanner_command(interaction: discord.Interaction):
-    if interaction.channel_id != ELO_COMMAND_CHANNEL_ID:
-        await interaction.response.send_message(
-            f"This command can only be used in <#{ELO_COMMAND_CHANNEL_ID}>.", ephemeral=True
+        text = build_tryout_result_text(
+            player=self.player, host=self.host, position_label=self.position_label,
+            ratings=ratings, overall=overall, rank_display=rank_display,
+            feedback=self.feedback_input.value.strip(),
         )
+
+        try:
+            await interaction.response.send_message(content=text)
+            if role_note:
+                await interaction.followup.send(role_note.strip(), ephemeral=True)
+        except Exception as e:
+            logger.error(f"!!! [TDONE POST ERROR]: {e}")
+            if not interaction.response.is_done():
+                await interaction.response.send_message(f"❌ Couldn't post the result: {e}", ephemeral=True)
+
+
+@client.tree.command(name="tdone", description="Post a tryout result and calculate the player's overall + rank")
+@app_commands.describe(player="The player who tried out", position="Position they tried out for")
+@app_commands.choices(position=[
+    app_commands.Choice(name="CF / Wing", value="cf_wing"),
+    app_commands.Choice(name="CM", value="cm"),
+    app_commands.Choice(name="GK", value="gk"),
+])
+async def tdone_command(interaction: discord.Interaction, player: discord.Member, position: app_commands.Choice[str]):
+    member_roles = getattr(interaction.user, "roles", [])
+    if not any(r.id in TDONE_ALLOWED_ROLE_IDS for r in member_roles):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
-    view = BannerCustomizeView(interaction.user)
-    await interaction.response.send_message(
-        "🎨 **Customize your ELO card banner**\n"
-        "Pick a preset color below, set your own custom hex code, or reset to your role color.",
-        view=view,
-        ephemeral=True,
-    )
-    view.message = await interaction.original_response()
+    modal = TryoutResultModal(player=player, host=interaction.user, position_key=position.value)
+    await interaction.response.send_modal(modal)
 
 
 # =====================================================================================
@@ -1570,7 +1549,7 @@ async def elo_command(interaction: discord.Interaction, player: discord.Member =
 
     target = player or interaction.user
     row = await get_or_create_player(target)
-    accent = await get_accent_color(target)
+    accent = get_role_accent_color(target)
 
     try:
         avatar_url = str(target.display_avatar.replace(size=256, format="png"))
