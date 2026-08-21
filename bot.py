@@ -48,6 +48,7 @@ TDONE_ALLOWED_ROLE_IDS = {               # Only members with one of these roles 
     1538589345458692196,
     1538589345441648669,
 }
+CHECK_CATEGORY_ID = 1538589355176890404  # Only channels in this category can be renamed with /check
 
 # --- ELO / ANTI-FARMING TUNING ---
 FARMING_LOOKBACK_HOURS = 24     # Window used to detect repeated dueling between the same 2 players
@@ -1696,6 +1697,87 @@ async def tdone_command(interaction: discord.Interaction, player: discord.Member
 
     modal = TryoutResultModal(player=player, host=interaction.user, position_key=position.value)
     await interaction.response.send_modal(modal)
+
+
+# =====================================================================================
+# /check COMMAND — reads a submission message (Username/Style/Flow/Position/tryout type)
+# and renames the current channel to "position-region-gp/st"
+# =====================================================================================
+
+MESSAGE_LINK_RE = re.compile(r"discord(?:app)?\.com/channels/(\d+)/(\d+)/(\d+)")
+
+
+def _clean_channel_part(text: str) -> str:
+    """Lowercase a piece of text and strip it down to characters safe for a channel name."""
+    text = re.sub(r"\s+", "-", text.strip())
+    text = re.sub(r"[^a-zA-Z0-9\-]", "", text)
+    return text.lower()
+
+
+@client.tree.command(name="check", description="Rename this channel using info from a tryout submission message")
+@app_commands.describe(
+    message_link="Link to the submission message (contains Username/Style/Flow/Position)",
+    region="Region for this channel (e.g. NA, EU, ASIA)",
+)
+async def check_command(interaction: discord.Interaction, message_link: str, region: str):
+    member_roles = getattr(interaction.user, "roles", [])
+    if not any(r.id in TDONE_ALLOWED_ROLE_IDS for r in member_roles):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    channel = interaction.channel
+    if channel is None or channel.category_id != CHECK_CATEGORY_ID:
+        await interaction.response.send_message(
+            f"❌ /check can only be used in channels under <#{CHECK_CATEGORY_ID}>'s category.", ephemeral=True
+        )
+        return
+
+    link_match = MESSAGE_LINK_RE.search(message_link)
+    if not link_match:
+        await interaction.response.send_message("❌ That doesn't look like a valid message link.", ephemeral=True)
+        return
+
+    _, msg_channel_id, msg_id = link_match.groups()
+
+    try:
+        msg_channel = client.get_channel(int(msg_channel_id)) or await client.fetch_channel(int(msg_channel_id))
+        target_message = await msg_channel.fetch_message(int(msg_id))
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Couldn't fetch that message: {e}", ephemeral=True)
+        return
+
+    content = target_message.content or ""
+    content_lower = content.lower()
+
+    position_match = re.search(r"position\s*:\s*([^\n]+)", content, re.IGNORECASE)
+    if not position_match:
+        await interaction.response.send_message("❌ Couldn't find a `Position:` field in that message.", ephemeral=True)
+        return
+    position_raw = position_match.group(1).strip()
+
+    if "stat" in content_lower:
+        gp_st = "st"
+    elif "gameplay" in content_lower:
+        gp_st = "gp"
+    else:
+        await interaction.response.send_message(
+            "❌ Couldn't tell from that message whether they want a Stat Tryout or Gameplay.", ephemeral=True
+        )
+        return
+
+    new_name = f"{_clean_channel_part(position_raw)}-{_clean_channel_part(region)}-{gp_st}"[:100]
+
+    try:
+        await channel.edit(name=new_name, reason=f"/check by {interaction.user}")
+    except discord.Forbidden:
+        await interaction.response.send_message("❌ I don't have permission to rename this channel.", ephemeral=True)
+        return
+    except Exception as e:
+        logger.error(f"!!! [CHECK RENAME ERROR]: {e}")
+        await interaction.response.send_message(f"❌ Couldn't rename the channel: {e}", ephemeral=True)
+        return
+
+    await interaction.response.send_message(f"✅ Channel renamed to `{new_name}`.", ephemeral=True)
 
 
 # =====================================================================================
