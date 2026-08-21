@@ -318,6 +318,39 @@ async def clear_elo_banner():
     await asyncio.to_thread(_clear_elo_banner_sync)
 
 
+def _get_elo_accent_color_sync():
+    doc = elo_banner_col.find_one({"_id": "color"})
+    return tuple(doc["rgb"]) if doc else None
+
+
+async def get_elo_accent_color():
+    return await asyncio.to_thread(_get_elo_accent_color_sync)
+
+
+def _set_elo_accent_color_sync(rgb):
+    elo_banner_col.update_one({"_id": "color"}, {"$set": {"rgb": list(rgb)}}, upsert=True)
+
+
+async def set_elo_accent_color(rgb):
+    await asyncio.to_thread(_set_elo_accent_color_sync, rgb)
+
+
+def _clear_elo_accent_color_sync():
+    elo_banner_col.delete_one({"_id": "color"})
+
+
+async def clear_elo_accent_color():
+    await asyncio.to_thread(_clear_elo_accent_color_sync)
+
+
+def _parse_hex_color(value: str):
+    """Parses '#ff2e2e' or 'ff2e2e' into an (r, g, b) tuple, or None if invalid."""
+    value = value.strip().lstrip("#")
+    if len(value) != 6 or any(c not in "0123456789abcdefABCDEF" for c in value):
+        return None
+    return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+
+
 # =====================================================================================
 # ELO MATH
 #
@@ -1684,6 +1717,9 @@ async def elo_command(interaction: discord.Interaction, player: discord.Member =
     target = player or interaction.user
     row = await get_or_create_player(target)
     accent = get_role_accent_color(target)
+    custom_accent = await get_elo_accent_color()
+    if custom_accent:
+        accent = custom_accent
 
     try:
         avatar_url = str(target.display_avatar.replace(size=256, format="png"))
@@ -1708,6 +1744,31 @@ async def elo_command(interaction: discord.Interaction, player: discord.Member =
         return
 
     await interaction.followup.send(file=file)
+
+
+@client.tree.command(name="setelocolor", description="Set a custom accent color for /elo cards")
+@app_commands.describe(color="Hex color code, e.g. ff2e2e or #ff2e2e")
+async def setelocolor_command(interaction: discord.Interaction, color: str):
+    rgb = _parse_hex_color(color)
+    if rgb is None:
+        await interaction.response.send_message(
+            "❌ Invalid hex color. Use a 6-digit hex code, e.g. `ff2e2e`.", ephemeral=True
+        )
+        return
+
+    await set_elo_accent_color(rgb)
+    await interaction.response.send_message(f"✅ /elo accent color updated to `#{color.strip().lstrip('#').upper()}`.", ephemeral=True)
+
+
+@client.tree.command(name="resetelocolor", description="Reset /elo cards to the role-based accent color (staff only)")
+async def resetelocolor_command(interaction: discord.Interaction):
+    member_roles = getattr(interaction.user, "roles", [])
+    if not any(r.id == ADDELO_ROLE_ID for r in member_roles):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    await clear_elo_accent_color()
+    await interaction.response.send_message("✅ /elo accent color reset to the role-based default.", ephemeral=True)
 
 
 @client.tree.command(name="setelobanner", description="Set a custom background image for /elo cards")
