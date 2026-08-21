@@ -113,6 +113,7 @@ except Exception:
 players_col = db["players"]
 duel_history_col = db["duel_history"]
 tryout_host_stats_col = db["tryout_host_stats"]  # Per-host tryout tallies (today + all-time)
+elo_banner_col = db["elo_banner"]  # Custom /elo card background image (single doc, persists across restarts)
 
 # Helpful indexes (no-ops if they already exist)
 players_col.create_index([("elo", DESCENDING)])
@@ -290,6 +291,31 @@ def _adjust_elo_sync(user_id: int, delta: int) -> int:
 async def adjust_elo(user_id: int, delta: int) -> int:
     """Directly nudges a player's ELO without touching win/loss/draw counters. Used by /addelo."""
     return await asyncio.to_thread(_adjust_elo_sync, user_id, delta)
+
+
+def _get_elo_banner_url_sync():
+    doc = elo_banner_col.find_one({"_id": "banner"})
+    return doc["url"] if doc else None
+
+
+async def get_elo_banner_url():
+    return await asyncio.to_thread(_get_elo_banner_url_sync)
+
+
+def _set_elo_banner_url_sync(url: str):
+    elo_banner_col.update_one({"_id": "banner"}, {"$set": {"url": url}}, upsert=True)
+
+
+async def set_elo_banner_url(url: str):
+    await asyncio.to_thread(_set_elo_banner_url_sync, url)
+
+
+def _clear_elo_banner_sync():
+    elo_banner_col.delete_one({"_id": "banner"})
+
+
+async def clear_elo_banner():
+    await asyncio.to_thread(_clear_elo_banner_sync)
 
 
 # =====================================================================================
@@ -597,24 +623,36 @@ def _overlay_rounded_rect(base: Editor, position, width, height, radius, rgba_co
     base.paste(layer, position)
 
 
-def build_elo_card(username: str, row: "PlayerRow", accent, avatar_img: Image.Image) -> Editor:
+def build_elo_card(username: str, row: "PlayerRow", accent, avatar_img: Image.Image, banner_img: Image.Image = None) -> Editor:
     pct, progress_label, rank_name = get_rank_progress(row.elo)
 
     W, H = 1000, 400
     base = Editor(Canvas((W, H), color=(16, 17, 20, 255)))
-    base.rectangle((10, 10), width=W - 20, height=H - 20, fill=(26, 27, 31, 255), outline=accent, stroke_width=4, radius=28)
 
-    glow = Editor(Canvas((340, 340), color=(0, 0, 0, 0)))
-    glow.ellipse((0, 0), 340, 340, fill=(*accent, 110))
-    glow = glow.blur(45)
-    base.paste(glow, (-40, -40))
+    if banner_img is not None:
+        # Cover-fit the custom banner into the card, then darken it so the text/stats on
+        # top stay readable regardless of how bright the uploaded image is.
+        src_w, src_h = banner_img.size
+        scale = max(W / src_w, H / src_h)
+        new_w, new_h = int(src_w * scale), int(src_h * scale)
+        bg = Editor(banner_img).resize((new_w, new_h))
+        base.paste(bg, ((W - new_w) // 2, (H - new_h) // 2))
+        _overlay_rounded_rect(base, (0, 0), W, H, 0, (10, 11, 13, 130))
+        base.rectangle((10, 10), width=W - 20, height=H - 20, fill=None, outline=accent, stroke_width=4, radius=28)
+    else:
+        base.rectangle((10, 10), width=W - 20, height=H - 20, fill=(26, 27, 31, 255), outline=accent, stroke_width=4, radius=28)
 
-    glow2 = Editor(Canvas((300, 300), color=(0, 0, 0, 0)))
-    glow2.ellipse((0, 0), 300, 300, fill=(*accent, 70))
-    glow2 = glow2.blur(45)
-    base.paste(glow2, (W - 230, H - 230))
+        glow = Editor(Canvas((340, 340), color=(0, 0, 0, 0)))
+        glow.ellipse((0, 0), 340, 340, fill=(*accent, 110))
+        glow = glow.blur(45)
+        base.paste(glow, (-40, -40))
 
-    base.rectangle((10, 10), width=W - 20, height=H - 20, fill=None, outline=accent, stroke_width=4, radius=28)
+        glow2 = Editor(Canvas((300, 300), color=(0, 0, 0, 0)))
+        glow2.ellipse((0, 0), 300, 300, fill=(*accent, 70))
+        glow2 = glow2.blur(45)
+        base.paste(glow2, (W - 230, H - 230))
+
+        base.rectangle((10, 10), width=W - 20, height=H - 20, fill=None, outline=accent, stroke_width=4, radius=28)
 
     avatar = Editor(avatar_img).resize((176, 176)).circle_image()
     base.paste(avatar, (48, 60))
@@ -657,8 +695,8 @@ def build_elo_card(username: str, row: "PlayerRow", accent, avatar_img: Image.Im
     return base
 
 
-async def build_elo_card_file(username: str, row: "PlayerRow", accent, avatar_img: Image.Image) -> discord.File:
-    editor = await asyncio.to_thread(build_elo_card, username, row, accent, avatar_img)
+async def build_elo_card_file(username: str, row: "PlayerRow", accent, avatar_img: Image.Image, banner_img: Image.Image = None) -> discord.File:
+    editor = await asyncio.to_thread(build_elo_card, username, row, accent, avatar_img, banner_img)
     return discord.File(fp=editor.image_bytes, filename="blazing_lock_elo.png")
 
 
@@ -1654,14 +1692,44 @@ async def elo_command(interaction: discord.Interaction, player: discord.Member =
         logger.error(f"!!! [ELO CARD] Avatar download failed for {target.id}: {e}")
         avatar_img = _placeholder_avatar(accent)
 
+    banner_img = None
+    banner_url = await get_elo_banner_url()
+    if banner_url:
+        try:
+            banner_img = await load_image_async(banner_url)
+        except Exception as e:
+            logger.error(f"!!! [ELO CARD] Banner download failed: {e}")
+
     try:
-        file = await build_elo_card_file(target.display_name, row, accent, avatar_img)
+        file = await build_elo_card_file(target.display_name, row, accent, avatar_img, banner_img)
     except Exception as e:
         logger.error(f"!!! [ELO CARD] Render failed for {target.id}: {e}")
         await interaction.followup.send("Couldn't generate the ELO card right now. Try again in a moment.")
         return
 
     await interaction.followup.send(file=file)
+
+
+@client.tree.command(name="setelobanner", description="Set a custom background image for /elo cards")
+@app_commands.describe(image="Image to use as the /elo card background")
+async def setelobanner_command(interaction: discord.Interaction, image: discord.Attachment):
+    if not (image.content_type or "").startswith("image/"):
+        await interaction.response.send_message("❌ Please upload an image file.", ephemeral=True)
+        return
+
+    await set_elo_banner_url(image.url)
+    await interaction.response.send_message("✅ /elo banner updated.", ephemeral=True)
+
+
+@client.tree.command(name="resetelobanner", description="Reset /elo cards to the default background (staff only)")
+async def resetelobanner_command(interaction: discord.Interaction):
+    member_roles = getattr(interaction.user, "roles", [])
+    if not any(r.id == ADDELO_ROLE_ID for r in member_roles):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    await clear_elo_banner()
+    await interaction.response.send_message("✅ /elo banner reset to default.", ephemeral=True)
 
 
 @client.tree.command(name="addelo", description="Manually adjust a player's ELO (staff only)")
