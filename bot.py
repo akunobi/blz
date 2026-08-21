@@ -294,29 +294,29 @@ async def adjust_elo(user_id: int, delta: int) -> int:
     return await asyncio.to_thread(_adjust_elo_sync, user_id, delta)
 
 
-def _get_elo_banner_url_sync():
-    doc = elo_banner_col.find_one({"_id": "banner"})
+def _get_elo_banner_url_sync(user_id: int):
+    doc = elo_banner_col.find_one({"_id": f"banner:{user_id}"})
     return doc["url"] if doc else None
 
 
-async def get_elo_banner_url():
-    return await asyncio.to_thread(_get_elo_banner_url_sync)
+async def get_elo_banner_url(user_id: int):
+    return await asyncio.to_thread(_get_elo_banner_url_sync, user_id)
 
 
-def _set_elo_banner_url_sync(url: str):
-    elo_banner_col.update_one({"_id": "banner"}, {"$set": {"url": url}}, upsert=True)
+def _set_elo_banner_url_sync(user_id: int, url: str):
+    elo_banner_col.update_one({"_id": f"banner:{user_id}"}, {"$set": {"url": url}}, upsert=True)
 
 
-async def set_elo_banner_url(url: str):
-    await asyncio.to_thread(_set_elo_banner_url_sync, url)
+async def set_elo_banner_url(user_id: int, url: str):
+    await asyncio.to_thread(_set_elo_banner_url_sync, user_id, url)
 
 
-def _clear_elo_banner_sync():
-    elo_banner_col.delete_one({"_id": "banner"})
+def _clear_elo_banner_sync(user_id: int):
+    elo_banner_col.delete_one({"_id": f"banner:{user_id}"})
 
 
-async def clear_elo_banner():
-    await asyncio.to_thread(_clear_elo_banner_sync)
+async def clear_elo_banner(user_id: int):
+    await asyncio.to_thread(_clear_elo_banner_sync, user_id)
 
 
 def _get_elo_accent_color_sync():
@@ -1811,7 +1811,7 @@ async def elo_command(interaction: discord.Interaction, player: discord.Member =
         avatar_img = _placeholder_avatar(accent)
 
     banner_img = None
-    banner_url = await get_elo_banner_url()
+    banner_url = await get_elo_banner_url(target.id)
     if banner_url:
         try:
             banner_img = await load_image_async(banner_url)
@@ -1860,19 +1860,14 @@ async def setelobanner_command(interaction: discord.Interaction, image: discord.
         await interaction.response.send_message("❌ Please upload an image file.", ephemeral=True)
         return
 
-    await set_elo_banner_url(image.url)
-    await interaction.response.send_message("✅ /elo banner updated.", ephemeral=True)
+    await set_elo_banner_url(interaction.user.id, image.url)
+    await interaction.response.send_message("✅ Your /elo banner updated.", ephemeral=True)
 
 
-@client.tree.command(name="resetelobanner", description="Reset /elo cards to the default background (staff only)")
+@client.tree.command(name="resetelobanner", description="Reset your /elo card to the default background")
 async def resetelobanner_command(interaction: discord.Interaction):
-    member_roles = getattr(interaction.user, "roles", [])
-    if not any(r.id == ADDELO_ROLE_ID for r in member_roles):
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
-        return
-
-    await clear_elo_banner()
-    await interaction.response.send_message("✅ /elo banner reset to default.", ephemeral=True)
+    await clear_elo_banner(interaction.user.id)
+    await interaction.response.send_message("✅ Your /elo banner reset to default.", ephemeral=True)
 
 
 @client.tree.command(name="addelo", description="Manually adjust a player's ELO (staff only)")
