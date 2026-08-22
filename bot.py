@@ -1,7 +1,7 @@
 # bot.py - BLZ-T Bot: Matchmaking + Blazing Lock ELO System
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 import os
 import re
 import random
@@ -1115,6 +1115,9 @@ async def process_draw_result(guild: discord.Guild, channel: discord.TextChannel
 QUEUES: dict[str, list[int]] = {"ranked": [], "friendly": []}
 QUEUE_LOCKS: dict[str, asyncio.Lock] = {"ranked": asyncio.Lock(), "friendly": asyncio.Lock()}
 
+QUEUE_TIMEOUT_SECONDS = 20 * 60  # auto-remove a player if no match is found within 20 minutes
+QUEUE_JOINED_AT: dict[str, dict[int, float]] = {"ranked": {}, "friendly": {}}  # user_id -> time.time() joined
+
 matchmaking_panel_message: discord.Message | None = None
 
 DUEL_TOPIC_RE = re.compile(r'^duel-participants:(\d+):(\d+):(ranked|friendly)(:reported)?$')
@@ -1137,7 +1140,8 @@ def build_matchmaking_embed() -> discord.Embed:
         description=(
             "Choose a mode below to join a queue.\n"
             "Once 2 players are queued for the same mode, a private duel channel "
-            "is created automatically."
+            "is created automatically.\n"
+            "You'll be automatically removed from a queue after 20 minutes without a match."
         ),
         color=0xE63946
     )
@@ -1155,6 +1159,52 @@ async def update_queue_panel():
         await matchmaking_panel_message.edit(embed=build_matchmaking_embed(), view=MatchmakingView())
     except Exception as e:
         logger.error(f"!!! [MATCHMAKING PANEL UPDATE]: {e}")
+
+
+@tasks.loop(seconds=60)
+async def queue_timeout_check():
+    """Every minute, drop anyone who's been sitting in a queue for 20+ minutes without a match."""
+    now = time.time()
+    guild = client.get_guild(GUILD_ID)
+    expired_by_mode: dict[str, list[int]] = {}
+
+    for mode in ("ranked", "friendly"):
+        async with QUEUE_LOCKS[mode]:
+            queue = QUEUES[mode]
+            joined_at = QUEUE_JOINED_AT[mode]
+            expired = [
+                user_id for user_id in queue
+                if now - joined_at.get(user_id, now) >= QUEUE_TIMEOUT_SECONDS
+            ]
+            for user_id in expired:
+                queue.remove(user_id)
+                joined_at.pop(user_id, None)
+        if expired:
+            expired_by_mode[mode] = expired
+
+    if not expired_by_mode:
+        return
+
+    for mode, user_ids in expired_by_mode.items():
+        for user_id in user_ids:
+            member = guild.get_member(user_id) if guild else None
+            if member is None:
+                continue
+            try:
+                await member.send(
+                    f"⌛ You've been removed from the **{mode}** queue after 20 minutes with no match. "
+                    "Feel free to hop back in anytime!"
+                )
+            except Exception:
+                pass  # DMs disabled — not worth failing over
+            logger.info(f">>> [QUEUE TIMEOUT] Removed {user_id} from {mode} queue after 20 min")
+
+    await update_queue_panel()
+
+
+@queue_timeout_check.before_loop
+async def before_queue_timeout_check():
+    await client.wait_until_ready()
 
 
 # --- Report / Confirm flow -----------------------------------------------------------
@@ -1475,6 +1525,7 @@ async def handle_leave_queue(interaction: discord.Interaction):
         async with QUEUE_LOCKS[mode]:
             if user.id in QUEUES[mode]:
                 QUEUES[mode].remove(user.id)
+                QUEUE_JOINED_AT[mode].pop(user.id, None)
                 removed_from.append(mode)
 
     if not removed_from:
@@ -1505,8 +1556,10 @@ async def handle_queue_join(interaction: discord.Interaction, mode: str):
             already_in_queue = True
         elif queue:
             opponent_id = queue.pop(0)
+            QUEUE_JOINED_AT[mode].pop(opponent_id, None)
         else:
             queue.append(user.id)
+            QUEUE_JOINED_AT[mode][user.id] = time.time()
 
     if already_in_queue:
         await interaction.response.send_message(
@@ -1525,6 +1578,7 @@ async def handle_queue_join(interaction: discord.Interaction, mode: str):
     if opponent is None or opponent.id == user.id:
         async with lock:
             queue.append(user.id)
+            QUEUE_JOINED_AT[mode][user.id] = time.time()
         await interaction.response.send_message(
             f"✅ You joined the {mode} queue. We'll notify you when we find an opponent.", ephemeral=True
         )
@@ -1537,6 +1591,7 @@ async def handle_queue_join(interaction: discord.Interaction, mode: str):
     if channel is None:
         async with lock:
             queue.append(opponent_id)
+            QUEUE_JOINED_AT[mode][opponent_id] = time.time()
         await interaction.followup.send("Couldn't create the duel channel. Contact an administrator.", ephemeral=True)
         await update_queue_panel()
         return
@@ -1988,6 +2043,10 @@ async def on_ready():
         await ensure_matchmaking_panel()
     except Exception as e:
         logger.error(f"!!! [MATCHMAKING PANEL ON READY]: {e}")
+
+    # Start the queue-timeout sweeper (guarded so reconnects don't spawn duplicate loops)
+    if not queue_timeout_check.is_running():
+        queue_timeout_check.start()
 
 
 def _run_with_backoff():
