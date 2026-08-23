@@ -50,6 +50,14 @@ TDONE_ALLOWED_ROLE_IDS = {               # Only members with one of these roles 
 }
 CHECK_CATEGORY_ID = 1538589355176890404  # Only channels in this category can be renamed with /check
 
+# --- TRYOUT QUOTA SYSTEM ---
+QUOTA_REPORT_CHANNEL_ID = 1538589352186355804  # Channel where the weekly quota-fail report is posted
+TRYOUT_QUOTA_ROLE_IDS = TDONE_ALLOWED_ROLE_IDS  # "Tryouters" = whoever can run /tdone; quota only applies to them
+TRYOUT_QUOTA_EP = 2             # EP a tryouter must earn each week to pass quota (1 EP per /tdone they run)
+QUOTA_RESET_WEEKDAY = 6          # Python's datetime.weekday(): Monday=0 ... Sunday=6
+QUOTA_RESET_HOUR_UTC = 20        # 20:00 GMT+0 / UTC
+IN_COOLDOWN_DAYS = 7             # Cooldown before a tryouter can be put on /in again, counted from when their IN ends
+
 # --- ELO / ANTI-FARMING TUNING ---
 FARMING_LOOKBACK_HOURS = 24     # Window used to detect repeated dueling between the same 2 players
 LARGE_ELO_GAP_UNRANKED = 500    # ELO gap above which a ranked duel is voided (no ELO change)
@@ -115,6 +123,9 @@ players_col = db["players"]
 duel_history_col = db["duel_history"]
 tryout_host_stats_col = db["tryout_host_stats"]  # Per-host tryout tallies (today + all-time)
 elo_banner_col = db["elo_banner"]  # Custom /elo card background image (single doc, persists across restarts)
+tryout_quota_col = db["tryout_quota"]  # Per-tryouter EP earned in the current quota week: {_id: user_id, ep: int}
+quota_state_col = db["quota_state"]  # Single doc tracking the last processed weekly reset
+tryout_in_col = db["tryout_in"]  # Per-tryouter IN (excused) status + /in cooldown
 
 # Helpful indexes (no-ops if they already exist)
 players_col.create_index([("elo", DESCENDING)])
@@ -222,6 +233,103 @@ def _record_tryout_host_sync(host_id: int):
 
 async def record_tryout_host(host_id: int):
     return await asyncio.to_thread(_record_tryout_host_sync, host_id)
+
+
+# --- Quota EP -------------------------------------------------------------------------
+
+def _increment_quota_ep_sync(user_id: int) -> int:
+    doc = tryout_quota_col.find_one({"_id": user_id})
+    new_ep = (doc.get("ep", 0) if doc else 0) + 1
+    tryout_quota_col.update_one({"_id": user_id}, {"$set": {"ep": new_ep}}, upsert=True)
+    return new_ep
+
+
+async def increment_quota_ep(user_id: int) -> int:
+    """Called once per completed /tdone — this is the "1 EP per tryout" award."""
+    return await asyncio.to_thread(_increment_quota_ep_sync, user_id)
+
+
+def _get_quota_ep_sync(user_id: int) -> int:
+    doc = tryout_quota_col.find_one({"_id": user_id})
+    return doc.get("ep", 0) if doc else 0
+
+
+async def get_quota_ep(user_id: int) -> int:
+    return await asyncio.to_thread(_get_quota_ep_sync, user_id)
+
+
+def _reset_all_quota_ep_sync():
+    tryout_quota_col.delete_many({})
+
+
+async def reset_all_quota_ep():
+    await asyncio.to_thread(_reset_all_quota_ep_sync)
+
+
+# --- Quota weekly-reset bookkeeping ----------------------------------------------------
+
+def _get_quota_state_sync():
+    return quota_state_col.find_one({"_id": "state"})
+
+
+async def get_quota_state():
+    return await asyncio.to_thread(_get_quota_state_sync)
+
+
+def _set_quota_state_sync(date_str: str, reset_at: datetime):
+    quota_state_col.update_one(
+        {"_id": "state"},
+        {"$set": {"last_reset_date": date_str, "last_reset_at": reset_at}},
+        upsert=True,
+    )
+
+
+async def set_quota_state(date_str: str, reset_at: datetime):
+    await asyncio.to_thread(_set_quota_state_sync, date_str, reset_at)
+
+
+def next_quota_reset_at() -> datetime:
+    """Next upcoming Sunday 20:00 UTC from right now."""
+    now = datetime.now(timezone.utc)
+    days_until = (QUOTA_RESET_WEEKDAY - now.weekday()) % 7
+    candidate = (now + timedelta(days=days_until)).replace(
+        hour=QUOTA_RESET_HOUR_UTC, minute=0, second=0, microsecond=0
+    )
+    if candidate <= now:
+        candidate += timedelta(days=7)
+    return candidate
+
+
+# --- /in (excuse) status ----------------------------------------------------------------
+
+def _get_in_doc_sync(user_id: int):
+    return tryout_in_col.find_one({"_id": user_id})
+
+
+async def get_in_doc(user_id: int):
+    return await asyncio.to_thread(_get_in_doc_sync, user_id)
+
+
+def _set_in_status_sync(user_id: int, in_since: datetime, in_until: datetime,
+                         cooldown_until: datetime, set_by: int, reason: str):
+    tryout_in_col.update_one(
+        {"_id": user_id},
+        {"$set": {
+            "in_since": in_since, "in_until": in_until,
+            "cooldown_until": cooldown_until, "set_by": set_by, "reason": reason,
+        }},
+        upsert=True,
+    )
+
+
+async def set_in_status(user_id: int, in_since: datetime, in_until: datetime,
+                         cooldown_until: datetime, set_by: int, reason: str = None):
+    await asyncio.to_thread(_set_in_status_sync, user_id, in_since, in_until, cooldown_until, set_by, reason)
+
+
+def _aware(dt: datetime) -> datetime:
+    """Mongo strips tzinfo on round-trip — normalize back to aware UTC before comparing."""
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
 def _count_recent_ranked_duels_sync(id_a: int, id_b: int, hours: int) -> int:
@@ -1207,6 +1315,111 @@ async def before_queue_timeout_check():
     await client.wait_until_ready()
 
 
+# =====================================================================================
+# TRYOUT QUOTA — weekly reset + fail report
+# =====================================================================================
+
+async def process_weekly_quota_reset(period_start, now: datetime):
+    """Reports who failed quota for the week that just ended, then resets everyone's EP
+    to 0 for the new week. `period_start` is when the current EP counts started accruing
+    (None only if quota_state was somehow missing its timestamp)."""
+    guild = client.get_guild(GUILD_ID)
+    if guild is None:
+        logger.error("!!! [QUOTA] Guild not found — skipping weekly quota reset.")
+        return
+
+    tryouter_ids = set()
+    for role_id in TRYOUT_QUOTA_ROLE_IDS:
+        role = guild.get_role(role_id)
+        if role:
+            tryouter_ids.update(m.id for m in role.members)
+
+    if tryouter_ids:
+        failed = []
+        for uid in tryouter_ids:
+            ep = await get_quota_ep(uid)
+            if ep >= TRYOUT_QUOTA_EP:
+                continue
+
+            in_doc = await get_in_doc(uid)
+            excused = False
+            if in_doc and in_doc.get("in_until"):
+                in_until = _aware(in_doc["in_until"])
+                # Excused if their IN period overlapped any part of this quota week.
+                if period_start is None or in_until > period_start:
+                    excused = True
+            if not excused:
+                failed.append((uid, ep))
+
+        if failed:
+            failed.sort(key=lambda x: x[1])
+            lines = [
+                "# 📋 Weekly Tryout Quota Report",
+                f"Quota: **{TRYOUT_QUOTA_EP} EP** per tryouter",
+                "",
+                "**❌ Failed quota this week:**",
+            ]
+            for uid, ep in failed:
+                lines.append(f"- <@{uid}> — {ep}/{TRYOUT_QUOTA_EP} EP")
+            text = "\n".join(lines)
+        else:
+            text = (
+                f"# 📋 Weekly Tryout Quota Report\n"
+                f"Quota: **{TRYOUT_QUOTA_EP} EP** per tryouter\n\n"
+                f"✅ Everyone met quota this week!"
+            )
+
+        try:
+            await post_result(guild, text, channel_id=QUOTA_REPORT_CHANNEL_ID)
+        except Exception as e:
+            logger.error(f"!!! [QUOTA REPORT ERROR]: {e}")
+    else:
+        logger.info(">>> [QUOTA] No tryouters found with the configured role(s) — nothing to report.")
+
+    await reset_all_quota_ep()
+    logger.info(">>> [QUOTA] Weekly EP counts reset.")
+
+
+@tasks.loop(minutes=1)
+async def quota_reset_check():
+    """Fires the weekly quota report + reset at Sunday 20:00 GMT+0. Today (the day this
+    feature was deployed) is exempted — see on_ready, which seeds quota_state with today's
+    date so this loop won't treat "today" as a reset trigger. Also carries a downtime
+    catch-up: if the bot happened to be offline through an entire Sunday 20:00 window, the
+    reset still fires once it's back, rather than silently skipping a week."""
+    now = datetime.now(timezone.utc)
+    state = await get_quota_state()
+    if state is None:
+        return  # on_ready hasn't seeded quota_state yet
+
+    last_reset_date = state.get("last_reset_date")
+    last_reset_at = state.get("last_reset_at")
+    if last_reset_at is not None:
+        last_reset_at = _aware(last_reset_at)
+
+    today_str = now.strftime("%Y-%m-%d")
+    is_scheduled_time = (
+        now.weekday() == QUOTA_RESET_WEEKDAY
+        and now.hour >= QUOTA_RESET_HOUR_UTC
+        and last_reset_date != today_str
+    )
+    is_overdue_catchup = last_reset_at is not None and (now - last_reset_at) >= timedelta(days=7, hours=1)
+
+    if not (is_scheduled_time or is_overdue_catchup):
+        return
+
+    try:
+        await process_weekly_quota_reset(last_reset_at, now)
+    except Exception as e:
+        logger.error(f"!!! [QUOTA RESET ERROR]: {e}")
+    await set_quota_state(today_str, now)
+
+
+@quota_reset_check.before_loop
+async def before_quota_reset_check():
+    await client.wait_until_ready()
+
+
 # --- Report / Confirm flow -----------------------------------------------------------
 
 class MatchDetailsModal(discord.ui.Modal, title="Match Details"):
@@ -1725,6 +1938,8 @@ class TryoutResultModal(discord.ui.Modal):
             host_stats_text = build_tryout_host_stats_text(self.host, today_count, total_count)
             await post_result(interaction.guild, host_stats_text, channel_id=TRYOUT_HOST_STATS_CHANNEL_ID)
 
+            await increment_quota_ep(self.host.id)  # +1 EP toward this host's weekly tryout quota
+
             confirmation = f"✅ Tryout result posted in <#{TRYOUT_RESULTS_CHANNEL_ID}>."
             if role_note:
                 confirmation += role_note
@@ -1833,6 +2048,102 @@ async def check_command(interaction: discord.Interaction, message_link: str, reg
         return
 
     await interaction.response.send_message(f"✅ Channel renamed to `{new_name}`.", ephemeral=True)
+
+
+# =====================================================================================
+# /ep + /in COMMANDS — tryout quota system
+# =====================================================================================
+
+@client.tree.command(name="ep", description="Check a tryouter's weekly EP quota progress")
+@app_commands.describe(player="The tryouter to check (leave empty to check yourself)")
+async def ep_command(interaction: discord.Interaction, player: discord.Member = None):
+    member_roles = getattr(interaction.user, "roles", [])
+    if not any(r.id in TRYOUT_QUOTA_ROLE_IDS for r in member_roles):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    target = player or interaction.user
+    target_roles = getattr(target, "roles", [])
+    if not any(r.id in TRYOUT_QUOTA_ROLE_IDS for r in target_roles):
+        await interaction.response.send_message(
+            f"⚠️ {target.mention} doesn't hold a tryouter role, so quota doesn't apply to them.", ephemeral=True
+        )
+        return
+
+    ep = await get_quota_ep(target.id)
+    in_doc = await get_in_doc(target.id)
+    now = datetime.now(timezone.utc)
+
+    excused = False
+    excuse_note = ""
+    if in_doc and in_doc.get("in_until"):
+        in_until = _aware(in_doc["in_until"])
+        if in_until > now:
+            excused = True
+            excuse_note = f"\n🟢 Currently excused (IN) until <t:{int(in_until.timestamp())}:F>."
+
+    if ep >= TRYOUT_QUOTA_EP:
+        status = "✅ Quota met"
+    elif excused:
+        status = "🟢 Excused"
+    else:
+        status = "❌ Quota not met yet"
+
+    reset_at = next_quota_reset_at()
+    lines = [
+        f"📋 **Weekly Tryout Quota — {target.display_name}**",
+        f"EP this week: **{ep}/{TRYOUT_QUOTA_EP}**",
+        f"Status: {status}{excuse_note}",
+        f"Resets: <t:{int(reset_at.timestamp())}:F> (<t:{int(reset_at.timestamp())}:R>)",
+    ]
+    await interaction.response.send_message("\n".join(lines), ephemeral=True)
+
+
+@client.tree.command(name="in", description="Put a tryouter on IN, excusing them from quota for its duration (staff only)")
+@app_commands.describe(
+    tryouter="The tryouter to put on IN",
+    days="Length of the IN, in days",
+    reason="Optional reason",
+)
+async def in_command(interaction: discord.Interaction, tryouter: discord.Member, days: int, reason: str = None):
+    member_roles = getattr(interaction.user, "roles", [])
+    if not any(r.id == ADDELO_ROLE_ID for r in member_roles):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    if days <= 0:
+        await interaction.response.send_message("❌ Days must be a positive number.", ephemeral=True)
+        return
+
+    now = datetime.now(timezone.utc)
+    existing = await get_in_doc(tryouter.id)
+    if existing and existing.get("cooldown_until"):
+        cooldown_until = _aware(existing["cooldown_until"])
+        if now < cooldown_until:
+            await interaction.response.send_message(
+                f"❌ {tryouter.mention} is on IN cooldown until <t:{int(cooldown_until.timestamp())}:F> "
+                "and can't be put on IN again yet.",
+                ephemeral=True,
+            )
+            return
+
+    in_until = now + timedelta(days=days)
+    # Cooldown counts from when the IN period ENDS, not from when it's set.
+    cooldown_until = in_until + timedelta(days=IN_COOLDOWN_DAYS)
+    await set_in_status(tryouter.id, now, in_until, cooldown_until, interaction.user.id, reason)
+
+    embed = discord.Embed(
+        title="🟢 Tryouter put on IN",
+        description=f"{tryouter.mention} is excused from tryout quota until <t:{int(in_until.timestamp())}:F>.",
+        color=0x2ECC71,
+    )
+    embed.add_field(name="Set by", value=interaction.user.mention, inline=True)
+    embed.add_field(name="Duration", value=f"{days} day(s)", inline=True)
+    embed.add_field(name="Next eligible for /in", value=f"<t:{int(cooldown_until.timestamp())}:F>", inline=False)
+    if reason:
+        embed.add_field(name="Reason", value=reason, inline=False)
+
+    await interaction.response.send_message(embed=embed)
 
 
 # =====================================================================================
@@ -2047,6 +2358,20 @@ async def on_ready():
     # Start the queue-timeout sweeper (guarded so reconnects don't spawn duplicate loops)
     if not queue_timeout_check.is_running():
         queue_timeout_check.start()
+
+    # Seed the quota system's reset bookkeeping the first time the bot ever boots with this
+    # feature. Stamping today's date here means today's Sunday-20:00 window (if any) is
+    # skipped — the first real quota week runs from right now to the next Sunday 20:00 GMT.
+    try:
+        if await get_quota_state() is None:
+            now = datetime.now(timezone.utc)
+            await set_quota_state(now.strftime("%Y-%m-%d"), now)
+            logger.info(">>> [QUOTA] Initialized quota state — today's reset is exempted; quota period starts now.")
+    except Exception as e:
+        logger.error(f"!!! [QUOTA INIT ERROR]: {e}")
+
+    if not quota_reset_check.is_running():
+        quota_reset_check.start()
 
 
 def _run_with_backoff():
