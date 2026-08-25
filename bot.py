@@ -4,6 +4,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 import os
 import re
+import io
 import random
 import threading
 import asyncio
@@ -48,7 +49,6 @@ TDONE_ALLOWED_ROLE_IDS = {               # Only members with one of these roles 
     1538589345458692196,
     1538589345441648669,
 }
-CHECK_CATEGORY_ID = 1538589355176890404  # Only channels in this category can be renamed with /check
 
 # --- TRYOUT QUOTA SYSTEM ---
 QUOTA_REPORT_CHANNEL_ID = 1538589352186355804  # Channel where the weekly quota-fail report is posted
@@ -402,21 +402,26 @@ async def adjust_elo(user_id: int, delta: int) -> int:
     return await asyncio.to_thread(_adjust_elo_sync, user_id, delta)
 
 
-def _get_elo_banner_url_sync(user_id: int):
+def _get_elo_banner_data_sync(user_id: int):
     doc = elo_banner_col.find_one({"_id": f"banner:{user_id}"})
-    return doc["url"] if doc else None
+    return bytes(doc["data"]) if doc and doc.get("data") else None
 
 
-async def get_elo_banner_url(user_id: int):
-    return await asyncio.to_thread(_get_elo_banner_url_sync, user_id)
+async def get_elo_banner_data(user_id: int):
+    return await asyncio.to_thread(_get_elo_banner_data_sync, user_id)
 
 
-def _set_elo_banner_url_sync(user_id: int, url: str):
-    elo_banner_col.update_one({"_id": f"banner:{user_id}"}, {"$set": {"url": url}}, upsert=True)
+def _set_elo_banner_data_sync(user_id: int, data: bytes):
+    # Storing the raw image bytes (instead of the Discord attachment URL) means the banner
+    # keeps working forever. Discord CDN attachment URLs carry a signed expiry (ex/is/hm
+    # query params) that lapses after a while, so a saved URL would eventually 403 and
+    # silently fall back to no banner — which is why banners appeared to "disappear" over
+    # time (most noticeably whenever someone next pulled up their card, e.g. after a duel).
+    elo_banner_col.update_one({"_id": f"banner:{user_id}"}, {"$set": {"data": data}}, upsert=True)
 
 
-async def set_elo_banner_url(user_id: int, url: str):
-    await asyncio.to_thread(_set_elo_banner_url_sync, user_id, url)
+async def set_elo_banner_data(user_id: int, data: bytes):
+    await asyncio.to_thread(_set_elo_banner_data_sync, user_id, data)
 
 
 def _clear_elo_banner_sync(user_id: int):
@@ -1236,12 +1241,18 @@ def _safe_channel_part(name: str) -> str:
     return s or 'player'
 
 
-def build_matchmaking_embed() -> discord.Embed:
+def build_matchmaking_embed(guild: discord.Guild = None) -> discord.Embed:
     r_count = len(QUEUES["ranked"])
     f_count = len(QUEUES["friendly"])
 
-    def status(count):
-        return f"**{count}/2** — " + ("🟡 waiting for an opponent..." if count else "⚪ queue is empty")
+    def status(mode: str, count: int):
+        if not count:
+            return "**0/2** — ⚪ queue is empty"
+        names = []
+        for user_id in QUEUES[mode]:
+            member = guild.get_member(user_id) if guild else None
+            names.append(member.mention if member else f"<@{user_id}>")
+        return f"**{count}/2** — 🟡 " + ", ".join(names) + " waiting for an opponent..."
 
     embed = discord.Embed(
         title="⚔️ Matchmaking",
@@ -1253,8 +1264,8 @@ def build_matchmaking_embed() -> discord.Embed:
         ),
         color=0xE63946
     )
-    embed.add_field(name="🏆 Ranked", value=status(r_count), inline=True)
-    embed.add_field(name="🤝 Friendly", value=status(f_count), inline=True)
+    embed.add_field(name="🏆 Ranked", value=status("ranked", r_count), inline=True)
+    embed.add_field(name="🤝 Friendly", value=status("friendly", f_count), inline=True)
     embed.set_footer(text="BLZ-T · Matchmaking")
     return embed
 
@@ -1264,7 +1275,9 @@ async def update_queue_panel():
     if matchmaking_panel_message is None:
         return
     try:
-        await matchmaking_panel_message.edit(embed=build_matchmaking_embed(), view=MatchmakingView())
+        await matchmaking_panel_message.edit(
+            embed=build_matchmaking_embed(matchmaking_panel_message.guild), view=MatchmakingView()
+        )
     except Exception as e:
         logger.error(f"!!! [MATCHMAKING PANEL UPDATE]: {e}")
 
@@ -1838,7 +1851,7 @@ async def ensure_matchmaking_panel():
                 await update_queue_panel()
                 return
 
-        matchmaking_panel_message = await channel.send(embed=build_matchmaking_embed(), view=MatchmakingView())
+        matchmaking_panel_message = await channel.send(embed=build_matchmaking_embed(channel.guild), view=MatchmakingView())
         logger.info(f">>> [MATCHMAKING PANEL] Published in #{channel.name}")
     except discord.Forbidden:
         logger.error(f"!!! [MATCHMAKING PANEL] Missing permissions in #{channel.name}")
@@ -1970,87 +1983,6 @@ async def tdone_command(interaction: discord.Interaction, player: discord.Member
 
 
 # =====================================================================================
-# /check COMMAND — reads a submission message (Username/Style/Flow/Position/tryout type)
-# and renames the current channel to "position-region-gp/st"
-# =====================================================================================
-
-MESSAGE_LINK_RE = re.compile(r"discord(?:app)?\.com/channels/(\d+)/(\d+)/(\d+)")
-
-
-def _clean_channel_part(text: str) -> str:
-    """Lowercase a piece of text and strip it down to characters safe for a channel name."""
-    text = re.sub(r"\s+", "-", text.strip())
-    text = re.sub(r"[^a-zA-Z0-9\-]", "", text)
-    return text.lower()
-
-
-@client.tree.command(name="check", description="Rename this channel using info from a tryout submission message")
-@app_commands.describe(
-    message_link="Link to the submission message (contains Username/Style/Flow/Position)",
-    region="Region for this channel (e.g. NA, EU, ASIA)",
-)
-async def check_command(interaction: discord.Interaction, message_link: str, region: str):
-    member_roles = getattr(interaction.user, "roles", [])
-    if not any(r.id in TDONE_ALLOWED_ROLE_IDS for r in member_roles):
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
-        return
-
-    channel = interaction.channel
-    if channel is None or channel.category_id != CHECK_CATEGORY_ID:
-        await interaction.response.send_message(
-            f"❌ /check can only be used in channels under <#{CHECK_CATEGORY_ID}>'s category.", ephemeral=True
-        )
-        return
-
-    link_match = MESSAGE_LINK_RE.search(message_link)
-    if not link_match:
-        await interaction.response.send_message("❌ That doesn't look like a valid message link.", ephemeral=True)
-        return
-
-    _, msg_channel_id, msg_id = link_match.groups()
-
-    try:
-        msg_channel = client.get_channel(int(msg_channel_id)) or await client.fetch_channel(int(msg_channel_id))
-        target_message = await msg_channel.fetch_message(int(msg_id))
-    except Exception as e:
-        await interaction.response.send_message(f"❌ Couldn't fetch that message: {e}", ephemeral=True)
-        return
-
-    content = target_message.content or ""
-    content_lower = content.lower()
-
-    position_match = re.search(r"position\s*:\s*([^\n]+)", content, re.IGNORECASE)
-    if not position_match:
-        await interaction.response.send_message("❌ Couldn't find a `Position:` field in that message.", ephemeral=True)
-        return
-    position_raw = position_match.group(1).strip()
-
-    if "stat" in content_lower:
-        gp_st = "st"
-    elif "gameplay" in content_lower:
-        gp_st = "gp"
-    else:
-        await interaction.response.send_message(
-            "❌ Couldn't tell from that message whether they want a Stat Tryout or Gameplay.", ephemeral=True
-        )
-        return
-
-    new_name = f"{_clean_channel_part(position_raw)}-{_clean_channel_part(region)}-{gp_st}"[:100]
-
-    try:
-        await channel.edit(name=new_name, reason=f"/check by {interaction.user}")
-    except discord.Forbidden:
-        await interaction.response.send_message("❌ I don't have permission to rename this channel.", ephemeral=True)
-        return
-    except Exception as e:
-        logger.error(f"!!! [CHECK RENAME ERROR]: {e}")
-        await interaction.response.send_message(f"❌ Couldn't rename the channel: {e}", ephemeral=True)
-        return
-
-    await interaction.response.send_message(f"✅ Channel renamed to `{new_name}`.", ephemeral=True)
-
-
-# =====================================================================================
 # /ep + /in COMMANDS — tryout quota system
 # =====================================================================================
 
@@ -2146,6 +2078,40 @@ async def in_command(interaction: discord.Interaction, tryouter: discord.Member,
     await interaction.response.send_message(embed=embed)
 
 
+@client.tree.command(name="endin", description="End a tryouter's IN early (staff only)")
+@app_commands.describe(tryouter="The tryouter whose IN should end now")
+async def endin_command(interaction: discord.Interaction, tryouter: discord.Member):
+    member_roles = getattr(interaction.user, "roles", [])
+    if not any(r.id == ADDELO_ROLE_ID for r in member_roles):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    now = datetime.now(timezone.utc)
+    existing = await get_in_doc(tryouter.id)
+    if not existing or not existing.get("in_until") or _aware(existing["in_until"]) <= now:
+        await interaction.response.send_message(f"⚠️ {tryouter.mention} isn't currently on IN.", ephemeral=True)
+        return
+
+    # The cooldown is meant to be counted from when the IN period actually ends — since
+    # we're ending it now instead of at the originally-scheduled time, recalculate it
+    # from now rather than leaving the old (later) cooldown_until in place.
+    cooldown_until = now + timedelta(days=IN_COOLDOWN_DAYS)
+    await set_in_status(
+        tryouter.id, existing.get("in_since", now), now, cooldown_until,
+        interaction.user.id, existing.get("reason"),
+    )
+
+    embed = discord.Embed(
+        title="🔴 IN ended early",
+        description=f"{tryouter.mention}'s IN has been ended. Tryout quota applies to them again immediately.",
+        color=0xE67E22,
+    )
+    embed.add_field(name="Ended by", value=interaction.user.mention, inline=True)
+    embed.add_field(name="Next eligible for /in", value=f"<t:{int(cooldown_until.timestamp())}:F>", inline=False)
+
+    await interaction.response.send_message(embed=embed)
+
+
 # =====================================================================================
 # /elo COMMAND
 # =====================================================================================
@@ -2177,12 +2143,14 @@ async def elo_command(interaction: discord.Interaction, player: discord.Member =
         avatar_img = _placeholder_avatar(accent)
 
     banner_img = None
-    banner_url = await get_elo_banner_url(target.id)
-    if banner_url:
+    banner_data = await get_elo_banner_data(target.id)
+    if banner_data:
         try:
-            banner_img = await load_image_async(banner_url)
+            banner_img = await asyncio.to_thread(
+                lambda: Image.open(io.BytesIO(banner_data)).convert("RGBA")
+            )
         except Exception as e:
-            logger.error(f"!!! [ELO CARD] Banner download failed: {e}")
+            logger.error(f"!!! [ELO CARD] Banner decode failed: {e}")
 
     try:
         file = await build_elo_card_file(target.display_name, row, accent, avatar_img, banner_img)
@@ -2219,6 +2187,9 @@ async def resetelocolor_command(interaction: discord.Interaction):
     await interaction.response.send_message("✅ /elo accent color reset to the role-based default.", ephemeral=True)
 
 
+MAX_ELO_BANNER_BYTES = 8 * 1024 * 1024  # keep individual banner docs well under Mongo's 16MB doc limit
+
+
 @client.tree.command(name="setelobanner", description="Set a custom background image for /elo cards")
 @app_commands.describe(image="Image to use as the /elo card background")
 async def setelobanner_command(interaction: discord.Interaction, image: discord.Attachment):
@@ -2226,7 +2197,28 @@ async def setelobanner_command(interaction: discord.Interaction, image: discord.
         await interaction.response.send_message("❌ Please upload an image file.", ephemeral=True)
         return
 
-    await set_elo_banner_url(interaction.user.id, image.url)
+    if image.size > MAX_ELO_BANNER_BYTES:
+        await interaction.response.send_message(
+            f"❌ That image is too large (max {MAX_ELO_BANNER_BYTES // (1024 * 1024)}MB). Try a smaller file.",
+            ephemeral=True,
+        )
+        return
+
+    try:
+        data = await image.read()
+    except Exception as e:
+        logger.error(f"!!! [SETELOBANNER] Download failed: {e}")
+        await interaction.response.send_message("❌ Couldn't download that image. Try again.", ephemeral=True)
+        return
+
+    # Sanity-check that it actually decodes as an image before saving it permanently.
+    try:
+        await asyncio.to_thread(lambda: Image.open(io.BytesIO(data)).convert("RGBA"))
+    except Exception:
+        await interaction.response.send_message("❌ That file doesn't look like a valid image.", ephemeral=True)
+        return
+
+    await set_elo_banner_data(interaction.user.id, data)
     await interaction.response.send_message("✅ Your /elo banner updated.", ephemeral=True)
 
 
