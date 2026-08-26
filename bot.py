@@ -51,7 +51,7 @@ TDONE_ALLOWED_ROLE_IDS = {               # Only members with one of these roles 
 }
 BANDM_ROLE_ID = 1538589345991360527      # Only members with this role can use /bandm and /warndm
 BANDM_TEST_ROLE_ID = 1539303279195062313  # Only members with this role can use /bandmtest and /warndmtest
-SUPPORT_SERVER_URL = "https://discord.gg/Pm3RaEFWqg"  # Used in ban/warn DMs
+SUPPORT_SERVER_URL = "https://discord.gg/FZmjTSBpSZ"  # Used in ban/warn DMs
 
 # --- TRYOUT QUOTA SYSTEM ---
 QUOTA_REPORT_CHANNEL_ID = 1538589352186355804  # Channel where the weekly quota-fail report is posted
