@@ -49,6 +49,9 @@ TDONE_ALLOWED_ROLE_IDS = {               # Only members with one of these roles 
     1538589345458692196,
     1538589345441648669,
 }
+BANDM_ROLE_ID = 1538589345991360527      # Only members with this role can use /bandm and /warndm
+BANDM_TEST_ROLE_ID = 1539303279195062313  # Only members with this role can use /bandmtest and /warndmtest
+SUPPORT_SERVER_URL = "https://discord.gg/Pm3RaEFWqg"  # Used in ban/warn DMs
 
 # --- TRYOUT QUOTA SYSTEM ---
 QUOTA_REPORT_CHANNEL_ID = 1538589352186355804  # Channel where the weekly quota-fail report is posted
@@ -2110,6 +2113,109 @@ async def endin_command(interaction: discord.Interaction, tryouter: discord.Memb
     embed.add_field(name="Next eligible for /in", value=f"<t:{int(cooldown_until.timestamp())}:F>", inline=False)
 
     await interaction.response.send_message(embed=embed)
+
+
+# =====================================================================================
+# BAN / WARN DM COMMANDS
+# =====================================================================================
+
+def build_ban_dm(reason: str) -> str:
+    return (
+        "🟥 **RED CARD!** 🟥\n\n"
+        "You've been locked off the field of Blue Lock: Rivals. A true egoist knows the rules of the game.\n\n"
+        f"`Reason:` {reason}\n\n"
+        "For further assistance, head to the support locker room.\n"
+        f"`Support Server:` {SUPPORT_SERVER_URL}"
+    )
+
+
+def build_warn_dm(punishment: str, reason: str) -> str:
+    return (
+        "🟨 **YELLOW CARD!** 🟨\n\n"
+        "You've been cautioned on the field of Blue Lock: Rivals. A true egoist knows the rules of the game.\n\n"
+        f"`Punishment:` {punishment}\n"
+        f"`Reason:` {reason}\n\n"
+        "For further assistance, head to the support locker room.\n"
+        f"`Support Server:` {SUPPORT_SERVER_URL}"
+    )
+
+
+async def _send_ban_dm(interaction: discord.Interaction, member: discord.Member, reason: str):
+    message = build_ban_dm(reason)
+    try:
+        await member.send(message)
+    except Exception:
+        await interaction.response.send_message(
+            f"⚠️ Couldn't DM {member.mention} — they may have DMs disabled.", ephemeral=True
+        )
+        return
+    await interaction.response.send_message(f"✅ Ban notice sent to {member.mention}.", ephemeral=True)
+
+
+async def _send_warn_dm(interaction: discord.Interaction, member: discord.Member, punishment: str, reason: str):
+    message = build_warn_dm(punishment, reason)
+    try:
+        await member.send(message)
+    except Exception:
+        await interaction.response.send_message(
+            f"⚠️ Couldn't DM {member.mention} — they may have DMs disabled.", ephemeral=True
+        )
+        return
+    await interaction.response.send_message(f"✅ Warn notice sent to {member.mention}.", ephemeral=True)
+
+
+@client.tree.command(name="bandm", description="DM a user the ban notice (staff only)")
+@app_commands.describe(
+    member="The user to DM",
+    reason="The reason for the ban",
+)
+async def bandm_command(interaction: discord.Interaction, member: discord.Member, reason: str):
+    member_roles = getattr(interaction.user, "roles", [])
+    if not any(r.id == BANDM_ROLE_ID for r in member_roles):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+    await _send_ban_dm(interaction, member, reason)
+
+
+@client.tree.command(name="warndm", description="DM a user the warning notice (staff only)")
+@app_commands.describe(
+    member="The user to DM",
+    punishment="The punishment given, e.g. '2h mute'",
+    reason="The reason for the warning",
+)
+async def warndm_command(interaction: discord.Interaction, member: discord.Member, punishment: str, reason: str):
+    member_roles = getattr(interaction.user, "roles", [])
+    if not any(r.id == BANDM_ROLE_ID for r in member_roles):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+    await _send_warn_dm(interaction, member, punishment, reason)
+
+
+@client.tree.command(name="bandmtest", description="Test the ban DM notice (test role only)")
+@app_commands.describe(
+    member="The user to DM",
+    reason="The reason for the ban",
+)
+async def bandmtest_command(interaction: discord.Interaction, member: discord.Member, reason: str):
+    member_roles = getattr(interaction.user, "roles", [])
+    if not any(r.id == BANDM_TEST_ROLE_ID for r in member_roles):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+    await _send_ban_dm(interaction, member, reason)
+
+
+@client.tree.command(name="warndmtest", description="Test the warning DM notice (test role only)")
+@app_commands.describe(
+    member="The user to DM",
+    punishment="The punishment given, e.g. '2h mute'",
+    reason="The reason for the warning",
+)
+async def warndmtest_command(interaction: discord.Interaction, member: discord.Member, punishment: str, reason: str):
+    member_roles = getattr(interaction.user, "roles", [])
+    if not any(r.id == BANDM_TEST_ROLE_ID for r in member_roles):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+    await _send_warn_dm(interaction, member, punishment, reason)
 
 
 # =====================================================================================
