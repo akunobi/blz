@@ -2122,7 +2122,7 @@ async def endin_command(interaction: discord.Interaction, tryouter: discord.Memb
 def build_ban_dm(reason: str) -> str:
     return (
         "🟥 **RED CARD!** 🟥\n\n"
-        "You've been locked off the field of Blue Lock: Rivals. A true egoist knows the rules of the game.\n\n"
+        "You've been locked off the field of Blazing Lock. A true egoist knows the rules of the game.\n\n"
         f"`Reason:` {reason}\n\n"
         "For further assistance, head to the support locker room.\n"
         f"`Support Server:` {SUPPORT_SERVER_URL}"
@@ -2132,7 +2132,7 @@ def build_ban_dm(reason: str) -> str:
 def build_warn_dm(punishment: str, reason: str) -> str:
     return (
         "🟨 **YELLOW CARD!** 🟨\n\n"
-        "You've been cautioned on the field of Blue Lock: Rivals. A true egoist knows the rules of the game.\n\n"
+        "You've been cautioned on the field of Blazing Lock. A true egoist knows the rules of the game.\n\n"
         f"`Punishment:` {punishment}\n"
         f"`Reason:` {reason}\n\n"
         "For further assistance, head to the support locker room.\n"
