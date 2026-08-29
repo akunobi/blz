@@ -49,6 +49,7 @@ TDONE_ALLOWED_ROLE_IDS = {               # Only members with one of these roles 
     1538589345458692196,
     1538589345441648669,
 }
+ECONOMY_CHANNEL_ID = 1543393700539801671  # Only channel where economy/game commands can be used
 BANDM_ROLE_ID = 1538589345991360527      # Only members with this role can use /bandm and /warndm
 BANDM_TEST_ROLE_ID = 1539303279195062313  # Only members with this role can use /bandmtest and /warndmtest
 SUPPORT_SERVER_URL = "https://discord.gg/FZmjTSBpSZ"  # Used in ban/warn DMs
@@ -131,7 +132,10 @@ quota_state_col = db["quota_state"]  # Single doc tracking the last processed we
 tryout_in_col = db["tryout_in"]  # Per-tryouter IN (excused) status + /in cooldown
 
 # Helpful indexes (no-ops if they already exist)
+economy_col = db["economy"]  # Per-user coins, inventory, and cooldowns for the economy system
+
 players_col.create_index([("elo", DESCENDING)])
+economy_col.create_index([("balance", DESCENDING)])
 duel_history_col.create_index([("player_low", ASCENDING), ("player_high", ASCENDING), ("mode", ASCENDING), ("created_at", DESCENDING)])
 
 
@@ -2419,6 +2423,361 @@ async def leaderboard_command(interaction: discord.Interaction):
         return
 
     await interaction.followup.send(file=file)
+
+
+# =====================================================================================
+# ECONOMY SYSTEM (balance, daily, work, shop, items, pay, leaderboard) + GAMES
+# All commands below are restricted to ECONOMY_CHANNEL_ID.
+# =====================================================================================
+
+CURRENCY = "🪙"
+STARTING_BALANCE = 100
+DAILY_AMOUNT = 250
+WORK_MIN, WORK_MAX = 50, 200
+DAILY_COOLDOWN = timedelta(hours=20)
+WORK_COOLDOWN = timedelta(hours=1)
+
+SHOP_ITEMS = [
+    {"id": "fishingrod", "name": "Fishing Rod", "emoji": "🎣", "price": 300, "desc": "A trusty rod. Purely for flexing."},
+    {"id": "sword", "name": "Sword", "emoji": "⚔️", "price": 500, "desc": "Show off your combat prowess."},
+    {"id": "shield", "name": "Shield", "emoji": "🛡️", "price": 450, "desc": "Protects your pride, mostly."},
+    {"id": "trophy", "name": "Trophy", "emoji": "🏆", "price": 1000, "desc": "A shiny status symbol."},
+    {"id": "gem", "name": "Gem", "emoji": "💎", "price": 2000, "desc": "Extremely rare and shiny."},
+    {"id": "chest", "name": "Mystery Chest", "emoji": "🎁", "price": 750, "desc": "Use with /use for a random coin reward."},
+]
+SHOP_BY_ID = {i["id"]: i for i in SHOP_ITEMS}
+
+
+def _get_econ_sync(user_id: int) -> dict:
+    doc = economy_col.find_one({"_id": user_id})
+    if doc is None:
+        doc = {"_id": user_id, "balance": STARTING_BALANCE, "inventory": {}, "last_daily": None, "last_work": None}
+        economy_col.insert_one(doc)
+    return doc
+
+
+async def get_econ(user_id: int) -> dict:
+    return await asyncio.to_thread(_get_econ_sync, user_id)
+
+
+def _add_balance_sync(user_id: int, amount: int) -> int:
+    doc = _get_econ_sync(user_id)
+    new_bal = max(0, doc["balance"] + amount)
+    economy_col.update_one({"_id": user_id}, {"$set": {"balance": new_bal}})
+    return new_bal
+
+
+async def add_balance(user_id: int, amount: int) -> int:
+    return await asyncio.to_thread(_add_balance_sync, user_id, amount)
+
+
+async def set_cooldown(user_id: int, field: str, when: datetime):
+    await asyncio.to_thread(lambda: economy_col.update_one({"_id": user_id}, {"$set": {field: when}}, upsert=True))
+
+
+def _add_item_sync(user_id: int, item_id: str, qty: int):
+    doc = _get_econ_sync(user_id)
+    new_qty = doc.get("inventory", {}).get(item_id, 0) + qty
+    economy_col.update_one({"_id": user_id}, {"$set": {f"inventory.{item_id}": new_qty}})
+
+
+async def add_item(user_id: int, item_id: str, qty: int = 1):
+    await asyncio.to_thread(_add_item_sync, user_id, item_id, qty)
+
+
+def _remove_item_sync(user_id: int, item_id: str, qty: int) -> bool:
+    doc = _get_econ_sync(user_id)
+    have = doc.get("inventory", {}).get(item_id, 0)
+    if have < qty:
+        return False
+    economy_col.update_one({"_id": user_id}, {"$set": {f"inventory.{item_id}": have - qty}})
+    return True
+
+
+async def remove_item(user_id: int, item_id: str, qty: int = 1) -> bool:
+    return await asyncio.to_thread(_remove_item_sync, user_id, item_id, qty)
+
+
+async def get_econ_top(limit: int = 10) -> list:
+    return await asyncio.to_thread(lambda: list(economy_col.find().sort("balance", DESCENDING).limit(limit)))
+
+
+async def econ_channel_check(interaction: discord.Interaction) -> bool:
+    if interaction.channel_id != ECONOMY_CHANNEL_ID:
+        await interaction.response.send_message(f"Use this in <#{ECONOMY_CHANNEL_ID}>.", ephemeral=True)
+        return False
+    return True
+
+
+def _fmt_remaining(until: datetime, now: datetime) -> str:
+    secs = int((until - now).total_seconds())
+    h, m = divmod(secs // 60, 60)
+    return f"{h}h {m}m" if h else f"{m}m"
+
+
+# --- Core economy commands ---
+
+@client.tree.command(name="balance", description="Check your (or someone's) coin balance")
+@app_commands.describe(user="Whose balance to check")
+async def balance_command(interaction: discord.Interaction, user: discord.Member = None):
+    if not await econ_channel_check(interaction):
+        return
+    target = user or interaction.user
+    doc = await get_econ(target.id)
+    await interaction.response.send_message(f"{CURRENCY} **{target.display_name}** has **{doc['balance']}** coins.")
+
+
+@client.tree.command(name="daily", description="Claim your daily coins")
+async def daily_command(interaction: discord.Interaction):
+    if not await econ_channel_check(interaction):
+        return
+    doc = await get_econ(interaction.user.id)
+    now = datetime.now(timezone.utc)
+    last = doc.get("last_daily")
+    if last and _aware(last) + DAILY_COOLDOWN > now:
+        await interaction.response.send_message(
+            f"⏳ Already claimed. Come back in **{_fmt_remaining(_aware(last) + DAILY_COOLDOWN, now)}**.", ephemeral=True)
+        return
+    new_bal = await add_balance(interaction.user.id, DAILY_AMOUNT)
+    await set_cooldown(interaction.user.id, "last_daily", now)
+    await interaction.response.send_message(f"✅ Claimed your daily **{DAILY_AMOUNT}** {CURRENCY}! Balance: **{new_bal}**.")
+
+
+@client.tree.command(name="work", description="Work a job for some coins")
+async def work_command(interaction: discord.Interaction):
+    if not await econ_channel_check(interaction):
+        return
+    doc = await get_econ(interaction.user.id)
+    now = datetime.now(timezone.utc)
+    last = doc.get("last_work")
+    if last and _aware(last) + WORK_COOLDOWN > now:
+        await interaction.response.send_message(
+            f"⏳ You're tired. Rest **{_fmt_remaining(_aware(last) + WORK_COOLDOWN, now)}** more.", ephemeral=True)
+        return
+    earned = random.randint(WORK_MIN, WORK_MAX)
+    jobs = ["delivered pizzas", "coded a bot", "walked dogs", "streamed on Twitch", "mowed a lawn", "fixed a PC"]
+    new_bal = await add_balance(interaction.user.id, earned)
+    await set_cooldown(interaction.user.id, "last_work", now)
+    await interaction.response.send_message(f"💼 You {random.choice(jobs)} and earned **{earned}** {CURRENCY}! Balance: **{new_bal}**.")
+
+
+@client.tree.command(name="shop", description="View the item shop")
+async def shop_command(interaction: discord.Interaction):
+    if not await econ_channel_check(interaction):
+        return
+    embed = discord.Embed(title="🛒 Item Shop", color=0xE63946)
+    for it in SHOP_ITEMS:
+        embed.add_field(name=f"{it['emoji']} {it['name']} — {it['price']} {CURRENCY}",
+                         value=f"{it['desc']}\n`/buy item:{it['id']}`", inline=False)
+    await interaction.response.send_message(embed=embed)
+
+
+@client.tree.command(name="buy", description="Buy an item from the shop")
+@app_commands.describe(item="Item id from /shop", quantity="How many to buy")
+async def buy_command(interaction: discord.Interaction, item: str, quantity: int = 1):
+    if not await econ_channel_check(interaction):
+        return
+    item = item.lower()
+    if item not in SHOP_BY_ID or quantity < 1:
+        await interaction.response.send_message("❌ Unknown item or invalid quantity.", ephemeral=True)
+        return
+    it = SHOP_BY_ID[item]
+    cost = it["price"] * quantity
+    doc = await get_econ(interaction.user.id)
+    if doc["balance"] < cost:
+        await interaction.response.send_message(f"❌ Need **{cost}** {CURRENCY}, you have **{doc['balance']}**.", ephemeral=True)
+        return
+    await add_balance(interaction.user.id, -cost)
+    await add_item(interaction.user.id, item, quantity)
+    await interaction.response.send_message(f"✅ Bought **{quantity}x {it['emoji']} {it['name']}** for **{cost}** {CURRENCY}.")
+
+
+@client.tree.command(name="sell", description="Sell an item back for half its price")
+@app_commands.describe(item="Item id from your inventory", quantity="How many to sell")
+async def sell_command(interaction: discord.Interaction, item: str, quantity: int = 1):
+    if not await econ_channel_check(interaction):
+        return
+    item = item.lower()
+    if item not in SHOP_BY_ID or quantity < 1:
+        await interaction.response.send_message("❌ Unknown item or invalid quantity.", ephemeral=True)
+        return
+    if not await remove_item(interaction.user.id, item, quantity):
+        await interaction.response.send_message("❌ You don't have that many.", ephemeral=True)
+        return
+    refund = (SHOP_BY_ID[item]["price"] // 2) * quantity
+    new_bal = await add_balance(interaction.user.id, refund)
+    await interaction.response.send_message(f"✅ Sold **{quantity}x {SHOP_BY_ID[item]['name']}** for **{refund}** {CURRENCY}. Balance: **{new_bal}**.")
+
+
+@client.tree.command(name="use", description="Use a consumable item from your inventory")
+@app_commands.describe(item="Item id to use")
+async def use_command(interaction: discord.Interaction, item: str):
+    if not await econ_channel_check(interaction):
+        return
+    if item.lower() != "chest":
+        await interaction.response.send_message("❌ That item can't be used.", ephemeral=True)
+        return
+    if not await remove_item(interaction.user.id, "chest", 1):
+        await interaction.response.send_message("❌ You don't have a Mystery Chest.", ephemeral=True)
+        return
+    reward = random.randint(100, 1500)
+    new_bal = await add_balance(interaction.user.id, reward)
+    await interaction.response.send_message(f"🎁 The chest held **{reward}** {CURRENCY}! Balance: **{new_bal}**.")
+
+
+@client.tree.command(name="inventory", description="View your (or someone's) inventory")
+@app_commands.describe(user="Whose inventory to view")
+async def inventory_command(interaction: discord.Interaction, user: discord.Member = None):
+    if not await econ_channel_check(interaction):
+        return
+    target = user or interaction.user
+    doc = await get_econ(target.id)
+    inv = {k: v for k, v in doc.get("inventory", {}).items() if v > 0 and k in SHOP_BY_ID}
+    if not inv:
+        await interaction.response.send_message(f"{target.display_name}'s inventory is empty.")
+        return
+    lines = [f"{SHOP_BY_ID[i]['emoji']} {SHOP_BY_ID[i]['name']} x{q}" for i, q in inv.items()]
+    embed = discord.Embed(title=f"🎒 {target.display_name}'s Inventory", description="\n".join(lines), color=0xE63946)
+    await interaction.response.send_message(embed=embed)
+
+
+@client.tree.command(name="pay", description="Give coins to another player")
+@app_commands.describe(user="Who to pay", amount="How many coins")
+async def pay_command(interaction: discord.Interaction, user: discord.Member, amount: int):
+    if not await econ_channel_check(interaction):
+        return
+    if amount < 1:
+        await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
+        return
+    if user.id == interaction.user.id or user.bot:
+        await interaction.response.send_message("❌ Invalid recipient.", ephemeral=True)
+        return
+    doc = await get_econ(interaction.user.id)
+    if doc["balance"] < amount:
+        await interaction.response.send_message("❌ Insufficient balance.", ephemeral=True)
+        return
+    await add_balance(interaction.user.id, -amount)
+    new_bal = await add_balance(user.id, amount)
+    await interaction.response.send_message(f"💸 {interaction.user.mention} paid {user.mention} **{amount}** {CURRENCY}. New balance: **{new_bal}**.")
+
+
+@client.tree.command(name="baltop", description="Show the richest players")
+async def baltop_command(interaction: discord.Interaction):
+    if not await econ_channel_check(interaction):
+        return
+    top = await get_econ_top(10)
+    if not top:
+        await interaction.response.send_message("No one has any coins yet.")
+        return
+    lines = []
+    for i, doc in enumerate(top, start=1):
+        member = interaction.guild.get_member(doc["_id"]) if interaction.guild else None
+        name = member.display_name if member else f"User {doc['_id']}"
+        lines.append(f"**{i}.** {name} — {doc['balance']} {CURRENCY}")
+    embed = discord.Embed(title="💰 Richest Players", description="\n".join(lines), color=0xE63946)
+    await interaction.response.send_message(embed=embed)
+
+
+# --- Games ---
+
+@client.tree.command(name="rps", description="Play rock-paper-scissors, optionally betting coins")
+@app_commands.describe(choice="Your move", bet="Coins to bet (optional)")
+@app_commands.choices(choice=[
+    app_commands.Choice(name="Rock", value="rock"),
+    app_commands.Choice(name="Paper", value="paper"),
+    app_commands.Choice(name="Scissors", value="scissors"),
+])
+async def rps_command(interaction: discord.Interaction, choice: app_commands.Choice[str], bet: int = 0):
+    if not await econ_channel_check(interaction):
+        return
+    if bet < 0:
+        await interaction.response.send_message("❌ Bet can't be negative.", ephemeral=True)
+        return
+    if bet > 0 and (await get_econ(interaction.user.id))["balance"] < bet:
+        await interaction.response.send_message("❌ Insufficient balance.", ephemeral=True)
+        return
+    bot_choice = random.choice(["rock", "paper", "scissors"])
+    beats = {"rock": "scissors", "paper": "rock", "scissors": "paper"}
+    emoji = {"rock": "🪨", "paper": "📄", "scissors": "✂️"}
+    user_choice = choice.value
+    if user_choice == bot_choice:
+        result, delta = "🤝 It's a tie!", 0
+    elif beats[user_choice] == bot_choice:
+        result, delta = f"🎉 You win{f' **{bet}**' + CURRENCY if bet else ''}!", bet
+    else:
+        result, delta = f"💀 You lose{f' **{bet}**' + CURRENCY if bet else ''}!", -bet
+    new_bal = await add_balance(interaction.user.id, delta) if bet else None
+    msg = f"You: {emoji[user_choice]} {user_choice}  vs  Bot: {emoji[bot_choice]} {bot_choice}\n{result}"
+    if new_bal is not None:
+        msg += f"\nBalance: **{new_bal}**"
+    await interaction.response.send_message(msg)
+
+
+@client.tree.command(name="coinflip", description="Flip a coin and bet on the outcome")
+@app_commands.describe(side="Heads or tails", bet="Coins to bet")
+@app_commands.choices(side=[
+    app_commands.Choice(name="Heads", value="heads"),
+    app_commands.Choice(name="Tails", value="tails"),
+])
+async def coinflip_command(interaction: discord.Interaction, side: app_commands.Choice[str], bet: int):
+    if not await econ_channel_check(interaction):
+        return
+    if bet < 1:
+        await interaction.response.send_message("❌ Bet must be positive.", ephemeral=True)
+        return
+    if (await get_econ(interaction.user.id))["balance"] < bet:
+        await interaction.response.send_message("❌ Insufficient balance.", ephemeral=True)
+        return
+    outcome = random.choice(["heads", "tails"])
+    won = outcome == side.value
+    new_bal = await add_balance(interaction.user.id, bet if won else -bet)
+    await interaction.response.send_message(
+        f"🪙 It landed on **{outcome}**! You {'won' if won else 'lost'} **{bet}** {CURRENCY}.\nBalance: **{new_bal}**")
+
+
+@client.tree.command(name="slots", description="Spin the slot machine")
+@app_commands.describe(bet="Coins to bet")
+async def slots_command(interaction: discord.Interaction, bet: int):
+    if not await econ_channel_check(interaction):
+        return
+    if bet < 1:
+        await interaction.response.send_message("❌ Bet must be positive.", ephemeral=True)
+        return
+    if (await get_econ(interaction.user.id))["balance"] < bet:
+        await interaction.response.send_message("❌ Insufficient balance.", ephemeral=True)
+        return
+    symbols = ["🍒", "🍋", "🍇", "🔔", "💎", "7️⃣"]
+    spin = [random.choice(symbols) for _ in range(3)]
+    if spin[0] == spin[1] == spin[2]:
+        delta = bet * (10 if spin[0] == "7️⃣" else 5)
+        result = f"🎉 JACKPOT! You won **{delta}** {CURRENCY}!"
+    elif len(set(spin)) == 2:
+        delta = bet
+        result = f"✨ Two match! You won **{delta}** {CURRENCY}!"
+    else:
+        delta = -bet
+        result = f"💀 No match. You lost **{bet}** {CURRENCY}."
+    new_bal = await add_balance(interaction.user.id, delta)
+    await interaction.response.send_message(f"[ {' | '.join(spin)} ]\n{result}\nBalance: **{new_bal}**")
+
+
+@client.tree.command(name="guess", description="Guess a number 1-10 to win 8x your bet")
+@app_commands.describe(number="Your guess (1-10)", bet="Coins to bet")
+async def guess_command(interaction: discord.Interaction, number: app_commands.Range[int, 1, 10], bet: int):
+    if not await econ_channel_check(interaction):
+        return
+    if bet < 1:
+        await interaction.response.send_message("❌ Bet must be positive.", ephemeral=True)
+        return
+    if (await get_econ(interaction.user.id))["balance"] < bet:
+        await interaction.response.send_message("❌ Insufficient balance.", ephemeral=True)
+        return
+    answer = random.randint(1, 10)
+    won = number == answer
+    new_bal = await add_balance(interaction.user.id, bet * 8 if won else -bet)
+    result = f"🎯 Correct! It was **{answer}**. You won **{bet * 8}** {CURRENCY}!" if won \
+        else f"❌ Wrong, it was **{answer}**. You lost **{bet}** {CURRENCY}."
+    await interaction.response.send_message(f"{result}\nBalance: **{new_bal}**")
 
 
 # =====================================================================================
