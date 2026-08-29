@@ -1700,7 +1700,7 @@ class ExcludeTryouterView(discord.ui.View):
 
     @discord.ui.select(
         cls=discord.ui.UserSelect,
-        placeholder="Selecciona a alguien para excluir/incluir de /viewt...",
+        placeholder="Select someone to exclude/include from /viewt...",
         custom_id="blz_viewt_exclude_select",
         min_values=1,
         max_values=1,
@@ -1708,15 +1708,21 @@ class ExcludeTryouterView(discord.ui.View):
     async def select_user(self, interaction: discord.Interaction, select: discord.ui.UserSelect):
         member_roles = getattr(interaction.user, "roles", [])
         if not any(r.id in VIEWT_EXCLUDE_PANEL_ROLE_IDS for r in member_roles):
-            await interaction.response.send_message("❌ No tienes permiso para usar este panel.", ephemeral=True)
+            await interaction.response.send_message("❌ You don't have permission to use this panel.", ephemeral=True)
             return
 
         target = select.values[0]
         now_excluded = await toggle_excluded(target.id)
         if now_excluded:
-            await interaction.response.send_message(f"🚫 {target.mention} ha sido excluido de /viewt.", ephemeral=True)
+            await interaction.response.send_message(
+                f"🚫 {target.mention} has been excluded from /viewt.",
+                ephemeral=True, allowed_mentions=discord.AllowedMentions.none(),
+            )
         else:
-            await interaction.response.send_message(f"✅ {target.mention} ha sido incluido de nuevo en /viewt.", ephemeral=True)
+            await interaction.response.send_message(
+                f"✅ {target.mention} has been included in /viewt again.",
+                ephemeral=True, allowed_mentions=discord.AllowedMentions.none(),
+            )
 
 
 # --- Queue join / duel creation -------------------------------------------------------
@@ -2174,7 +2180,7 @@ async def endin_command(interaction: discord.Interaction, tryouter: discord.Memb
     await interaction.response.send_message(embed=embed)
 
 
-@client.tree.command(name="viewt", description="Lista a los tryouters (usuarios con un rol de /tdone)")
+@client.tree.command(name="viewt", description="List tryouters (users with a /tdone role)")
 async def viewt_command(interaction: discord.Interaction):
     guild = interaction.guild
 
@@ -2193,33 +2199,33 @@ async def viewt_command(interaction: discord.Interaction):
         for uid in active_ids:
             lines.append(f"- <@{uid}>")
     else:
-        lines.append("_Nadie tiene un rol de tryouter._")
+        lines.append("_Nobody currently has a tryouter role._")
 
     if excluded_active:
-        lines.append(f"\n🚫 **Excluidos ({len(excluded_active)}):**")
+        lines.append(f"\n🚫 **Excluded ({len(excluded_active)}):**")
         for uid in excluded_active:
             lines.append(f"- <@{uid}>")
 
     text = "\n".join(lines)
     if len(text) > 4000:
         text = text[:3990] + "\n…"
-    await interaction.response.send_message(text)
+    await interaction.response.send_message(text, allowed_mentions=discord.AllowedMentions.none())
 
 
-@client.tree.command(name="viewtpanel", description="Publica el panel para excluir/incluir tryouters de /viewt (staff)")
+@client.tree.command(name="viewtpanel", description="Post the panel to exclude/include tryouters from /viewt (staff)")
 async def viewtpanel_command(interaction: discord.Interaction):
     member_roles = getattr(interaction.user, "roles", [])
     if not any(r.id in VIEWT_EXCLUDE_PANEL_ROLE_IDS for r in member_roles):
-        await interaction.response.send_message("❌ No tienes permiso para usar este comando.", ephemeral=True)
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
     embed = discord.Embed(
-        title="🚫 Excluir / Incluir de /viewt",
-        description="Selecciona a alguien abajo para alternar su exclusión de la lista de `/viewt`.",
+        title="🚫 Exclude / Include from /viewt",
+        description="Select someone below to toggle their exclusion from the `/viewt` list.",
         color=0xE67E22,
     )
     await interaction.channel.send(embed=embed, view=ExcludeTryouterView())
-    await interaction.response.send_message("✅ Panel publicado.", ephemeral=True)
+    await interaction.response.send_message("✅ Panel posted.", ephemeral=True)
 
 
 # =====================================================================================
