@@ -49,6 +49,10 @@ TDONE_ALLOWED_ROLE_IDS = {               # Only members with one of these roles 
     1538589345458692196,
     1538589345441648669,
 }
+VIEWT_EXCLUDE_PANEL_ROLE_IDS = {         # Only members with one of these roles can use the /viewt exclude panel
+    1539303279195062313,
+    1538589345991360527,
+}
 ECONOMY_CHANNEL_ID = 1543393700539801671  # Only channel where economy/game commands can be used
 BANDM_ROLE_ID = 1538589345991360527      # Only members with this role can use /bandm and /warndm
 BANDM_TEST_ROLE_ID = 1539303279195062313  # Only members with this role can use /bandmtest and /warndmtest
@@ -130,6 +134,7 @@ elo_banner_col = db["elo_banner"]  # Custom /elo card background image (single d
 tryout_quota_col = db["tryout_quota"]  # Per-tryouter EP earned in the current quota week: {_id: user_id, ep: int}
 quota_state_col = db["quota_state"]  # Single doc tracking the last processed weekly reset
 tryout_in_col = db["tryout_in"]  # Per-tryouter IN (excused) status + /in cooldown
+tryout_excluded_col = db["tryout_excluded"]  # Members manually excluded from /viewt: {_id: user_id}
 
 # Helpful indexes (no-ops if they already exist)
 economy_col = db["economy"]  # Per-user coins, inventory, and cooldowns for the economy system
@@ -337,6 +342,29 @@ async def set_in_status(user_id: int, in_since: datetime, in_until: datetime,
 def _aware(dt: datetime) -> datetime:
     """Mongo strips tzinfo on round-trip — normalize back to aware UTC before comparing."""
     return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
+# --- /viewt manual exclusion list -------------------------------------------------------
+
+def _get_excluded_ids_sync() -> set:
+    return {doc["_id"] for doc in tryout_excluded_col.find({}, {"_id": 1})}
+
+
+async def get_excluded_ids() -> set:
+    return await asyncio.to_thread(_get_excluded_ids_sync)
+
+
+def _toggle_excluded_sync(user_id: int) -> bool:
+    """Adds/removes user_id from the exclusion list. Returns True if now excluded, False if now included."""
+    if tryout_excluded_col.find_one({"_id": user_id}):
+        tryout_excluded_col.delete_one({"_id": user_id})
+        return False
+    tryout_excluded_col.insert_one({"_id": user_id})
+    return True
+
+
+async def toggle_excluded(user_id: int) -> bool:
+    return await asyncio.to_thread(_toggle_excluded_sync, user_id)
 
 
 def _count_recent_ranked_duels_sync(id_a: int, id_b: int, hours: int) -> int:
@@ -1664,6 +1692,33 @@ class DuelControlsView(discord.ui.View):
             logger.error(f"!!! [DUEL DELETE ERROR]: {e}")
 
 
+# --- /viewt exclude panel --------------------------------------------------------------
+
+class ExcludeTryouterView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.select(
+        cls=discord.ui.UserSelect,
+        placeholder="Selecciona a alguien para excluir/incluir de /viewt...",
+        custom_id="blz_viewt_exclude_select",
+        min_values=1,
+        max_values=1,
+    )
+    async def select_user(self, interaction: discord.Interaction, select: discord.ui.UserSelect):
+        member_roles = getattr(interaction.user, "roles", [])
+        if not any(r.id in VIEWT_EXCLUDE_PANEL_ROLE_IDS for r in member_roles):
+            await interaction.response.send_message("❌ No tienes permiso para usar este panel.", ephemeral=True)
+            return
+
+        target = select.values[0]
+        now_excluded = await toggle_excluded(target.id)
+        if now_excluded:
+            await interaction.response.send_message(f"🚫 {target.mention} ha sido excluido de /viewt.", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"✅ {target.mention} ha sido incluido de nuevo en /viewt.", ephemeral=True)
+
+
 # --- Queue join / duel creation -------------------------------------------------------
 
 class MatchmakingView(discord.ui.View):
@@ -2117,6 +2172,54 @@ async def endin_command(interaction: discord.Interaction, tryouter: discord.Memb
     embed.add_field(name="Next eligible for /in", value=f"<t:{int(cooldown_until.timestamp())}:F>", inline=False)
 
     await interaction.response.send_message(embed=embed)
+
+
+@client.tree.command(name="viewt", description="Lista a los tryouters (usuarios con un rol de /tdone)")
+async def viewt_command(interaction: discord.Interaction):
+    guild = interaction.guild
+
+    tryouter_ids = set()
+    for role_id in TDONE_ALLOWED_ROLE_IDS:
+        role = guild.get_role(role_id)
+        if role:
+            tryouter_ids.update(m.id for m in role.members)
+
+    excluded_ids = await get_excluded_ids()
+    active_ids = tryouter_ids - excluded_ids
+    excluded_active = tryouter_ids & excluded_ids
+
+    lines = [f"📋 **Tryouters ({len(active_ids)})**"]
+    if active_ids:
+        for uid in active_ids:
+            lines.append(f"- <@{uid}>")
+    else:
+        lines.append("_Nadie tiene un rol de tryouter._")
+
+    if excluded_active:
+        lines.append(f"\n🚫 **Excluidos ({len(excluded_active)}):**")
+        for uid in excluded_active:
+            lines.append(f"- <@{uid}>")
+
+    text = "\n".join(lines)
+    if len(text) > 4000:
+        text = text[:3990] + "\n…"
+    await interaction.response.send_message(text)
+
+
+@client.tree.command(name="viewtpanel", description="Publica el panel para excluir/incluir tryouters de /viewt (staff)")
+async def viewtpanel_command(interaction: discord.Interaction):
+    member_roles = getattr(interaction.user, "roles", [])
+    if not any(r.id in VIEWT_EXCLUDE_PANEL_ROLE_IDS for r in member_roles):
+        await interaction.response.send_message("❌ No tienes permiso para usar este comando.", ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        title="🚫 Excluir / Incluir de /viewt",
+        description="Selecciona a alguien abajo para alternar su exclusión de la lista de `/viewt`.",
+        color=0xE67E22,
+    )
+    await interaction.channel.send(embed=embed, view=ExcludeTryouterView())
+    await interaction.response.send_message("✅ Panel publicado.", ephemeral=True)
 
 
 # =====================================================================================
@@ -2793,6 +2896,7 @@ async def on_ready():
     try:
         client.add_view(MatchmakingView())
         client.add_view(DuelControlsView())
+        client.add_view(ExcludeTryouterView())
         logger.info(">>> [MATCHMAKING] Persistent views registered")
     except Exception as e:
         logger.error(f"!!! [VIEW REGISTER]: {e}")
