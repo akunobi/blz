@@ -354,17 +354,15 @@ async def get_excluded_ids() -> set:
     return await asyncio.to_thread(_get_excluded_ids_sync)
 
 
-def _toggle_excluded_sync(user_id: int) -> bool:
-    """Adds/removes user_id from the exclusion list. Returns True if now excluded, False if now included."""
-    if tryout_excluded_col.find_one({"_id": user_id}):
+def _set_excluded_sync(user_id: int, excluded: bool):
+    if excluded:
+        tryout_excluded_col.update_one({"_id": user_id}, {"$set": {"_id": user_id}}, upsert=True)
+    else:
         tryout_excluded_col.delete_one({"_id": user_id})
-        return False
-    tryout_excluded_col.insert_one({"_id": user_id})
-    return True
 
 
-async def toggle_excluded(user_id: int) -> bool:
-    return await asyncio.to_thread(_toggle_excluded_sync, user_id)
+async def set_excluded(user_id: int, excluded: bool):
+    await asyncio.to_thread(_set_excluded_sync, user_id, excluded)
 
 
 def _count_recent_ranked_duels_sync(id_a: int, id_b: int, hours: int) -> int:
@@ -1694,13 +1692,27 @@ class DuelControlsView(discord.ui.View):
 
 # --- /viewt exclude panel --------------------------------------------------------------
 
+def _build_deexclude_options(excluded_ids: set, guild: discord.Guild) -> list:
+    if not excluded_ids:
+        return [discord.SelectOption(label="No one is currently excluded", value="none")]
+    options = []
+    for uid in excluded_ids:
+        member = guild.get_member(uid) if guild else None
+        label = member.display_name if member else f"Unknown user ({uid})"
+        options.append(discord.SelectOption(label=label[:100], value=str(uid)))
+    return options[:25]  # Discord select menus support at most 25 options
+
+
 class ExcludeTryouterView(discord.ui.View):
-    def __init__(self):
+    def __init__(self, excluded_ids: set = None, guild: discord.Guild = None):
         super().__init__(timeout=None)
+        excluded_ids = excluded_ids or set()
+        self.deexclude_select.options = _build_deexclude_options(excluded_ids, guild)
+        self.deexclude_select.disabled = not bool(excluded_ids)
 
     @discord.ui.select(
         cls=discord.ui.UserSelect,
-        placeholder="Select someone to exclude/include from /viewt...",
+        placeholder="Exclude: select someone to remove from /viewt...",
         custom_id="blz_viewt_exclude_select",
         min_values=1,
         max_values=1,
@@ -1712,17 +1724,42 @@ class ExcludeTryouterView(discord.ui.View):
             return
 
         target = select.values[0]
-        now_excluded = await toggle_excluded(target.id)
-        if now_excluded:
-            await interaction.response.send_message(
-                f"🚫 {target.mention} has been excluded from /viewt.",
-                ephemeral=True, allowed_mentions=discord.AllowedMentions.none(),
-            )
-        else:
-            await interaction.response.send_message(
-                f"✅ {target.mention} has been included in /viewt again.",
-                ephemeral=True, allowed_mentions=discord.AllowedMentions.none(),
-            )
+        await set_excluded(target.id, True)
+        excluded_ids = await get_excluded_ids()
+        await interaction.response.edit_message(view=ExcludeTryouterView(excluded_ids, interaction.guild))
+        await interaction.followup.send(
+            f"🚫 {target.mention} has been excluded from /viewt.",
+            ephemeral=True, allowed_mentions=discord.AllowedMentions.none(),
+        )
+
+    @discord.ui.select(
+        placeholder="Include: select someone to add back to /viewt...",
+        custom_id="blz_viewt_deexclude_select",
+        min_values=1,
+        max_values=1,
+        options=[discord.SelectOption(label="No one is currently excluded", value="none")],
+    )
+    async def deexclude_user(self, interaction: discord.Interaction, select: discord.ui.Select):
+        member_roles = getattr(interaction.user, "roles", [])
+        if not any(r.id in VIEWT_EXCLUDE_PANEL_ROLE_IDS for r in member_roles):
+            await interaction.response.send_message("❌ You don't have permission to use this panel.", ephemeral=True)
+            return
+
+        value = select.values[0]
+        if value == "none":
+            await interaction.response.send_message("Nobody is currently excluded.", ephemeral=True)
+            return
+
+        uid = int(value)
+        await set_excluded(uid, False)
+        excluded_ids = await get_excluded_ids()
+        await interaction.response.edit_message(view=ExcludeTryouterView(excluded_ids, interaction.guild))
+        member = interaction.guild.get_member(uid) if interaction.guild else None
+        mention = member.mention if member else f"<@{uid}>"
+        await interaction.followup.send(
+            f"✅ {mention} has been included in /viewt again.",
+            ephemeral=True, allowed_mentions=discord.AllowedMentions.none(),
+        )
 
 
 # --- Queue join / duel creation -------------------------------------------------------
@@ -2221,10 +2258,14 @@ async def viewtpanel_command(interaction: discord.Interaction):
 
     embed = discord.Embed(
         title="🚫 Exclude / Include from /viewt",
-        description="Select someone below to toggle their exclusion from the `/viewt` list.",
+        description=(
+            "**Exclude** — pick anyone below to remove them from `/viewt`.\n"
+            "**Include** — pick from the excluded list below to add them back."
+        ),
         color=0xE67E22,
     )
-    await interaction.channel.send(embed=embed, view=ExcludeTryouterView())
+    excluded_ids = await get_excluded_ids()
+    await interaction.channel.send(embed=embed, view=ExcludeTryouterView(excluded_ids, interaction.guild))
     await interaction.response.send_message("✅ Panel posted.", ephemeral=True)
 
 
