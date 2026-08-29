@@ -1707,8 +1707,8 @@ class ExcludeTryouterView(discord.ui.View):
     def __init__(self, excluded_ids: set = None, guild: discord.Guild = None):
         super().__init__(timeout=None)
         excluded_ids = excluded_ids or set()
-        self.deexclude_select.options = _build_deexclude_options(excluded_ids, guild)
-        self.deexclude_select.disabled = not bool(excluded_ids)
+        self.deexclude_user.options = _build_deexclude_options(excluded_ids, guild)
+        self.deexclude_user.disabled = not bool(excluded_ids)
 
     @discord.ui.select(
         cls=discord.ui.UserSelect,
