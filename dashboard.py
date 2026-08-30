@@ -312,30 +312,47 @@ LAYOUT = """<!doctype html>
   }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
-  header.topbar {
-    display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; gap: 16px;
-    background: var(--surface); border-bottom: 2px solid var(--line-bright); position: sticky; top: 0; z-index: 10; flex-wrap: wrap;
+  .rail {
+    position: fixed; top: 0; left: 0; bottom: 0; width: 220px; z-index: 20;
+    background: var(--surface); border-right: 2px solid var(--line-bright);
+    display: flex; flex-direction: column;
   }
-  .brand {
-    font-family: var(--font-display); font-weight: 900; font-size: 21px; letter-spacing: .06em; color: var(--text);
-    text-transform: uppercase; white-space: nowrap; display: flex; align-items: center; gap: 10px;
-  }
-  .brand::before {
-    content: ""; width: 10px; height: 10px; background: var(--accent); flex-shrink: 0;
+  .rail-brand { padding: 22px 20px 16px; border-bottom: 1px solid var(--line); }
+  .rail-brand .mark {
+    display: inline-block; width: 9px; height: 9px; background: var(--accent); margin-right: 8px;
     animation: blip 1s steps(2) infinite;
   }
   @keyframes blip { 50% { opacity: .25; } }
-  .brand span { color: var(--accent); }
-  nav.mainnav { display: flex; gap: 4px; flex-wrap: wrap; }
-  nav.mainnav a {
-    color: var(--text-dim); padding: 8px 12px; font-size: 13px;
-    text-transform: uppercase; letter-spacing: .06em; border-bottom: 2px solid transparent;
+  .rail-brand .word { font-family: var(--font-display); font-weight: 900; font-size: 21px; letter-spacing: .03em; color: var(--text); text-transform: uppercase; }
+  .rail-brand .word span { color: var(--accent); }
+  .rail-brand .sub { display: block; margin-top: 4px; font-size: 10px; color: var(--text-dim); letter-spacing: .16em; padding-left: 17px; }
+  .rail-nav { flex: 1; padding: 10px 0; display: flex; flex-direction: column; overflow-y: auto; }
+  .rail-nav a {
+    display: flex; align-items: baseline; gap: 10px; padding: 11px 20px; color: var(--text-dim);
+    font-size: 13px; text-transform: uppercase; letter-spacing: .05em; border-left: 3px solid transparent;
   }
-  nav.mainnav a:hover, nav.mainnav a:focus-visible { color: var(--text); text-decoration: none; border-color: var(--line-bright); }
-  .badge { background: var(--danger); color: var(--bg); font-family: var(--font-body); font-weight: 700; font-size: 10px; padding: 2px 6px; margin-left: 6px; }
-  .userbox { display: flex; align-items: center; gap: 10px; font-size: 14px; white-space: nowrap; color: var(--text-dim); }
-  .userbox img { width: 26px; height: 26px; border: 1px solid var(--line-bright); border-radius: 0; }
-  main { max-width: 1080px; margin: 0 auto; padding: 28px 20px 70px; position: relative; z-index: 1; }
+  .rail-nav a .idx { font-size: 11px; color: var(--line-bright); }
+  .rail-nav a:hover, .rail-nav a:focus-visible { color: var(--text); text-decoration: none; background: var(--surface-2); border-left-color: var(--accent); }
+  .rail-nav a:hover .idx, .rail-nav a:focus-visible .idx { color: var(--accent); }
+  .badge { background: var(--danger); color: var(--bg); font-family: var(--font-body); font-weight: 700; font-size: 10px; padding: 2px 6px; margin-left: auto; }
+  .idbox {
+    position: fixed; top: 18px; right: 24px; z-index: 20; display: flex; align-items: center; gap: 10px;
+    font-size: 13px; white-space: nowrap; color: var(--text-dim); background: var(--surface);
+    border: 1px solid var(--line); padding: 7px 12px;
+  }
+  .idbox img { width: 24px; height: 24px; border: 1px solid var(--line-bright); border-radius: 0; }
+  main { max-width: 880px; margin: 0 0 0 220px; padding: 70px 40px 70px; position: relative; z-index: 1; }
+  @media (max-width: 760px) {
+    .rail { top: auto; bottom: 0; left: 0; right: 0; width: auto; height: 62px; flex-direction: row; border-right: none; border-top: 2px solid var(--line-bright); }
+    .rail-brand { display: none; }
+    .rail-nav { flex-direction: row; padding: 0; overflow-x: auto; }
+    .rail-nav a { border-left: none; border-top: 3px solid transparent; padding: 0 16px; white-space: nowrap; }
+    .rail-nav a:hover, .rail-nav a:focus-visible { border-left-color: transparent; border-top-color: var(--accent); }
+    .idbox { top: 12px; right: 12px; padding: 5px 9px; font-size: 0; }
+    .idbox img { margin: 0; }
+    .idbox .btn { font-size: 11px; }
+    main { margin: 0; padding: 24px 20px 90px; }
+  }
   .flash {
     padding: 12px 16px; margin-bottom: 12px; font-size: 14px; position: relative;
     background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--text-dim);
@@ -344,6 +361,7 @@ LAYOUT = """<!doctype html>
   .flash.error { border-left-color: var(--danger); }
   .flash.info { border-left-color: var(--info); }
   h1 { font-family: var(--font-display); font-weight: 900; font-size: 30px; line-height: 1.2; margin: 0 0 20px; color: var(--text); text-transform: uppercase; letter-spacing: .02em; }
+  h1::before { content: "// "; font-family: var(--font-body); color: var(--accent); }
   h2 {
     font-family: var(--font-body); font-weight: 700; font-size: 12px; margin: 32px 0 14px; color: var(--text-dim);
     letter-spacing: .1em; text-transform: uppercase; border-left: 3px solid var(--accent); padding-left: 10px;
@@ -418,29 +436,32 @@ LAYOUT = """<!doctype html>
 </style>
 </head>
 <body>
-<header class="topbar">
-  <div class="brand"><span>BLZ-T</span> Dashboard</div>
+<aside class="rail">
+  <div class="rail-brand">
+    <span class="mark"></span><span class="word">BLZ<span>—</span>T</span>
+    <span class="sub">OPS DECK</span>
+  </div>
   {% if status == "approved" %}
-  <nav class="mainnav">
-    <a href="{{ url_for('dashboard.home') }}">Home</a>
-    <a href="{{ url_for('dashboard.elo_leaderboard') }}">ELO</a>
-    <a href="{{ url_for('dashboard.economy_home') }}">Economy</a>
-    <a href="{{ url_for('dashboard.tryouts_home') }}">Tryouts</a>
-    <a href="{{ url_for('dashboard.matchmaking') }}">Matchmaking</a>
-    {% if show_moderation %}<a href="{{ url_for('dashboard.moderation') }}">Moderation</a>{% endif %}
-    {% if is_admin %}<a href="{{ url_for('dashboard.admin_access') }}">Admin{% if pending_count %}<span class="badge">{{ pending_count }}</span>{% endif %}</a>{% endif %}
+  <nav class="rail-nav">
+    <a href="{{ url_for('dashboard.home') }}"><span class="idx">01</span>Home</a>
+    <a href="{{ url_for('dashboard.elo_leaderboard') }}"><span class="idx">02</span>ELO</a>
+    <a href="{{ url_for('dashboard.economy_home') }}"><span class="idx">03</span>Economy</a>
+    <a href="{{ url_for('dashboard.tryouts_home') }}"><span class="idx">04</span>Tryouts</a>
+    <a href="{{ url_for('dashboard.matchmaking') }}"><span class="idx">05</span>Matchmaking</a>
+    {% if show_moderation %}<a href="{{ url_for('dashboard.moderation') }}"><span class="idx">06</span>Moderation</a>{% endif %}
+    {% if is_admin %}<a href="{{ url_for('dashboard.admin_access') }}"><span class="idx">07</span>Admin{% if pending_count %}<span class="badge">{{ pending_count }}</span>{% endif %}</a>{% endif %}
   </nav>
   {% endif %}
-  <div class="userbox">
-    {% if user %}
-      <img src="{{ user.avatar_url }}" alt="">
-      {{ user.username }}
-      <a href="{{ url_for('dashboard.logout') }}" class="btn small secondary">Log out</a>
-    {% else %}
-      <a href="{{ url_for('dashboard.login') }}" class="btn small">Log in with Discord</a>
-    {% endif %}
-  </div>
-</header>
+</aside>
+<div class="idbox">
+  {% if user %}
+    <img src="{{ user.avatar_url }}" alt="">
+    {{ user.username }}
+    <a href="{{ url_for('dashboard.logout') }}" class="btn small secondary">Log out</a>
+  {% else %}
+    <a href="{{ url_for('dashboard.login') }}" class="btn small">Log in with Discord</a>
+  {% endif %}
+</div>
 <main>
   {% for category, message in get_flashed_messages(with_categories=true) %}
     <div class="flash {{ category }}">{{ message }}</div>
