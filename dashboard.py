@@ -102,9 +102,12 @@ from flask import (
 
 logger = logging.getLogger("blz-dashboard")
 
-app = Flask(__name__)
-
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(16))
+# Reuse the SAME Flask app bot.py already created (it has the "/" health-check
+# route Render pings). Creating a second, separate Flask() here was the bug:
+# the dashboard blueprint would get registered on bot.py's app while a totally
+# different, route-less app was the one actually being served -> 404 on
+# everything, including "/" and every "/dashboard/..." page.
+app = botmod.app
 
 # =====================================================================================
 # CONFIG
@@ -2022,35 +2025,39 @@ def moderation_warn():
 # WIRING
 # =====================================================================================
 
-def init_dashboard(app):
-    """Call this once from bot.py, after everything else is defined:
+from threading import Thread
+
+
+def _run_server():
+    """Serves bot.py's Flask app (health check + dashboard blueprint, once
+    mounted) on Render's PORT. Runs in a background thread so it doesn't
+    block the Discord bot's own run loop in main.py."""
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+
+
+def init_dashboard():
+    """Call this once from main.py, before starting the Discord bot:
 
         from dashboard import init_dashboard
-        init_dashboard(app)
+        init_dashboard()
+
+    Mounts the dashboard blueprint onto bot.py's existing Flask app (`app`,
+    aliased above to `botmod.app`) and starts serving it in a background
+    thread — the SAME app/port Render's health check hits at "/", so nothing
+    new needs to listen on a second port.
     """
     app.secret_key = DASHBOARD_SECRET_KEY
     app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
     app.register_blueprint(dash_bp)
     logger.info(">>> [DASHBOARD] Web dashboard mounted at /dashboard")
 
+    server_thread = Thread(target=_run_server, daemon=True)
+    server_thread.start()
+
 
 if __name__ == "__main__":
     print(
         "dashboard.py isn't meant to be run directly.\n"
-        "Add `from dashboard import init_dashboard; init_dashboard(app)` near the "
-        "bottom of bot.py instead, then run bot.py as usual."
+        "Run main.py instead — it calls init_dashboard() then starts the bot."
     )
-
-
-# Al final de tu dashboard.py
-from threading import Thread
-import os
-
-def run_server():
-    port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
-
-def init_dashboard():
-    # Esto es vital: arranca la web en un hilo secundario
-    server_thread = Thread(target=run_server)
-    server_thread.start()
