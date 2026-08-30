@@ -124,6 +124,16 @@ if not all([DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DASHBOARD_REDIRECT_URI]):
         "are not fully set in the environment — Discord login will fail until they are."
     )
 
+if not os.getenv("DASHBOARD_SECRET_KEY"):
+    logger.warning(
+        "!!! [DASHBOARD] DASHBOARD_SECRET_KEY is not set — using a random key generated "
+        "at boot. Every restart/redeploy will invalidate ALL existing sessions, including "
+        "one that's mid-login (someone can hit /login, then /callback fail with 'Invalid "
+        "OAuth state' if the process restarts in between, and be stuck unable to log in "
+        "at all until the process stays up long enough). Set a fixed DASHBOARD_SECRET_KEY "
+        "in Render's env vars to fix this permanently."
+    )
+
 # The only 3 people who can approve/deny dashboard login requests. They are
 # always treated as approved themselves the moment they log in.
 ADMIN_DISCORD_IDS = {1075463469865906216, 898579360720764999, 1375115979285073951}
@@ -411,6 +421,13 @@ def page(title, body_template, **ctx):
     )
 
 
+@dash_bp.app_errorhandler(400)
+def _bad_request(e):
+    return page("Something went wrong", f"""<div class='card center'><h1>⚠️ Something went wrong</h1>
+                              <p class='muted'>{e.description or "Please try that again."}</p>
+                              <a class="btn" href="{{{{ url_for('dashboard.home') }}}}">Back to dashboard</a></div>"""), 400
+
+
 @dash_bp.app_errorhandler(403)
 def _forbidden(e):
     return page("Forbidden", "<div class='card center'><h1>🚫 Forbidden</h1>"
@@ -531,11 +548,25 @@ def callback():
 
     state = request.args.get("state")
     if not state or state != session.pop("oauth_state", None):
-        abort(400, "Invalid OAuth state — please try logging in again.")
+        logger.warning(
+            "!!! [DASHBOARD OAUTH] State mismatch on /callback (session cookie missing or "
+            "stale — often caused by the process restarting mid-login, or an in-app/embedded "
+            "browser blocking the session cookie). Sending the user back to try again."
+        )
+        return page("Login expired", """
+<div class="card center" style="padding:50px 20px;">
+<h1>⏳ That login link expired</h1>
+<p class="muted">Your login session didn't make it all the way back from Discord — this can
+happen if the server restarted at the wrong moment, or if you're using an app's built-in
+browser (like tapping the link inside Discord itself) instead of your regular browser.</p>
+<p class="muted">Try opening this page in your normal browser (Safari/Chrome/etc.) and log in again.</p>
+<a class="btn" href="{{ url_for('dashboard.login') }}">Log in with Discord</a>
+</div>""")
 
     code = request.args.get("code")
     if not code:
-        abort(400, "Missing authorization code from Discord.")
+        flash("Missing authorization code from Discord — please try again.", "error")
+        return redirect(url_for("dashboard.home"))
 
     token_resp = requests.post(
         OAUTH_TOKEN_URL,
