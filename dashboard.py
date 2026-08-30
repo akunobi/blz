@@ -84,6 +84,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from urllib.parse import urlencode
+import bot as botmod
 
 import discord
 import requests
