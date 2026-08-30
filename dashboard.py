@@ -307,6 +307,11 @@ LAYOUT = """<!doctype html>
     background-image:
       radial-gradient(circle at 12% 0%, rgba(0,229,255,.09), transparent 45%),
       radial-gradient(circle at 88% 8%, rgba(139,92,246,.09), transparent 45%);
+    -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;
+  }
+  ::selection { background: rgba(0,229,255,.3); color: #fff; }
+  a:focus-visible, .btn:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px;
   }
   body::before {
     content: ""; position: fixed; inset: 0; pointer-events: none; z-index: -2;
@@ -326,22 +331,35 @@ LAYOUT = """<!doctype html>
   header.topbar {
     display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; gap: 16px;
     background: rgba(8,11,18,.86); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10;
-    backdrop-filter: blur(8px); flex-wrap: wrap; box-shadow: 0 1px 0 rgba(0,229,255,.15);
+    backdrop-filter: blur(8px); flex-wrap: wrap; box-shadow: 0 1px 0 rgba(0,229,255,.15); overflow: hidden;
   }
+  header.topbar::after {
+    content: ""; position: absolute; left: 0; bottom: -1px; width: 140px; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: scan-x 5s linear infinite;
+  }
+  @keyframes scan-x { 0% { transform: translateX(-140px); } 100% { transform: translateX(calc(100vw + 140px)); } }
   .brand { font-family: var(--font-display); font-weight: 800; letter-spacing: 1px; font-size: 18px; color: var(--text); white-space: nowrap; display: flex; align-items: center; gap: 10px; }
   .brand::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 8px var(--success); animation: pulse-dot 2s ease-in-out infinite; flex-shrink: 0; }
   @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
-  .brand span { color: var(--accent); text-shadow: 0 0 10px rgba(0,229,255,.6); }
+  .brand span { color: var(--accent); text-shadow: 0 0 10px rgba(0,229,255,.6); display: inline-block; }
+  .brand:hover span { animation: brand-glitch .3s steps(2) infinite; }
+  @keyframes brand-glitch {
+    0%, 100% { text-shadow: 2px 0 var(--accent-2), -2px 0 var(--accent); }
+    50% { text-shadow: -2px 0 var(--accent-2), 2px 0 var(--accent); }
+  }
   nav.mainnav { display: flex; gap: 2px; flex-wrap: wrap; font-family: var(--font-mono); }
   nav.mainnav a { color: var(--muted); padding: 8px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; transition: color .15s, background .15s; }
   nav.mainnav a::before { content: "["; margin-right: 3px; opacity: 0; color: var(--accent); transition: opacity .15s; }
   nav.mainnav a::after { content: "]"; margin-left: 3px; opacity: 0; color: var(--accent); transition: opacity .15s; }
   nav.mainnav a:hover { color: var(--text); background: rgba(0,229,255,.07); text-decoration: none; }
   nav.mainnav a:hover::before, nav.mainnav a:hover::after { opacity: 1; }
-  .badge { background: var(--danger); color: #fff; border-radius: 999px; font-size: 10px; padding: 1px 6px; margin-left: 4px; box-shadow: 0 0 6px rgba(255,51,102,.6); }
+  .badge { background: var(--danger); color: #fff; border-radius: 999px; font-size: 10px; padding: 1px 6px; margin-left: 4px; animation: badge-pulse 1.6s ease-in-out infinite; }
+  @keyframes badge-pulse { 0%, 100% { box-shadow: 0 0 6px rgba(255,51,102,.6); } 50% { box-shadow: 0 0 12px rgba(255,51,102,.95); } }
   .userbox { display: flex; align-items: center; gap: 10px; font-size: 13px; white-space: nowrap; font-family: var(--font-mono); }
-  .userbox img { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border-bright); }
-  main { max-width: 1080px; margin: 0 auto; padding: 28px 20px 60px; position: relative; z-index: 1; }
+  .userbox img { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border-bright); box-shadow: 0 0 0 3px rgba(0,229,255,.08), 0 0 10px rgba(0,229,255,.25); }
+  main { max-width: 1080px; margin: 0 auto; padding: 28px 20px 60px; position: relative; z-index: 1; animation: fade-in .4s ease-out; }
+  @keyframes fade-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
   .flash { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 13px; font-family: var(--font-mono); border: 1px solid transparent; border-left-width: 3px; }
   .flash.success { background: rgba(57,255,136,.08); border-color: rgba(57,255,136,.4); color: #8fe8b4; }
   .flash.error { background: rgba(255,51,102,.08); border-color: rgba(255,51,102,.4); color: #ff9bb3; }
@@ -349,12 +367,12 @@ LAYOUT = """<!doctype html>
   h1 { font-family: var(--font-display); font-size: 22px; margin: 0 0 18px; letter-spacing: .03em; text-shadow: 0 0 16px rgba(0,229,255,.22); }
   h2 { font-size: 13px; margin: 28px 0 12px; color: var(--accent-2); text-transform: uppercase; letter-spacing: .12em; font-weight: 700; font-family: var(--font-mono); }
   h2::before { content: "// "; color: var(--muted); }
-  .card { background: linear-gradient(180deg, var(--panel), var(--panel-2)); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 18px; position: relative; transition: border-color .2s, box-shadow .2s; }
+  .card { background: linear-gradient(180deg, var(--panel), var(--panel-2)); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 18px; position: relative; transition: border-color .2s, box-shadow .2s, transform .2s; }
   .card::before, .card::after { content: ""; position: absolute; width: 10px; height: 10px; border-color: var(--accent); opacity: .55; }
   .card::before { top: -1px; left: -1px; border-top: 2px solid; border-left: 2px solid; }
   .card::after { bottom: -1px; right: -1px; border-bottom: 2px solid; border-right: 2px solid; }
   a.card { display: block; color: var(--text); }
-  a.card:hover { border-color: var(--border-bright); box-shadow: var(--glow); text-decoration: none; }
+  a.card:hover { border-color: var(--border-bright); box-shadow: var(--glow); text-decoration: none; transform: translateY(-3px); }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
   .stat { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
   .stat .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-family: var(--font-mono); }
@@ -365,16 +383,29 @@ LAYOUT = """<!doctype html>
   tr { border-left: 2px solid transparent; transition: border-color .15s; }
   tr:hover { border-left-color: var(--accent); }
   tr:hover td { background: rgba(0,229,255,.03); }
-  .avatar-sm { width: 24px; height: 24px; border-radius: 50%; vertical-align: middle; margin-right: 8px; border: 1px solid var(--border); }
+  table tr:nth-child(even) td { background: rgba(255,255,255,.012); }
+  .avatar-sm { width: 24px; height: 24px; border-radius: 50%; vertical-align: middle; margin-right: 8px; border: 1px solid var(--border); box-shadow: 0 0 0 2px rgba(0,229,255,.06); }
   .progress { background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; height: 10px; overflow: hidden; }
-  .progress > div { background: linear-gradient(90deg, var(--accent), var(--accent-2)); height: 100%; box-shadow: 0 0 8px rgba(0,229,255,.5); }
+  .progress > div { background: linear-gradient(90deg, var(--accent), var(--accent-2)); height: 100%; box-shadow: 0 0 8px rgba(0,229,255,.5); position: relative; overflow: hidden; }
+  .progress > div::after {
+    content: ""; position: absolute; inset: 0; width: 40%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent);
+    animation: shimmer 2s ease-in-out infinite;
+  }
+  @keyframes shimmer { 0% { transform: translateX(-150%); } 100% { transform: translateX(350%); } }
   .btn {
     display: inline-block; background: var(--accent); color: #041014; border: none; border-radius: 4px;
     padding: 10px 18px; font-weight: 700; font-size: 12px; cursor: pointer; font-family: var(--font-mono);
-    text-transform: uppercase; letter-spacing: .08em;
+    text-transform: uppercase; letter-spacing: .08em; position: relative; overflow: hidden;
     clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
     transition: filter .15s, box-shadow .15s;
   }
+  .btn::before {
+    content: ""; position: absolute; top: 0; left: -60%; width: 40%; height: 100%;
+    background: linear-gradient(120deg, transparent, rgba(255,255,255,.45), transparent);
+    transform: skewX(-20deg); transition: left .5s ease;
+  }
+  .btn:hover::before { left: 130%; }
   .btn:hover { filter: brightness(1.1); text-decoration: none; box-shadow: 0 0 14px rgba(0,229,255,.5); }
   .btn.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border-bright); }
   .btn.secondary:hover { box-shadow: 0 0 10px rgba(0,229,255,.25); }
@@ -401,7 +432,21 @@ LAYOUT = """<!doctype html>
   .pill.denied { background: rgba(255,51,102,.1); color: #ff9bb3; border-color: rgba(255,51,102,.4); }
   .empty { color: var(--muted); font-style: italic; padding: 16px 0; text-align: center; font-family: var(--font-mono); }
   .center { text-align: center; }
-  .login-hero { text-align: center; padding: 80px 20px; }
+  .login-hero {
+    text-align: center; padding: 70px 30px; margin-top: 8px; position: relative; overflow: hidden;
+    border: 1px solid var(--border); border-radius: 12px;
+    background: linear-gradient(180deg, rgba(12,17,32,.55), rgba(18,26,46,.55));
+  }
+  .login-hero::before {
+    content: "// SYSTEM ACCESS"; position: absolute; top: 16px; left: 22px;
+    font-size: 10px; letter-spacing: .18em; color: var(--muted); font-family: var(--font-mono);
+  }
+  .login-hero::after {
+    content: ""; position: absolute; top: 0; left: 0; width: 30%; height: 2px;
+    background: linear-gradient(90deg, var(--accent), transparent);
+    animation: scan-x2 3s ease-in-out infinite alternate;
+  }
+  @keyframes scan-x2 { 0% { left: 0; } 100% { left: 70%; } }
   .login-hero h1 { font-size: 30px; }
   .login-hero h1::after { content: "_"; color: var(--accent); animation: blink 1s step-end infinite; }
   @keyframes blink { 50% { opacity: 0; } }
