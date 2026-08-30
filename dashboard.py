@@ -312,46 +312,68 @@ LAYOUT = """<!doctype html>
   }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
-  .rail {
-    position: fixed; top: 0; left: 0; bottom: 0; width: 220px; z-index: 20;
-    background: var(--surface); border-right: 2px solid var(--line-bright);
-    display: flex; flex-direction: column;
+  .dock {
+    position: fixed; left: 14px; top: 14px; width: 210px; z-index: 30;
+    background: var(--surface); border: 1px solid var(--line-bright);
+    opacity: 0; pointer-events: none; transition: opacity .15s ease;
   }
-  .rail-brand { padding: 22px 20px 16px; border-bottom: 1px solid var(--line); }
-  .rail-brand .mark {
+  .dock.show { opacity: 1; pointer-events: auto; }
+  .dock-brand { padding: 16px 18px 12px; border-bottom: 1px solid var(--line); }
+  .dock-brand .mark {
     display: inline-block; width: 9px; height: 9px; background: var(--accent); margin-right: 8px;
     animation: blip 1s steps(2) infinite;
   }
   @keyframes blip { 50% { opacity: .25; } }
-  .rail-brand .word { font-family: var(--font-display); font-weight: 900; font-size: 21px; letter-spacing: .03em; color: var(--text); text-transform: uppercase; }
-  .rail-brand .word span { color: var(--accent); }
-  .rail-brand .sub { display: block; margin-top: 4px; font-size: 10px; color: var(--text-dim); letter-spacing: .16em; padding-left: 17px; }
-  .rail-nav { flex: 1; padding: 10px 0; display: flex; flex-direction: column; overflow-y: auto; }
-  .rail-nav a {
-    display: flex; align-items: baseline; gap: 10px; padding: 11px 20px; color: var(--text-dim);
+  .dock-brand .word { font-family: var(--font-display); font-weight: 900; font-size: 18px; letter-spacing: .03em; color: var(--text); text-transform: uppercase; }
+  .dock-brand .word span { color: var(--accent); }
+  .dock-nav { padding: 6px 0; display: flex; flex-direction: column; }
+  .dock-nav a {
+    display: flex; align-items: baseline; gap: 10px; padding: 9px 18px; color: var(--text-dim);
     font-size: 13px; text-transform: uppercase; letter-spacing: .05em; border-left: 3px solid transparent;
   }
-  .rail-nav a .idx { font-size: 11px; color: var(--line-bright); }
-  .rail-nav a:hover, .rail-nav a:focus-visible { color: var(--text); text-decoration: none; background: var(--surface-2); border-left-color: var(--accent); }
-  .rail-nav a:hover .idx, .rail-nav a:focus-visible .idx { color: var(--accent); }
+  .dock-nav a .idx { font-size: 11px; color: var(--line-bright); }
+  .dock-nav a:hover, .dock-nav a:focus-visible { color: var(--text); text-decoration: none; background: var(--surface-2); border-left-color: var(--accent); }
+  .dock-nav a:hover .idx, .dock-nav a:focus-visible .idx { color: var(--accent); }
   .badge { background: var(--danger); color: var(--bg); font-family: var(--font-body); font-weight: 700; font-size: 10px; padding: 2px 6px; margin-left: auto; }
+  .helpbtn {
+    position: fixed; left: 14px; bottom: 14px; z-index: 30; width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--surface); border: 1px solid var(--line-bright); color: var(--text-dim);
+    font-family: var(--font-body); font-weight: 700; font-size: 13px;
+  }
+  .helpbtn:hover, .helpbtn:focus, .helpbtn.open { color: var(--accent); border-color: var(--accent); }
+  .helpbtn .tip {
+    position: absolute; left: 36px; bottom: 0; width: 210px; background: var(--surface);
+    border: 1px solid var(--line-bright); padding: 10px 12px; font-size: 12px; color: var(--text-dim); line-height: 1.5;
+    text-transform: none; letter-spacing: normal; opacity: 0; pointer-events: none;
+    transform: translateX(-6px); transition: opacity .12s, transform .12s;
+  }
+  .helpbtn:hover .tip, .helpbtn:focus .tip, .helpbtn.open .tip { opacity: 1; transform: none; pointer-events: auto; }
   .idbox {
     position: fixed; top: 18px; right: 24px; z-index: 20; display: flex; align-items: center; gap: 10px;
     font-size: 13px; white-space: nowrap; color: var(--text-dim); background: var(--surface);
     border: 1px solid var(--line); padding: 7px 12px;
   }
   .idbox img { width: 24px; height: 24px; border: 1px solid var(--line-bright); border-radius: 0; }
-  main { max-width: 880px; margin: 0 0 0 220px; padding: 70px 40px 70px; position: relative; z-index: 1; }
+  main { max-width: 960px; margin: 0 auto; padding: 70px 40px 70px; position: relative; z-index: 1; }
+  .linkrow { display: flex; flex-wrap: wrap; border: 1px solid var(--line); background: var(--surface); margin-top: 16px; }
+  .linkrow a { padding: 10px 16px; color: var(--text-dim); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; border-right: 1px solid var(--line); }
+  .linkrow a:last-child { border-right: none; }
+  .linkrow a:hover { color: var(--accent); background: var(--surface-2); text-decoration: none; }
   @media (max-width: 760px) {
-    .rail { top: auto; bottom: 0; left: 0; right: 0; width: auto; height: 62px; flex-direction: row; border-right: none; border-top: 2px solid var(--line-bright); }
-    .rail-brand { display: none; }
-    .rail-nav { flex-direction: row; padding: 0; overflow-x: auto; }
-    .rail-nav a { border-left: none; border-top: 3px solid transparent; padding: 0 16px; white-space: nowrap; }
-    .rail-nav a:hover, .rail-nav a:focus-visible { border-left-color: transparent; border-top-color: var(--accent); }
+    .dock {
+      opacity: 1 !important; pointer-events: auto !important; position: fixed; top: auto !important; bottom: 0; left: 0; right: 0;
+      width: auto; height: 58px; display: flex; align-items: center; border: none; border-top: 2px solid var(--line-bright);
+    }
+    .dock-brand { display: none; }
+    .dock-nav { flex-direction: row; padding: 0; overflow-x: auto; flex: 1; }
+    .dock-nav a { border-left: none; border-top: 3px solid transparent; padding: 0 16px; white-space: nowrap; height: 58px; }
+    .dock-nav a:hover, .dock-nav a:focus-visible { border-left-color: transparent; border-top-color: var(--accent); }
+    .helpbtn { display: none; }
     .idbox { top: 12px; right: 12px; padding: 5px 9px; font-size: 0; }
     .idbox img { margin: 0; }
     .idbox .btn { font-size: 11px; }
-    main { margin: 0; padding: 24px 20px 90px; }
+    main { padding: 24px 20px 90px; }
   }
   .flash {
     padding: 12px 16px; margin-bottom: 12px; font-size: 14px; position: relative;
@@ -436,13 +458,12 @@ LAYOUT = """<!doctype html>
 </style>
 </head>
 <body>
-<aside class="rail">
-  <div class="rail-brand">
+<aside class="dock">
+  <div class="dock-brand">
     <span class="mark"></span><span class="word">BLZ<span>—</span>T</span>
-    <span class="sub">OPS DECK</span>
   </div>
   {% if status == "approved" %}
-  <nav class="rail-nav">
+  <nav class="dock-nav">
     <a href="{{ url_for('dashboard.home') }}"><span class="idx">01</span>Home</a>
     <a href="{{ url_for('dashboard.elo_leaderboard') }}"><span class="idx">02</span>ELO</a>
     <a href="{{ url_for('dashboard.economy_home') }}"><span class="idx">03</span>Economy</a>
@@ -453,6 +474,9 @@ LAYOUT = """<!doctype html>
   </nav>
   {% endif %}
 </aside>
+{% if status == "approved" %}
+<div class="helpbtn" tabindex="0">?<span class="tip">Move your cursor to the left edge of the screen — the nav dock slides up to meet it. On touch, it's pinned to the bottom instead.</span></div>
+{% endif %}
 <div class="idbox">
   {% if user %}
     <img src="{{ user.avatar_url }}" alt="">
@@ -501,6 +525,28 @@ LAYOUT = """<!doctype html>
     window.requestAnimationFrame(frame);
   }
   document.querySelectorAll('.value').forEach(animateValue);
+
+  // Nav dock: hidden by default, slides along the left edge to meet the
+  // cursor's vertical position. Only on wide screens with a real mouse —
+  // the mobile media query pins it to the bottom instead.
+  var dock = document.querySelector('.dock');
+  if (dock && window.matchMedia('(min-width: 761px) and (hover: hover)').matches) {
+    var edge = 46, releaseAt = 260, hovering = false, shown = false;
+    dock.addEventListener('mouseenter', function () { hovering = true; });
+    dock.addEventListener('mouseleave', function () { hovering = false; });
+    document.addEventListener('mousemove', function (e) {
+      if (e.clientX < edge || hovering) {
+        if (!shown) { shown = true; dock.classList.add('show'); }
+        var h = dock.offsetHeight;
+        var top = Math.max(10, Math.min(e.clientY - h / 2, window.innerHeight - h - 10));
+        dock.style.top = top + 'px';
+      } else if (e.clientX > releaseAt && shown) {
+        shown = false; dock.classList.remove('show');
+      }
+    });
+  }
+  var help = document.querySelector('.helpbtn');
+  if (help) help.addEventListener('click', function () { help.classList.toggle('open'); });
 })();
 </script>
 </body>
@@ -862,7 +908,7 @@ ELO_LEADERBOARD_TMPL = """
 </tbody></table>
 {% else %}<p class="empty">No ranked players yet.</p>{% endif %}
 </div>
-<p><a href="{{ url_for('dashboard.elo_settings') }}">🎨 Card settings</a></p>"""
+<div class="linkrow"><a href="{{ url_for('dashboard.elo_settings') }}">🎨 Card settings</a></div>"""
 
 ELO_PROFILE_TMPL = """
 <h1><img class="avatar-sm" style="width:34px;height:34px;" src="{{ avatar }}"> {{ display_name }}</h1>
@@ -1123,7 +1169,7 @@ ECONOMY_HOME_TMPL = """
 {% else %}<p class="empty">Your inventory is empty. Visit the <a href="{{ url_for('dashboard.economy_shop') }}">shop</a>.</p>{% endif %}
 </div>
 
-<p><a href="{{ url_for('dashboard.economy_shop') }}">🛒 Shop</a> · <a href="{{ url_for('dashboard.economy_leaderboard') }}">📈 Leaderboard</a> · <a href="{{ url_for('dashboard.economy_games') }}">🎲 Games</a></p>"""
+<div class="linkrow"><a href="{{ url_for('dashboard.economy_shop') }}">🛒 Shop</a><a href="{{ url_for('dashboard.economy_leaderboard') }}">📈 Leaderboard</a><a href="{{ url_for('dashboard.economy_games') }}">🎲 Games</a></div>"""
 
 ECONOMY_SHOP_TMPL = """
 <h1>🛒 Item Shop</h1>
@@ -1537,7 +1583,7 @@ TRYOUTS_EP_RESULT_TMPL = """
 <p>Status: {% if excused %}🟢 Excused until {{ excuse_until.strftime('%Y-%m-%d %H:%M UTC') }}{% elif ep >= target %}✅ Quota met{% else %}❌ Quota not met yet{% endif %}</p>
 <p class="muted">Resets: {{ reset_at.strftime('%a %Y-%m-%d %H:%M UTC') }}</p>
 </div>
-<p><a href="{{ url_for('dashboard.tryouts_home') }}">← Back to Tryouts</a></p>"""
+<div class="linkrow"><a href="{{ url_for('dashboard.tryouts_home') }}">← Back to Tryouts</a></div>"""
 
 TRYOUTS_EXCLUDE_TMPL = """
 <h1>🚫 Exclude / Include from /viewt</h1>
