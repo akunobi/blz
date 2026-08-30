@@ -292,8 +292,8 @@ LAYOUT = """<!doctype html>
   @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap');
 
   :root {
-    --ink: #1c1b2e; --paper: #d7d9ef; --panel: #fbfbff; --panel-2: #eceefb;
-    --coral: #ff5d73; --coral-dark: #c93a50; --mint: #16a596; --mint-dark: #0d7d72; --gold: #f6b93b; --gold-dark: #c98f1c;
+    --ink: #eef4ff; --ink-solid: #0e0a1f; --ink-muted: #a79fd6; --paper: #0a0714; --panel: #171129; --panel-2: #221a3f;
+    --coral: #ff2e88; --coral-dark: #c81361; --mint: #1dffc4; --mint-dark: #08c99a; --gold: #ffdd3d; --gold-dark: #e0a300;
     --font-display: 'Press Start 2P', monospace;
     --font-body: 'VT323', monospace;
     --notch: 8px;
@@ -308,31 +308,35 @@ LAYOUT = """<!doctype html>
   body {
     margin: 0; font-family: var(--font-body); font-size: 19px; color: var(--ink); min-height: 100vh;
     background-color: var(--paper);
-    background-image: repeating-linear-gradient(0deg, rgba(28,27,46,.04) 0 2px, transparent 2px 4px),
-                       repeating-linear-gradient(90deg, rgba(28,27,46,.04) 0 2px, transparent 2px 4px);
-    background-size: 4px 4px;
+    background-image: radial-gradient(ellipse 900px 520px at 10% -10%, rgba(255,46,136,.18), transparent 60%),
+                       radial-gradient(ellipse 900px 620px at 100% 110%, rgba(29,255,196,.14), transparent 60%),
+                       repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 2px, transparent 2px 4px),
+                       repeating-linear-gradient(90deg, rgba(255,255,255,.035) 0 2px, transparent 2px 4px);
+    background-attachment: fixed, fixed, scroll, scroll;
+    background-size: auto, auto, 4px 4px, 4px 4px;
   }
   a { color: var(--mint-dark); text-decoration: none; }
   a:hover { color: var(--coral-dark); text-decoration: underline; }
   header.topbar {
     display: flex; align-items: center; justify-content: space-between; padding: 14px 22px; gap: 16px;
-    background: var(--ink); border-bottom: 4px solid var(--ink); position: sticky; top: 0; z-index: 10; flex-wrap: wrap;
-    box-shadow: 0 4px 0 rgba(0,0,0,.15);
+    background: var(--ink-solid); border-bottom: 3px solid var(--coral); position: sticky; top: 0; z-index: 10; flex-wrap: wrap;
+    box-shadow: 0 4px 24px -4px rgba(29,255,196,.35);
   }
   .brand {
-    font-family: var(--font-display); font-size: 14px; letter-spacing: 1px; color: var(--panel);
+    font-family: var(--font-display); font-size: 14px; letter-spacing: 1px; color: var(--ink);
+    text-shadow: 0 0 12px rgba(238,244,255,.3);
     white-space: nowrap; display: flex; align-items: center; gap: 10px; line-height: 1.4;
   }
   .brand::before {
     content: ""; width: 12px; height: 12px; background: var(--gold); flex-shrink: 0;
-    animation: blip .9s steps(2) infinite;
+    animation: blip .9s steps(2) infinite; filter: drop-shadow(0 0 6px var(--gold));
     clip-path: polygon(50% 0,100% 50%,50% 100%,0 50%);
   }
   @keyframes blip { 50% { background: var(--coral); } }
-  .brand span { color: var(--coral); }
+  .brand span { color: var(--coral); text-shadow: 0 0 10px rgba(255,46,136,.6); }
   nav.mainnav { display: flex; gap: 2px; flex-wrap: wrap; font-family: var(--font-body); }
   nav.mainnav a {
-    position: relative; color: var(--panel-2); padding: 8px 14px 8px 20px; font-size: 18px;
+    position: relative; color: var(--ink-muted); padding: 8px 14px 8px 20px; font-size: 18px;
     text-transform: uppercase; letter-spacing: .04em; transition: color .1s;
   }
   nav.mainnav a::before {
@@ -341,10 +345,10 @@ LAYOUT = """<!doctype html>
     animation: cursor-bob .5s steps(2) infinite;
   }
   @keyframes cursor-bob { 50% { transform: translateY(-50%) translateX(0px); } }
-  nav.mainnav a:hover, nav.mainnav a:focus-visible { color: #fff; text-decoration: none; }
+  nav.mainnav a:hover, nav.mainnav a:focus-visible { color: #fff; text-decoration: none; text-shadow: 0 0 10px rgba(29,255,196,.7); }
   nav.mainnav a:hover::before, nav.mainnav a:focus-visible::before { opacity: 1; }
-  .badge { background: var(--coral); color: var(--ink); font-family: var(--font-display); font-size: 9px; padding: 3px 5px; margin-left: 5px; border: 2px solid var(--ink); }
-  .userbox { display: flex; align-items: center; gap: 10px; font-size: 18px; white-space: nowrap; color: var(--panel-2); }
+  .badge { background: var(--coral); color: var(--ink-solid); font-family: var(--font-display); font-size: 9px; padding: 3px 5px; margin-left: 5px; border: 2px solid var(--ink-solid); box-shadow: 0 0 8px rgba(255,46,136,.7); }
+  .userbox { display: flex; align-items: center; gap: 10px; font-size: 18px; white-space: nowrap; color: var(--ink-muted); }
   .userbox img { width: 30px; height: 30px; border: 2px solid var(--gold); border-radius: 0; }
   main { max-width: 1080px; margin: 0 auto; padding: 28px 20px 70px; position: relative; z-index: 1; }
   .flash {
@@ -355,7 +359,7 @@ LAYOUT = """<!doctype html>
   .flash::before {
     content: "!"; position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
     width: 24px; height: 24px; line-height: 24px; text-align: center; font-family: var(--font-display); font-size: 12px;
-    color: var(--panel); background: var(--ink);
+    color: var(--ink); background: var(--ink-solid);
   }
   .flash.success { border-color: var(--mint-dark); box-shadow: 4px 4px 0 var(--mint-dark); }
   .flash.success::before { content: "✓"; background: var(--mint-dark); }
@@ -363,12 +367,13 @@ LAYOUT = """<!doctype html>
   .flash.error::before { content: "✕"; background: var(--coral-dark); }
   .flash.info { border-color: var(--gold-dark); box-shadow: 4px 4px 0 var(--gold-dark); }
   .flash.info::before { content: "i"; background: var(--gold-dark); }
-  h1 { font-family: var(--font-display); font-size: 20px; line-height: 1.5; margin: 0 0 20px; color: var(--ink); }
-  h2 { font-family: var(--font-display); font-size: 11px; margin: 32px 0 14px; color: var(--panel); letter-spacing: .04em;
-       background: var(--ink); display: inline-block; padding: 8px 12px; clip-path: var(--pixel-corner); }
+  h1 { font-family: var(--font-display); font-size: 20px; line-height: 1.5; margin: 0 0 20px; color: var(--ink); text-shadow: 0 0 16px rgba(238,244,255,.25); }
+  h2 { font-family: var(--font-display); font-size: 11px; margin: 32px 0 14px; color: var(--ink); letter-spacing: .04em;
+       background: var(--ink-solid); display: inline-block; padding: 8px 12px; clip-path: var(--pixel-corner);
+       box-shadow: 0 0 12px -2px var(--mint); }
   .card, .stat {
     background: var(--panel); border: 3px solid var(--ink); padding: 18px; position: relative;
-    box-shadow: 5px 5px 0 rgba(28,27,46,.35); clip-path: var(--pixel-corner);
+    box-shadow: 5px 5px 0 rgba(178,77,255,.4), 0 0 28px -12px rgba(29,255,196,.4); clip-path: var(--pixel-corner);
     animation: pop-in .22s steps(4) backwards;
   }
   .card { margin-bottom: 16px; }
@@ -377,11 +382,11 @@ LAYOUT = """<!doctype html>
   .grid > *:nth-child(3) { animation-delay: 120ms; } .grid > *:nth-child(4) { animation-delay: 180ms; }
   .grid > *:nth-child(5) { animation-delay: 240ms; } .grid > *:nth-child(6) { animation-delay: 300ms; }
   .grid > *:nth-child(n+7) { animation-delay: 340ms; }
-  a.card { display: block; color: var(--ink); transition: transform .08s; }
-  a.card:hover { text-decoration: none; transform: translate(-2px,-2px); box-shadow: 7px 7px 0 rgba(28,27,46,.35); }
+  a.card { display: block; color: var(--ink); transition: transform .08s, border-color .08s; }
+  a.card:hover { text-decoration: none; transform: translate(-2px,-2px); border-color: var(--mint); box-shadow: 7px 7px 0 rgba(178,77,255,.55), 0 0 34px -8px rgba(29,255,196,.6); }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
   .stat .label { color: var(--ink); opacity: .55; font-size: 14px; text-transform: uppercase; letter-spacing: .06em; }
-  .stat .value { font-family: var(--font-display); font-size: 22px; margin-top: 10px; display: block; color: var(--ink); line-height: 1.5; }
+  .stat .value { font-family: var(--font-display); font-size: 22px; margin-top: 10px; display: block; color: var(--ink); line-height: 1.5; text-shadow: 0 0 12px rgba(29,255,196,.45); }
   table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 18px; }
   th, td { text-align: left; padding: 10px 12px; border-bottom: 2px dashed var(--ink); }
   th { font-family: var(--font-display); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; border-bottom: 3px solid var(--ink); }
@@ -395,15 +400,15 @@ LAYOUT = """<!doctype html>
     height: 100%; transition: width .8s steps(12);
   }
   .btn {
-    display: inline-block; background: var(--coral); color: var(--ink); border: 3px solid var(--ink);
-    padding: 10px 18px; font-family: var(--font-body); font-size: 18px; cursor: pointer;
+    display: inline-block; background: var(--coral); color: var(--ink-solid); border: 3px solid var(--ink);
+    padding: 10px 18px; font-family: var(--font-body); font-size: 18px; cursor: pointer; font-weight: bold;
     text-transform: uppercase; letter-spacing: .03em; position: relative;
-    box-shadow: 4px 4px 0 var(--ink); transition: transform .05s, box-shadow .05s;
+    box-shadow: 4px 4px 0 var(--ink), 0 0 16px -6px var(--ink); transition: transform .05s, box-shadow .05s, filter .1s;
     clip-path: var(--pixel-corner);
   }
-  .btn:hover { text-decoration: none; filter: brightness(1.04); }
+  .btn:hover { text-decoration: none; filter: brightness(1.15); }
   .btn:active { transform: translate(4px, 4px); box-shadow: 0 0 0 var(--ink); }
-  .btn.secondary { background: var(--panel); }
+  .btn.secondary { background: var(--panel); color: var(--ink); }
   .btn.small { padding: 6px 12px; font-size: 15px; box-shadow: 3px 3px 0 var(--ink); }
   .btn.small:active { transform: translate(3px, 3px); box-shadow: 0 0 0 var(--ink); }
   .btn.danger { background: var(--coral); }
@@ -412,7 +417,7 @@ LAYOUT = """<!doctype html>
     width: 100%; background: var(--panel); border: 3px solid var(--ink); border-radius: 0;
     padding: 8px 10px; color: var(--ink); font-size: 18px; margin-top: 5px; font-family: var(--font-body);
   }
-  input:focus, textarea:focus, select:focus { outline: none; background: var(--panel-2); }
+  input:focus, textarea:focus, select:focus { outline: none; background: var(--panel-2); box-shadow: 0 0 0 3px rgba(29,255,196,.25); }
   label { font-size: 13px; color: var(--ink); opacity: .6; font-weight: normal; text-transform: uppercase; letter-spacing: .04em; font-family: var(--font-body); }
   form.inline { display: inline-block; margin-right: 6px; }
   .field { margin-bottom: 15px; }
@@ -428,8 +433,8 @@ LAYOUT = """<!doctype html>
   .login-hero { text-align: center; padding: 60px 20px; }
   .login-hero h1 { font-size: 26px; line-height: 1.6; }
   .tabs { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
-  .tabs a { padding: 8px 14px; background: var(--panel); border: 3px solid var(--ink); color: var(--ink); font-size: 16px; text-transform: uppercase; box-shadow: 3px 3px 0 rgba(28,27,46,.3); }
-  .tabs a.active { background: var(--gold); box-shadow: none; transform: translate(3px,3px); }
+  .tabs a { padding: 8px 14px; background: var(--panel); border: 3px solid var(--ink); color: var(--ink); font-size: 16px; text-transform: uppercase; box-shadow: 3px 3px 0 rgba(178,77,255,.35); }
+  .tabs a.active { background: var(--gold); color: var(--ink-solid); box-shadow: 0 0 14px -2px var(--gold); transform: translate(3px,3px); }
   ::-webkit-scrollbar { width: 14px; height: 14px; }
   ::-webkit-scrollbar-track { background: var(--paper); }
   ::-webkit-scrollbar-thumb { background: var(--ink); border: 3px solid var(--paper); }
@@ -615,15 +620,21 @@ def home():
 <h2>Quick links</h2>
 <div class="grid">
   <a class="card" href="{{ url_for('dashboard.elo_leaderboard') }}"><strong>🏆 ELO Leaderboard</strong><br><span class="muted">See top ranked players</span></a>
+  <a class="card" href="{{ url_for('dashboard.tryouts_home') }}"><strong>🎯 Tryouts</strong><br><span class="muted">View your tryout status</span></a>
+  <a class="card" href="{{ url_for('dashboard.matchmaking') }}"><strong>⚔️ Matchmaking</strong><br><span class="muted">Queue up for a duel</span></a>
   <a class="card" href="{{ url_for('dashboard.economy_shop') }}"><strong>🛒 Shop</strong><br><span class="muted">Buy items with your coins</span></a>
   <a class="card" href="{{ url_for('dashboard.economy_games') }}"><strong>🎲 Games</strong><br><span class="muted">RPS, coinflip, slots, guess</span></a>
+  <a class="card" href="{{ url_for('dashboard.economy_leaderboard') }}"><strong>📈 Coin Leaderboard</strong><br><span class="muted">See the richest players</span></a>
   {% if is_staff_addelo %}<a class="card" href="{{ url_for('dashboard.tryouts_in') }}"><strong>🟢 Manage IN</strong><br><span class="muted">Excuse tryouters from quota</span></a>{% endif %}
+  {% if is_staff_addelo %}<a class="card" href="{{ url_for('dashboard.elo_settings') }}"><strong>🎨 ELO Card Settings</strong><br><span class="muted">Accent color &amp; banner</span></a>{% endif %}
   {% if is_moderator %}<a class="card" href="{{ url_for('dashboard.moderation') }}"><strong>🟥 Moderation DMs</strong><br><span class="muted">Send ban/warn notices</span></a>{% endif %}
+  {% if is_admin %}<a class="card" href="{{ url_for('dashboard.admin_access') }}"><strong>🛡️ Access Requests</strong><br><span class="muted">Approve or deny new logins</span></a>{% endif %}
 </div>""",
                 elo=row.elo, rank_name=rank_name, rank_emoji=rank_emoji, pct=pct, progress_label=progress_label,
                 balance=econ_doc["balance"], is_tryouter=is_tryouter, ep=ep, quota_ep_target=botmod.TRYOUT_QUOTA_EP,
                 queued_modes=queued_modes, is_staff_addelo=has_role(uid, botmod.ADDELO_ROLE_ID),
-                is_moderator=has_role(uid, botmod.BANDM_ROLE_ID) or has_role(uid, botmod.BANDM_TEST_ROLE_ID))
+                is_moderator=has_role(uid, botmod.BANDM_ROLE_ID) or has_role(uid, botmod.BANDM_TEST_ROLE_ID),
+                is_admin=uid in ADMIN_DISCORD_IDS)
 
 
 @dash_bp.route("/login")
@@ -2070,7 +2081,7 @@ MODERATION_TMPL = """
   <div class="field"><label>Member Discord ID</label><input type="text" name="member_id" required></div>
   <div class="field"><label>Punishment</label><input type="text" name="punishment" placeholder="e.g. 2h mute" required></div>
   <div class="field"><label>Reason</label><input type="text" name="reason" required></div>
-  <button class="btn" style="background:var(--warn);">Send Warn DM</button>
+  <button class="btn" style="background:var(--gold);">Send Warn DM</button>
 </form>
 </div>
 </div>"""
