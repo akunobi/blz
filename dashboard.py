@@ -90,7 +90,7 @@ import discord
 import requests
 from PIL import Image
 from flask import (
-    Blueprint, redirect, request, session, url_for,
+    Flask, Blueprint, redirect, request, session, url_for,
     render_template_string, abort, flash,
 )
 
@@ -101,6 +101,10 @@ from flask import (
 # once bot.py has finished setting everything up.
 
 logger = logging.getLogger("blz-dashboard")
+
+app = Flask(__name__)
+
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(16))
 
 # =====================================================================================
 # CONFIG
