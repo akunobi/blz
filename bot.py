@@ -79,9 +79,11 @@ def health():
     return jsonify({"status": "ok", "bot": "BLZ-T Matchmaking"}), 200
 
 
-def run_flask():
-    port = int(os.getenv("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+# NOTE: this `app` is served by dashboard.py's init_dashboard() (started from
+# main.py in a background thread), which also mounts the /dashboard blueprint
+# onto it — so this same Flask instance answers both "/" (health check) and
+# every "/dashboard/..." page on the one Render port. Nothing here needs to
+# call app.run() itself.
 
 
 # --- DISCORD BOT SETUP ---
@@ -3021,5 +3023,3 @@ def _run_with_backoff():
             time.sleep(backoff)
             raise SystemExit(1)
         raise
-
-
