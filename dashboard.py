@@ -98,7 +98,6 @@ from flask import (
 # in bot.py is defined). Referencing it via the module object (rather than
 # `from bot import x, y, z`) means every lookup below happens at call time,
 # once bot.py has finished setting everything up.
-import bot as botmod
 
 logger = logging.getLogger("blz-dashboard")
 
@@ -2036,3 +2035,17 @@ if __name__ == "__main__":
         "Add `from dashboard import init_dashboard; init_dashboard(app)` near the "
         "bottom of bot.py instead, then run bot.py as usual."
     )
+
+
+# Al final de tu dashboard.py
+from threading import Thread
+import os
+
+def run_server():
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
+
+def init_dashboard():
+    # Esto es vital: arranca la web en un hilo secundario
+    server_thread = Thread(target=run_server)
+    server_thread.start()
