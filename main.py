@@ -1,6 +1,6 @@
 # main.py
 from dashboard import init_dashboard
-from bot import run_bot
+from bot import _run_with_backoff as run_bot
 
 if __name__ == "__main__":
     print("Iniciando el panel web...")
