@@ -528,19 +528,25 @@ LAYOUT = """<!doctype html>
   }
   document.querySelectorAll('.value').forEach(animateValue);
 
-  // Nav dock: hidden by default, slides along the left edge to meet the
-  // cursor's vertical position. Only on wide screens with a real mouse —
-  // the mobile media query pins it to the bottom instead.
+  // Nav dock: hidden by default, spawns and follows exactly where the
+  // cursor is. Only on wide screens with a real mouse — the mobile media
+  // query pins it to the bottom instead.
   var dock = document.querySelector('.dock');
   if (dock && window.matchMedia('(min-width: 761px) and (hover: hover)').matches) {
     var links = Array.prototype.slice.call(dock.querySelectorAll('.dock-nav a'));
     var edge = 46, releaseAt = 260, hovering = false, hoverShown = false, pinned = false, selIdx = -1;
+    var mouseX = 0, mouseY = 0;
 
     function isTyping() {
       var el = document.activeElement, tag = el && el.tagName;
       return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (el && el.isContentEditable);
     }
     function setVisible(v) { dock.classList.toggle('show', v); }
+    function positionAt(x, y) {
+      var left = Math.max(8, Math.min(x + 8, window.innerWidth - dock.offsetWidth - 8));
+      var top = Math.max(8, Math.min(y - dock.offsetHeight / 2, window.innerHeight - dock.offsetHeight - 8));
+      dock.style.left = left + 'px'; dock.style.top = top + 'px';
+    }
     function select(i) {
       if (!links.length) return;
       selIdx = Math.max(0, Math.min(i, links.length - 1));
@@ -554,12 +560,11 @@ LAYOUT = """<!doctype html>
     dock.addEventListener('mouseenter', function () { hovering = true; });
     dock.addEventListener('mouseleave', function () { hovering = false; });
     document.addEventListener('mousemove', function (e) {
+      mouseX = e.clientX; mouseY = e.clientY;
       if (pinned) return;
       if (e.clientX < edge || hovering) {
         if (!hoverShown) { hoverShown = true; setVisible(true); }
-        var h = dock.offsetHeight;
-        var top = Math.max(10, Math.min(e.clientY - h / 2, window.innerHeight - h - 10));
-        dock.style.top = top + 'px';
+        positionAt(e.clientX, e.clientY);
       } else if (e.clientX > releaseAt && hoverShown) {
         hoverShown = false; setVisible(false);
       }
@@ -571,10 +576,10 @@ LAYOUT = """<!doctype html>
         e.preventDefault();
         pinned = !pinned;
         if (pinned) {
-          dock.style.top = '50%'; dock.style.transform = 'translateY(-50%)';
+          positionAt(mouseX, mouseY);
           setVisible(true); select(0);
         } else {
-          dock.style.transform = ''; clearSelect(); setVisible(hoverShown);
+          clearSelect(); setVisible(hoverShown);
         }
         return;
       }
@@ -582,7 +587,7 @@ LAYOUT = """<!doctype html>
       if (e.key === 'ArrowDown') { e.preventDefault(); select(selIdx + 1); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); select(selIdx - 1); }
       else if (e.key === 'Enter' && selIdx >= 0) { links[selIdx].click(); }
-      else if (e.key === 'Escape') { pinned = false; dock.style.transform = ''; clearSelect(); setVisible(hoverShown); }
+      else if (e.key === 'Escape') { pinned = false; clearSelect(); setVisible(hoverShown); }
     });
   }
   var help = document.querySelector('.helpbtn');
