@@ -334,6 +334,8 @@ LAYOUT = """<!doctype html>
   .dock-nav a .idx { font-size: 11px; color: var(--line-bright); }
   .dock-nav a:hover, .dock-nav a:focus-visible { color: var(--text); text-decoration: none; background: var(--surface-2); border-left-color: var(--accent); }
   .dock-nav a:hover .idx, .dock-nav a:focus-visible .idx { color: var(--accent); }
+  .dock-nav a.kbd-active { color: var(--text); background: var(--surface-2); border-left-color: var(--accent); }
+  .dock-nav a.kbd-active .idx { color: var(--accent); }
   .badge { background: var(--danger); color: var(--bg); font-family: var(--font-body); font-weight: 700; font-size: 10px; padding: 2px 6px; margin-left: auto; }
   .helpbtn {
     position: fixed; left: 14px; bottom: 14px; z-index: 30; width: 28px; height: 28px;
@@ -475,7 +477,7 @@ LAYOUT = """<!doctype html>
   {% endif %}
 </aside>
 {% if status == "approved" %}
-<div class="helpbtn" tabindex="0">?<span class="tip">Move your cursor to the left edge of the screen — the nav dock slides up to meet it. On touch, it's pinned to the bottom instead.</span></div>
+<div class="helpbtn" tabindex="0">?<span class="tip">Move your cursor to the left edge to reveal the nav — or press <b>W</b> (not while typing) to pin it open, then <b>↑/↓</b> to move and <b>Enter</b> to jump. <b>W</b> or <b>Esc</b> closes it. On touch it's pinned to the bottom.</span></div>
 {% endif %}
 <div class="idbox">
   {% if user %}
@@ -531,18 +533,56 @@ LAYOUT = """<!doctype html>
   // the mobile media query pins it to the bottom instead.
   var dock = document.querySelector('.dock');
   if (dock && window.matchMedia('(min-width: 761px) and (hover: hover)').matches) {
-    var edge = 46, releaseAt = 260, hovering = false, shown = false;
+    var links = Array.prototype.slice.call(dock.querySelectorAll('.dock-nav a'));
+    var edge = 46, releaseAt = 260, hovering = false, hoverShown = false, pinned = false, selIdx = -1;
+
+    function isTyping() {
+      var el = document.activeElement, tag = el && el.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (el && el.isContentEditable);
+    }
+    function setVisible(v) { dock.classList.toggle('show', v); }
+    function select(i) {
+      if (!links.length) return;
+      selIdx = Math.max(0, Math.min(i, links.length - 1));
+      links.forEach(function (a, n) { a.classList.toggle('kbd-active', n === selIdx); });
+    }
+    function clearSelect() {
+      links.forEach(function (a) { a.classList.remove('kbd-active'); });
+      selIdx = -1;
+    }
+
     dock.addEventListener('mouseenter', function () { hovering = true; });
     dock.addEventListener('mouseleave', function () { hovering = false; });
     document.addEventListener('mousemove', function (e) {
+      if (pinned) return;
       if (e.clientX < edge || hovering) {
-        if (!shown) { shown = true; dock.classList.add('show'); }
+        if (!hoverShown) { hoverShown = true; setVisible(true); }
         var h = dock.offsetHeight;
         var top = Math.max(10, Math.min(e.clientY - h / 2, window.innerHeight - h - 10));
         dock.style.top = top + 'px';
-      } else if (e.clientX > releaseAt && shown) {
-        shown = false; dock.classList.remove('show');
+      } else if (e.clientX > releaseAt && hoverShown) {
+        hoverShown = false; setVisible(false);
       }
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if ((e.key === 'w' || e.key === 'W') && !isTyping()) {
+        e.preventDefault();
+        pinned = !pinned;
+        if (pinned) {
+          dock.style.top = '50%'; dock.style.transform = 'translateY(-50%)';
+          setVisible(true); select(0);
+        } else {
+          dock.style.transform = ''; clearSelect(); setVisible(hoverShown);
+        }
+        return;
+      }
+      if (!pinned) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); select(selIdx + 1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); select(selIdx - 1); }
+      else if (e.key === 'Enter' && selIdx >= 0) { links[selIdx].click(); }
+      else if (e.key === 'Escape') { pinned = false; dock.style.transform = ''; clearSelect(); setVisible(hoverShown); }
     });
   }
   var help = document.querySelector('.helpbtn');
