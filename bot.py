@@ -3023,9 +3023,3 @@ def _run_with_backoff():
         raise
 
 
-from dashboard import init_dashboard
-init_dashboard(app)
-
-if __name__ == "__main__":
-    threading.Thread(target=run_flask, daemon=True).start()
-    _run_with_backoff()
