@@ -1282,7 +1282,7 @@ ECONOMY_GAMES_TMPL = """
     </form>
   </div>
   <div class="card">
-    <h2 style="margin-top:0;">Guess the Number (1-10, 8x payout)</h2>
+    <h2 style="margin-top:0;">Guess the Number (1-10, 10x payout)</h2>
     <form method="post" action="{{ url_for('dashboard.economy_guess') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf }}">
       <div class="field"><label>Guess</label><input type="number" name="number" min="1" max="10" required></div>
@@ -1594,9 +1594,9 @@ def economy_guess():
         return redirect(url_for("dashboard.economy_games"))
     answer = random.randint(1, 10)
     won = number == answer
-    new_bal = botmod._add_balance_sync(uid, bet * 8 if won else -bet)
+    new_bal = botmod._add_balance_sync(uid, bet * 10 if won else -bet)
     if won:
-        flash(f"Correct! It was {answer}. You won {bet * 8} {botmod.CURRENCY}! Balance: {new_bal}.", "success")
+        flash(f"Correct! It was {answer}. You won {bet * 10} {botmod.CURRENCY}! Balance: {new_bal}.", "success")
     else:
         flash(f"Wrong, it was {answer}. You lost {bet} {botmod.CURRENCY}. Balance: {new_bal}.", "info")
     return redirect(url_for("dashboard.economy_games"))
