@@ -2931,7 +2931,7 @@ async def slots_command(interaction: discord.Interaction, bet: int):
     await interaction.response.send_message(f"[ {' | '.join(spin)} ]\n{result}\nBalance: **{new_bal}**")
 
 
-@client.tree.command(name="guess", description="Guess a number 1-10 to win 8x your bet")
+@client.tree.command(name="guess", description="Guess a number 1-10 to win 10x your bet")
 @app_commands.describe(number="Your guess (1-10)", bet="Coins to bet")
 async def guess_command(interaction: discord.Interaction, number: app_commands.Range[int, 1, 10], bet: int):
     if not await econ_channel_check(interaction):
@@ -2944,8 +2944,8 @@ async def guess_command(interaction: discord.Interaction, number: app_commands.R
         return
     answer = random.randint(1, 10)
     won = number == answer
-    new_bal = await add_balance(interaction.user.id, bet * 8 if won else -bet)
-    result = f"🎯 Correct! It was **{answer}**. You won **{bet * 8}** {CURRENCY}!" if won \
+    new_bal = await add_balance(interaction.user.id, bet * 10 if won else -bet)
+    result = f"🎯 Correct! It was **{answer}**. You won **{bet * 10}** {CURRENCY}!" if won \
         else f"❌ Wrong, it was **{answer}**. You lost **{bet}** {CURRENCY}."
     await interaction.response.send_message(f"{result}\nBalance: **{new_bal}**")
 
