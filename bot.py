@@ -2585,8 +2585,10 @@ async def leaderboard_command(interaction: discord.Interaction):
 CURRENCY = "🪙"
 STARTING_BALANCE = 100
 DAILY_AMOUNT = 250
+WEEKLY_AMOUNT = 1500
 WORK_MIN, WORK_MAX = 50, 200
 DAILY_COOLDOWN = timedelta(hours=20)
+WEEKLY_COOLDOWN = timedelta(days=6, hours=20)
 WORK_COOLDOWN = timedelta(hours=1)
 
 SHOP_ITEMS = [
@@ -2693,6 +2695,22 @@ async def daily_command(interaction: discord.Interaction):
     new_bal = await add_balance(interaction.user.id, DAILY_AMOUNT)
     await set_cooldown(interaction.user.id, "last_daily", now)
     await interaction.response.send_message(f"✅ Claimed your daily **{DAILY_AMOUNT}** {CURRENCY}! Balance: **{new_bal}**.")
+
+
+@client.tree.command(name="weekly", description="Claim your weekly coins")
+async def weekly_command(interaction: discord.Interaction):
+    if not await econ_channel_check(interaction):
+        return
+    doc = await get_econ(interaction.user.id)
+    now = datetime.now(timezone.utc)
+    last = doc.get("last_weekly")
+    if last and _aware(last) + WEEKLY_COOLDOWN > now:
+        await interaction.response.send_message(
+            f"⏳ Already claimed. Come back in **{_fmt_remaining(_aware(last) + WEEKLY_COOLDOWN, now)}**.", ephemeral=True)
+        return
+    new_bal = await add_balance(interaction.user.id, WEEKLY_AMOUNT)
+    await set_cooldown(interaction.user.id, "last_weekly", now)
+    await interaction.response.send_message(f"✅ Claimed your weekly **{WEEKLY_AMOUNT}** {CURRENCY}! Balance: **{new_bal}**.")
 
 
 @client.tree.command(name="work", description="Work a job for some coins")
