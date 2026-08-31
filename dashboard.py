@@ -138,6 +138,30 @@ if not os.getenv("DASHBOARD_SECRET_KEY"):
 # always treated as approved themselves the moment they log in.
 ADMIN_DISCORD_IDS = {1075463469865906216, 898579360720764999, 1375115979285073951}
 
+# Coin emoji images for the web dashboard. bot.py's CURRENCY/COIN1-4 constants are
+# Discord's <:name:id> markup, which only renders inside Discord clients -- in a
+# browser it would just show up as literal text. These CDN links are the same four
+# server emojis, used here as <img> tags instead.
+COIN_IMAGE_URLS = {
+    "coin1": "https://cdn.discordapp.com/emojis/1328399864526143488.webp?size=96",
+    "coin2": "https://cdn.discordapp.com/emojis/1345765306655707198.webp?size=96",
+    "coin3": "https://cdn.discordapp.com/emojis/1321451928864952361.webp?size=96",
+    "coin4": "https://cdn.discordapp.com/emojis/1361906308214947880.webp?size=96",
+}
+
+
+def coin_img(name="coin2"):
+    """Inline <img> for a coin emoji, sized to the surrounding text via the
+    .coin-icon CSS class. Only use this in template context vars marked
+    |safe -- never inside flash() messages, which render as plain text and
+    can contain user-controlled data (display names, etc.)."""
+    return f'<img src="{COIN_IMAGE_URLS[name]}" alt="coin" class="coin-icon">'
+
+
+# Plain-text fallback for flash() messages, which are rendered without |safe
+# (some contain user-controlled display names, so they must stay unescaped-HTML-free).
+CURRENCY_TEXT = "🪙"
+
 DISCORD_API = "https://discord.com/api"
 OAUTH_AUTHORIZE_URL = f"{DISCORD_API}/oauth2/authorize"
 OAUTH_TOKEN_URL = f"{DISCORD_API}/oauth2/token"
@@ -445,6 +469,7 @@ LAYOUT = """<!doctype html>
   .pill.approved { border-left-color: var(--accent); color: var(--accent); }
   .pill.denied { border-left-color: var(--danger); color: var(--danger); }
   .empty { color: var(--text-dim); padding: 18px 0; text-align: center; font-size: 14px; }
+  .coin-icon { height: 1em; width: 1em; vertical-align: -0.15em; }
   .center { text-align: center; }
   .login-hero { text-align: center; padding: 70px 20px; }
   .login-hero h1 { font-size: 36px; }
@@ -686,7 +711,7 @@ def home():
   </div>
   <div class="stat">
     <div class="label">Coin Balance</div>
-    <div class="value">{{ balance }} 🪙</div>
+    <div class="value">{{ balance }} <img src="https://cdn.discordapp.com/emojis/1345765306655707198.webp?size=96" alt="coin" class="coin-icon"></div>
     <a href="{{ url_for('dashboard.economy_home') }}" class="muted">Open economy →</a>
   </div>
   {% if is_tryouter %}
@@ -1156,12 +1181,12 @@ def elo_settings_banner_reset():
 ECONOMY_HOME_TMPL = """
 <h1>💰 Economy</h1>
 <div class="grid">
-  <div class="stat"><div class="label">Balance</div><div class="value">{{ balance }} {{ currency }}</div></div>
+  <div class="stat"><div class="label">Balance</div><div class="value">{{ balance }} {{ currency|safe }}</div></div>
   <div class="stat">
     <div class="label">Daily</div>
     {% if daily_ready %}
     <form method="post" action="{{ url_for('dashboard.economy_daily') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small" style="margin-top:6px;">Claim {{ daily_amount }} {{ currency }}</button>
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small" style="margin-top:6px;">Claim {{ daily_amount }} {{ currency|safe }}</button>
     </form>
     {% else %}<div class="muted" style="margin-top:6px;">Ready in {{ daily_wait }}</div>{% endif %}
   </div>
@@ -1169,7 +1194,7 @@ ECONOMY_HOME_TMPL = """
     <div class="label">Weekly</div>
     {% if weekly_ready %}
     <form method="post" action="{{ url_for('dashboard.economy_weekly') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small" style="margin-top:6px;">Claim {{ weekly_amount }} {{ currency }}</button>
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small" style="margin-top:6px;">Claim {{ weekly_amount }} {{ currency|safe }}</button>
     </form>
     {% else %}<div class="muted" style="margin-top:6px;">Ready in {{ weekly_wait }}</div>{% endif %}
   </div>
@@ -1226,11 +1251,11 @@ ECONOMY_HOME_TMPL = """
 
 ECONOMY_SHOP_TMPL = """
 <h1>🛒 Item Shop</h1>
-<p class="muted">Balance: {{ balance }} {{ currency }}</p>
+<p class="muted">Balance: {{ balance }} {{ currency|safe }}</p>
 <div class="grid">
 {% for it in items %}
 <div class="card">
-  <strong>{{ it.emoji }} {{ it.name }}</strong> — {{ it.price }} {{ currency }}<br>
+  <strong>{{ it.emoji }} {{ it.name }}</strong> — {{ it.price }} {{ currency|safe }}<br>
   <span class="muted">{{ it.desc }}</span>
   <form method="post" action="{{ url_for('dashboard.economy_buy') }}" style="margin-top:10px;">
     <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="item" value="{{ it.id }}">
@@ -1246,14 +1271,14 @@ ECONOMY_LEADERBOARD_TMPL = """
 <div class="card">
 {% if rows %}
 <table><thead><tr><th>#</th><th>Player</th><th>Balance</th></tr></thead><tbody>
-{% for r in rows %}<tr><td>{{ r.position }}</td><td>{{ r.name }}</td><td>{{ r.balance }} {{ currency }}</td></tr>{% endfor %}
+{% for r in rows %}<tr><td>{{ r.position }}</td><td>{{ r.name }}</td><td>{{ r.balance }} {{ currency|safe }}</td></tr>{% endfor %}
 </tbody></table>
 {% else %}<p class="empty">No one has any coins yet.</p>{% endif %}
 </div>"""
 
 ECONOMY_GAMES_TMPL = """
 <h1>🎲 Games</h1>
-<p class="muted">Balance: {{ balance }} {{ currency }}</p>
+<p class="muted">Balance: {{ balance }} {{ currency|safe }}</p>
 <div class="grid">
   <div class="card">
     <h2 style="margin-top:0;">Rock Paper Scissors</h2>
@@ -1313,7 +1338,7 @@ def economy_home():
     return page("Economy", ECONOMY_HOME_TMPL, balance=doc["balance"], daily_ready=daily_ready, weekly_ready=weekly_ready,
                 work_ready=work_ready, daily_wait=daily_wait, weekly_wait=weekly_wait, work_wait=work_wait,
                 daily_amount=botmod.DAILY_AMOUNT, weekly_amount=botmod.WEEKLY_AMOUNT,
-                inventory=inventory, currency=botmod.CURRENCY)
+                inventory=inventory, currency=coin_img("coin2"))
 
 
 @dash_bp.route("/economy/daily", methods=["POST"])
@@ -1329,7 +1354,7 @@ def economy_daily():
     else:
         new_bal = botmod._add_balance_sync(uid, botmod.DAILY_AMOUNT)
         botmod.economy_col.update_one({"_id": uid}, {"$set": {"last_daily": now}}, upsert=True)
-        flash(f"Claimed your daily {botmod.DAILY_AMOUNT} {botmod.CURRENCY}! Balance: {new_bal}.", "success")
+        flash(f"Claimed your daily {botmod.DAILY_AMOUNT} {CURRENCY_TEXT}! Balance: {new_bal}.", "success")
     return redirect(url_for("dashboard.economy_home"))
 
 
@@ -1346,7 +1371,7 @@ def economy_weekly():
     else:
         new_bal = botmod._add_balance_sync(uid, botmod.WEEKLY_AMOUNT)
         botmod.economy_col.update_one({"_id": uid}, {"$set": {"last_weekly": now}}, upsert=True)
-        flash(f"Claimed your weekly {botmod.WEEKLY_AMOUNT} {botmod.CURRENCY}! Balance: {new_bal}.", "success")
+        flash(f"Claimed your weekly {botmod.WEEKLY_AMOUNT} {CURRENCY_TEXT}! Balance: {new_bal}.", "success")
     return redirect(url_for("dashboard.economy_home"))
 
 
@@ -1365,7 +1390,7 @@ def economy_work():
         jobs = ["delivered pizzas", "coded a bot", "walked dogs", "streamed on Twitch", "mowed a lawn", "fixed a PC"]
         new_bal = botmod._add_balance_sync(uid, earned)
         botmod.economy_col.update_one({"_id": uid}, {"$set": {"last_work": now}}, upsert=True)
-        flash(f"You {random.choice(jobs)} and earned {earned} {botmod.CURRENCY}! Balance: {new_bal}.", "success")
+        flash(f"You {random.choice(jobs)} and earned {earned} {CURRENCY_TEXT}! Balance: {new_bal}.", "success")
     return redirect(url_for("dashboard.economy_home"))
 
 
@@ -1373,7 +1398,7 @@ def economy_work():
 @approved_required
 def economy_shop():
     doc = botmod._get_econ_sync(_discord_user()["id"])
-    return page("Shop", ECONOMY_SHOP_TMPL, items=botmod.SHOP_ITEMS, balance=doc["balance"], currency=botmod.CURRENCY)
+    return page("Shop", ECONOMY_SHOP_TMPL, items=botmod.SHOP_ITEMS, balance=doc["balance"], currency=coin_img("coin2"))
 
 
 @dash_bp.route("/economy/buy", methods=["POST"])
@@ -1393,11 +1418,11 @@ def economy_buy():
     cost = it["price"] * qty
     doc = botmod._get_econ_sync(uid)
     if doc["balance"] < cost:
-        flash(f"Need {cost} {botmod.CURRENCY}, you have {doc['balance']}.", "error")
+        flash(f"Need {cost} {CURRENCY_TEXT}, you have {doc['balance']}.", "error")
         return redirect(url_for("dashboard.economy_shop"))
     botmod._add_balance_sync(uid, -cost)
     botmod._add_item_sync(uid, item, qty)
-    flash(f"Bought {qty}x {it['emoji']} {it['name']} for {cost} {botmod.CURRENCY}.", "success")
+    flash(f"Bought {qty}x {it['emoji']} {it['name']} for {cost} {CURRENCY_TEXT}.", "success")
     return redirect(url_for("dashboard.economy_shop"))
 
 
@@ -1419,7 +1444,7 @@ def economy_sell():
         return redirect(url_for("dashboard.economy_home"))
     refund = (botmod.SHOP_BY_ID[item]["price"] // 2) * qty
     new_bal = botmod._add_balance_sync(uid, refund)
-    flash(f"Sold {qty}x {botmod.SHOP_BY_ID[item]['name']} for {refund} {botmod.CURRENCY}. Balance: {new_bal}.", "success")
+    flash(f"Sold {qty}x {botmod.SHOP_BY_ID[item]['name']} for {refund} {CURRENCY_TEXT}. Balance: {new_bal}.", "success")
     return redirect(url_for("dashboard.economy_home"))
 
 
@@ -1437,7 +1462,7 @@ def economy_use():
         return redirect(url_for("dashboard.economy_home"))
     reward = random.randint(100, 1500)
     new_bal = botmod._add_balance_sync(uid, reward)
-    flash(f"The chest held {reward} {botmod.CURRENCY}! Balance: {new_bal}.", "success")
+    flash(f"The chest held {reward} {CURRENCY_TEXT}! Balance: {new_bal}.", "success")
     return redirect(url_for("dashboard.economy_home"))
 
 
@@ -1468,7 +1493,7 @@ def economy_pay():
         return redirect(url_for("dashboard.economy_home"))
     botmod._add_balance_sync(uid, -amount)
     botmod._add_balance_sync(target_id, amount)
-    flash(f"Paid {target_member.display_name} {amount} {botmod.CURRENCY}.", "success")
+    flash(f"Paid {target_member.display_name} {amount} {CURRENCY_TEXT}.", "success")
     return redirect(url_for("dashboard.economy_home"))
 
 
@@ -1477,14 +1502,14 @@ def economy_pay():
 def economy_leaderboard():
     top = list(botmod.economy_col.find().sort("balance", botmod.DESCENDING).limit(10))
     rows = [{"position": i, "name": display_name_for(d["_id"]), "balance": d["balance"]} for i, d in enumerate(top, start=1)]
-    return page("Richest Players", ECONOMY_LEADERBOARD_TMPL, rows=rows, currency=botmod.CURRENCY)
+    return page("Richest Players", ECONOMY_LEADERBOARD_TMPL, rows=rows, currency=coin_img("coin2"))
 
 
 @dash_bp.route("/economy/games")
 @approved_required
 def economy_games():
     doc = botmod._get_econ_sync(_discord_user()["id"])
-    return page("Games", ECONOMY_GAMES_TMPL, balance=doc["balance"], currency=botmod.CURRENCY)
+    return page("Games", ECONOMY_GAMES_TMPL, balance=doc["balance"], currency=coin_img("coin2"))
 
 
 @dash_bp.route("/economy/games/rps", methods=["POST"])
@@ -1537,7 +1562,7 @@ def economy_coinflip():
     outcome = random.choice(["heads", "tails"])
     won = outcome == side
     new_bal = botmod._add_balance_sync(uid, bet if won else -bet)
-    flash(f"It landed on {outcome}! You {'won' if won else 'lost'} {bet} {botmod.CURRENCY}. Balance: {new_bal}.",
+    flash(f"It landed on {outcome}! You {'won' if won else 'lost'} {bet} {CURRENCY_TEXT}. Balance: {new_bal}.",
           "success" if won else "info")
     return redirect(url_for("dashboard.economy_games"))
 
@@ -1562,13 +1587,13 @@ def economy_slots():
     spin = [random.choice(symbols) for _ in range(3)]
     if spin[0] == spin[1] == spin[2]:
         delta = bet * (10 if spin[0] == "7️⃣" else 5)
-        result = f"JACKPOT! You won {delta} {botmod.CURRENCY}!"
+        result = f"JACKPOT! You won {delta} {CURRENCY_TEXT}!"
     elif len(set(spin)) == 2:
         delta = bet
-        result = f"Two match! You won {delta} {botmod.CURRENCY}!"
+        result = f"Two match! You won {delta} {CURRENCY_TEXT}!"
     else:
         delta = -bet
-        result = f"No match. You lost {bet} {botmod.CURRENCY}."
+        result = f"No match. You lost {bet} {CURRENCY_TEXT}."
     new_bal = botmod._add_balance_sync(uid, delta)
     flash(f"[ {' | '.join(spin)} ] {result} Balance: {new_bal}.", "success" if delta >= 0 else "info")
     return redirect(url_for("dashboard.economy_games"))
@@ -1596,9 +1621,9 @@ def economy_guess():
     won = number == answer
     new_bal = botmod._add_balance_sync(uid, bet * 10 if won else -bet)
     if won:
-        flash(f"Correct! It was {answer}. You won {bet * 10} {botmod.CURRENCY}! Balance: {new_bal}.", "success")
+        flash(f"Correct! It was {answer}. You won {bet * 10} {CURRENCY_TEXT}! Balance: {new_bal}.", "success")
     else:
-        flash(f"Wrong, it was {answer}. You lost {bet} {botmod.CURRENCY}. Balance: {new_bal}.", "info")
+        flash(f"Wrong, it was {answer}. You lost {bet} {CURRENCY_TEXT}. Balance: {new_bal}.", "info")
     return redirect(url_for("dashboard.economy_games"))
 
 
