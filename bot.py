@@ -940,6 +940,64 @@ def build_leaderboard_card(entries: list) -> Editor:
     return base
 
 
+ECON_LEADERBOARD_ACCENT = (255, 183, 3)
+
+
+def build_econ_leaderboard_card(entries: list) -> Editor:
+    """entries: list of dicts with rank, username, balance, items, avatar_img.
+    Same layout/style as build_leaderboard_card, swapped to economy stats."""
+    row_h = 66
+    header_h = 90
+    W = 1000
+    H = header_h + row_h * len(entries) + 30
+
+    base = Editor(Canvas((W, H), color=(16, 17, 20, 255)))
+    base.rectangle((10, 10), width=W - 20, height=H - 20, fill=(26, 27, 31, 255), outline=ECON_LEADERBOARD_ACCENT, stroke_width=4, radius=28)
+
+    glow = Editor(Canvas((420, 260), color=(0, 0, 0, 0)))
+    glow.ellipse((0, 0), 420, 260, fill=(*ECON_LEADERBOARD_ACCENT, 90))
+    glow = glow.blur(50)
+    base.paste(glow, (W // 2 - 210, -120))
+    base.rectangle((10, 10), width=W - 20, height=H - 20, fill=None, outline=ECON_LEADERBOARD_ACCENT, stroke_width=4, radius=28)
+
+    title_font = Font.poppins(variant="bold", size=32)
+    sub_font = Font.poppins(variant="regular", size=16)
+    base.text((W / 2, 28), "BLAZING LOCK — ECONOMY", font=title_font, color="white", align="center", anchor="ma")
+    base.text((W / 2, 66), "Richest Players", font=sub_font, color=ECON_LEADERBOARD_ACCENT, align="center", anchor="ma")
+
+    rank_font = Font.poppins(variant="bold", size=26)
+    name_font = Font.poppins(variant="bold", size=22)
+    bal_font = Font.poppins(variant="bold", size=24)
+    unit_font = Font.poppins(variant="regular", size=15)
+    sub_line_font = Font.poppins(variant="regular", size=15)
+
+    y = header_h
+    for e in entries:
+        rank = e["rank"]
+        _overlay_rounded_rect(base, (30, y + 4), W - 60, row_h - 12, 16, (255, 255, 255, 20))
+
+        medal = LEADERBOARD_MEDAL_COLORS.get(rank)
+        rank_color = medal if medal else (190, 190, 195)
+        base.text((60, y + row_h / 2 - 16), f"#{rank}", font=rank_font, color=rank_color)
+
+        avatar_img = e.get("avatar_img") or _placeholder_avatar((90, 90, 100))
+        avatar = Editor(avatar_img).resize((48, 48)).circle_image()
+        avatar_y = int(y + (row_h - 48) / 2)
+        base.paste(avatar, (135, avatar_y))
+        base.ellipse((135, avatar_y), 48, 48, outline=(medal if medal else (255, 255, 255, 40)), stroke_width=3 if medal else 1)
+
+        base.text((200, y + 12), e["username"], font=name_font, color="white")
+        items = e.get("items", 0)
+        base.text((200, y + 38), f"{items} item{'s' if items != 1 else ''} owned", font=sub_line_font, color=(180, 180, 185))
+
+        base.text((W - 60, y + row_h / 2 - 15), f"{e['balance']:,}", font=bal_font, color=ECON_LEADERBOARD_ACCENT, align="right", anchor="ra")
+        base.text((W - 60, y + row_h / 2 + 10), "COINS", font=unit_font, color=(150, 150, 155), align="right", anchor="ra")
+
+        y += row_h
+
+    return base
+
+
 # =====================================================================================
 # RESULT TEXT FORMATTING (matches the eloresult.txt template)
 # =====================================================================================
@@ -2841,17 +2899,47 @@ async def pay_command(interaction: discord.Interaction, user: discord.Member, am
 async def baltop_command(interaction: discord.Interaction):
     if not await econ_channel_check(interaction):
         return
+    await interaction.response.defer()
+
     top = await get_econ_top(10)
     if not top:
-        await interaction.response.send_message("No one has any coins yet.")
+        await interaction.followup.send("No one has any coins yet.")
         return
-    lines = []
+
+    guild = interaction.guild
+    entries = []
     for i, doc in enumerate(top, start=1):
-        member = interaction.guild.get_member(doc["_id"]) if interaction.guild else None
-        name = member.display_name if member else f"User {doc['_id']}"
-        lines.append(f"**{i}.** {name} — {doc['balance']} {CURRENCY}")
-    embed = discord.Embed(title="💰 Richest Players", description="\n".join(lines), color=0xE63946)
-    await interaction.response.send_message(embed=embed)
+        member = guild.get_member(doc["_id"]) if guild else None
+        display_name = member.display_name if member else f"User {doc['_id']}"
+
+        try:
+            if member is not None:
+                avatar_url = str(member.display_avatar.replace(size=128, format="png"))
+                avatar_img = await load_image_async(avatar_url)
+            else:
+                avatar_img = _placeholder_avatar((90, 90, 100))
+        except Exception as e:
+            logger.error(f"!!! [BALTOP] Avatar download failed for {doc['_id']}: {e}")
+            avatar_img = _placeholder_avatar((90, 90, 100))
+
+        items_owned = sum(q for q in doc.get("inventory", {}).values() if q > 0)
+        entries.append({
+            "rank": i,
+            "username": display_name,
+            "balance": doc["balance"],
+            "items": items_owned,
+            "avatar_img": avatar_img,
+        })
+
+    try:
+        editor = await asyncio.to_thread(build_econ_leaderboard_card, entries)
+        file = discord.File(fp=editor.image_bytes, filename="blazing_lock_econ_leaderboard.png")
+    except Exception as e:
+        logger.error(f"!!! [BALTOP] Render failed: {e}")
+        await interaction.followup.send("Couldn't generate the leaderboard right now. Try again in a moment.")
+        return
+
+    await interaction.followup.send(file=file)
 
 
 # --- Games ---
