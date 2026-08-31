@@ -2582,7 +2582,13 @@ async def leaderboard_command(interaction: discord.Interaction):
 # All commands below are restricted to ECONOMY_CHANNEL_ID.
 # =====================================================================================
 
-CURRENCY = "🪙"
+# Custom server coin emojis (Discord custom emoji format: <:name:id>)
+COIN1 = "<:coin1:1328399864526143488>"  # ornate coin - jackpot / big win flourish
+COIN2 = "<:coin2:1345765306655707198>"  # plain coin - everyday currency
+COIN3 = "<:coin3:1321451928864952361>"  # hex coin - weekly bonus flourish
+COIN4 = "<:coin4:1361906308214947880>"  # tilted coin - coinflip flourish
+
+CURRENCY = COIN2
 STARTING_BALANCE = 100
 DAILY_AMOUNT = 250
 WEEKLY_AMOUNT = 1500
@@ -2710,7 +2716,7 @@ async def weekly_command(interaction: discord.Interaction):
         return
     new_bal = await add_balance(interaction.user.id, WEEKLY_AMOUNT)
     await set_cooldown(interaction.user.id, "last_weekly", now)
-    await interaction.response.send_message(f"✅ Claimed your weekly **{WEEKLY_AMOUNT}** {CURRENCY}! Balance: **{new_bal}**.")
+    await interaction.response.send_message(f"{COIN3} Claimed your weekly **{WEEKLY_AMOUNT}** {CURRENCY}! Balance: **{new_bal}**.")
 
 
 @client.tree.command(name="work", description="Work a job for some coins")
@@ -2902,7 +2908,7 @@ async def coinflip_command(interaction: discord.Interaction, side: app_commands.
     won = outcome == side.value
     new_bal = await add_balance(interaction.user.id, bet if won else -bet)
     await interaction.response.send_message(
-        f"🪙 It landed on **{outcome}**! You {'won' if won else 'lost'} **{bet}** {CURRENCY}.\nBalance: **{new_bal}**")
+        f"{COIN4} It landed on **{outcome}**! You {'won' if won else 'lost'} **{bet}** {CURRENCY}.\nBalance: **{new_bal}**")
 
 
 @client.tree.command(name="slots", description="Spin the slot machine")
@@ -2920,7 +2926,7 @@ async def slots_command(interaction: discord.Interaction, bet: int):
     spin = [random.choice(symbols) for _ in range(3)]
     if spin[0] == spin[1] == spin[2]:
         delta = bet * (10 if spin[0] == "7️⃣" else 5)
-        result = f"🎉 JACKPOT! You won **{delta}** {CURRENCY}!"
+        result = f"{COIN1} JACKPOT! You won **{delta}** {CURRENCY}!"
     elif len(set(spin)) == 2:
         delta = bet
         result = f"✨ Two match! You won **{delta}** {CURRENCY}!"
