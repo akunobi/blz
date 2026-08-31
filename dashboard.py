@@ -20,7 +20,7 @@ WHAT IT DOES
      /elo             -> /elo, /leaderboard
      /elo/<id>        -> /elo <player>, /addelo (staff)
      /elo/settings    -> /setelocolor, /resetelocolor, /setelobanner, /resetelobanner
-     /economy         -> /balance, /daily, /work, /inventory, /sell, /use, /pay
+     /economy         -> /balance, /daily, /weekly, /work, /inventory, /sell, /use, /pay
      /economy/shop    -> /shop, /buy
      /economy/leaderboard -> /baltop
      /economy/games   -> /rps, /coinflip, /slots, /guess
@@ -1166,6 +1166,14 @@ ECONOMY_HOME_TMPL = """
     {% else %}<div class="muted" style="margin-top:6px;">Ready in {{ daily_wait }}</div>{% endif %}
   </div>
   <div class="stat">
+    <div class="label">Weekly</div>
+    {% if weekly_ready %}
+    <form method="post" action="{{ url_for('dashboard.economy_weekly') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small" style="margin-top:6px;">Claim {{ weekly_amount }} {{ currency }}</button>
+    </form>
+    {% else %}<div class="muted" style="margin-top:6px;">Ready in {{ weekly_wait }}</div>{% endif %}
+  </div>
+  <div class="stat">
     <div class="label">Work</div>
     {% if work_ready %}
     <form method="post" action="{{ url_for('dashboard.economy_work') }}">
@@ -1291,17 +1299,20 @@ def economy_home():
     uid = _discord_user()["id"]
     doc = botmod._get_econ_sync(uid)
     now = datetime.now(timezone.utc)
-    last_daily, last_work = doc.get("last_daily"), doc.get("last_work")
+    last_daily, last_weekly, last_work = doc.get("last_daily"), doc.get("last_weekly"), doc.get("last_work")
     daily_ready = not last_daily or botmod._aware(last_daily) + botmod.DAILY_COOLDOWN <= now
+    weekly_ready = not last_weekly or botmod._aware(last_weekly) + botmod.WEEKLY_COOLDOWN <= now
     work_ready = not last_work or botmod._aware(last_work) + botmod.WORK_COOLDOWN <= now
     daily_wait = None if daily_ready else botmod._fmt_remaining(botmod._aware(last_daily) + botmod.DAILY_COOLDOWN, now)
+    weekly_wait = None if weekly_ready else botmod._fmt_remaining(botmod._aware(last_weekly) + botmod.WEEKLY_COOLDOWN, now)
     work_wait = None if work_ready else botmod._fmt_remaining(botmod._aware(last_work) + botmod.WORK_COOLDOWN, now)
     inventory = [
         {"item": botmod.SHOP_BY_ID[i], "qty": q}
         for i, q in doc.get("inventory", {}).items() if q > 0 and i in botmod.SHOP_BY_ID
     ]
-    return page("Economy", ECONOMY_HOME_TMPL, balance=doc["balance"], daily_ready=daily_ready, work_ready=work_ready,
-                daily_wait=daily_wait, work_wait=work_wait, daily_amount=botmod.DAILY_AMOUNT,
+    return page("Economy", ECONOMY_HOME_TMPL, balance=doc["balance"], daily_ready=daily_ready, weekly_ready=weekly_ready,
+                work_ready=work_ready, daily_wait=daily_wait, weekly_wait=weekly_wait, work_wait=work_wait,
+                daily_amount=botmod.DAILY_AMOUNT, weekly_amount=botmod.WEEKLY_AMOUNT,
                 inventory=inventory, currency=botmod.CURRENCY)
 
 
@@ -1319,6 +1330,23 @@ def economy_daily():
         new_bal = botmod._add_balance_sync(uid, botmod.DAILY_AMOUNT)
         botmod.economy_col.update_one({"_id": uid}, {"$set": {"last_daily": now}}, upsert=True)
         flash(f"Claimed your daily {botmod.DAILY_AMOUNT} {botmod.CURRENCY}! Balance: {new_bal}.", "success")
+    return redirect(url_for("dashboard.economy_home"))
+
+
+@dash_bp.route("/economy/weekly", methods=["POST"])
+@approved_required
+def economy_weekly():
+    _check_csrf()
+    uid = _discord_user()["id"]
+    doc = botmod._get_econ_sync(uid)
+    now = datetime.now(timezone.utc)
+    last = doc.get("last_weekly")
+    if last and botmod._aware(last) + botmod.WEEKLY_COOLDOWN > now:
+        flash(f"Already claimed. Come back in {botmod._fmt_remaining(botmod._aware(last) + botmod.WEEKLY_COOLDOWN, now)}.", "error")
+    else:
+        new_bal = botmod._add_balance_sync(uid, botmod.WEEKLY_AMOUNT)
+        botmod.economy_col.update_one({"_id": uid}, {"$set": {"last_weekly": now}}, upsert=True)
+        flash(f"Claimed your weekly {botmod.WEEKLY_AMOUNT} {botmod.CURRENCY}! Balance: {new_bal}.", "success")
     return redirect(url_for("dashboard.economy_home"))
 
 
