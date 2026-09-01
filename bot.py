@@ -112,7 +112,19 @@ if not DATABASE_URL:
 # hanging for the ~30s pymongo default — which, left uncaught, looks like a silent startup
 # freeze rather than the actual misconfiguration.
 try:
-    _mongo_client = MongoClient(DATABASE_URL, serverSelectionTimeoutMS=8000)
+    _mongo_client = MongoClient(
+        DATABASE_URL,
+        serverSelectionTimeoutMS=8000,
+        connectTimeoutMS=5000,
+        # pymongo has no socket read/write timeout by default, so a stalled connection
+        # (network blip, Atlas hiccup) can hang a query forever. Since every query is run
+        # via asyncio.to_thread(), an unbounded hang like that ties up a thread-pool worker
+        # indefinitely — enough of those piling up (e.g. during a Render network blip) can
+        # exhaust the pool and make every command look "stuck," even though the bot is still
+        # connected to Discord and shows online. Capping this makes a bad connection fail
+        # fast with a normal exception instead.
+        socketTimeoutMS=5000,
+    )
     _mongo_client.admin.command("ping")
 except Exception as e:
     raise RuntimeError(
@@ -2154,15 +2166,16 @@ async def tdone_command(interaction: discord.Interaction, player: discord.Member
 @client.tree.command(name="ep", description="Check a tryouter's weekly EP quota progress")
 @app_commands.describe(player="The tryouter to check (leave empty to check yourself)")
 async def ep_command(interaction: discord.Interaction, player: discord.Member = None):
+    await interaction.response.defer(ephemeral=True)
     member_roles = getattr(interaction.user, "roles", [])
     if not any(r.id in TRYOUT_QUOTA_ROLE_IDS for r in member_roles):
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        await interaction.followup.send("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
     target = player or interaction.user
     target_roles = getattr(target, "roles", [])
     if not any(r.id in TRYOUT_QUOTA_ROLE_IDS for r in target_roles):
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"⚠️ {target.mention} doesn't hold a tryouter role, so quota doesn't apply to them.", ephemeral=True
         )
         return
@@ -2193,7 +2206,7 @@ async def ep_command(interaction: discord.Interaction, player: discord.Member = 
         f"Status: {status}{excuse_note}",
         f"Resets: <t:{int(reset_at.timestamp())}:F> (<t:{int(reset_at.timestamp())}:R>)",
     ]
-    await interaction.response.send_message("\n".join(lines), ephemeral=True)
+    await interaction.followup.send("\n".join(lines), ephemeral=True)
 
 
 @client.tree.command(name="in", description="Put a tryouter on IN, excusing them from quota for its duration (staff only)")
@@ -2203,13 +2216,14 @@ async def ep_command(interaction: discord.Interaction, player: discord.Member = 
     reason="Optional reason",
 )
 async def in_command(interaction: discord.Interaction, tryouter: discord.Member, days: int, reason: str = None):
+    await interaction.response.defer()
     member_roles = getattr(interaction.user, "roles", [])
     if not any(r.id == ADDELO_ROLE_ID for r in member_roles):
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        await interaction.followup.send("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
     if days <= 0:
-        await interaction.response.send_message("❌ Days must be a positive number.", ephemeral=True)
+        await interaction.followup.send("❌ Days must be a positive number.", ephemeral=True)
         return
 
     now = datetime.now(timezone.utc)
@@ -2217,7 +2231,7 @@ async def in_command(interaction: discord.Interaction, tryouter: discord.Member,
     if existing and existing.get("cooldown_until"):
         cooldown_until = _aware(existing["cooldown_until"])
         if now < cooldown_until:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"❌ {tryouter.mention} is on IN cooldown until <t:{int(cooldown_until.timestamp())}:F> "
                 "and can't be put on IN again yet.",
                 ephemeral=True,
@@ -2240,21 +2254,22 @@ async def in_command(interaction: discord.Interaction, tryouter: discord.Member,
     if reason:
         embed.add_field(name="Reason", value=reason, inline=False)
 
-    await interaction.response.send_message(embed=embed)
+    await interaction.followup.send(embed=embed)
 
 
 @client.tree.command(name="endin", description="End a tryouter's IN early (staff only)")
 @app_commands.describe(tryouter="The tryouter whose IN should end now")
 async def endin_command(interaction: discord.Interaction, tryouter: discord.Member):
+    await interaction.response.defer()
     member_roles = getattr(interaction.user, "roles", [])
     if not any(r.id == ADDELO_ROLE_ID for r in member_roles):
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        await interaction.followup.send("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
     now = datetime.now(timezone.utc)
     existing = await get_in_doc(tryouter.id)
     if not existing or not existing.get("in_until") or _aware(existing["in_until"]) <= now:
-        await interaction.response.send_message(f"⚠️ {tryouter.mention} isn't currently on IN.", ephemeral=True)
+        await interaction.followup.send(f"⚠️ {tryouter.mention} isn't currently on IN.", ephemeral=True)
         return
 
     # The cooldown is meant to be counted from when the IN period actually ends — since
@@ -2274,11 +2289,12 @@ async def endin_command(interaction: discord.Interaction, tryouter: discord.Memb
     embed.add_field(name="Ended by", value=interaction.user.mention, inline=True)
     embed.add_field(name="Next eligible for /in", value=f"<t:{int(cooldown_until.timestamp())}:F>", inline=False)
 
-    await interaction.response.send_message(embed=embed)
+    await interaction.followup.send(embed=embed)
 
 
 @client.tree.command(name="viewt", description="List tryouters (users with a /tdone role)")
 async def viewt_command(interaction: discord.Interaction):
+    await interaction.response.defer()
     guild = interaction.guild
 
     tryouter_ids = set()
@@ -2306,14 +2322,15 @@ async def viewt_command(interaction: discord.Interaction):
     text = "\n".join(lines)
     if len(text) > 4000:
         text = text[:3990] + "\n…"
-    await interaction.response.send_message(text, allowed_mentions=discord.AllowedMentions.none())
+    await interaction.followup.send(text, allowed_mentions=discord.AllowedMentions.none())
 
 
 @client.tree.command(name="viewtpanel", description="Post the panel to exclude/include tryouters from /viewt (staff)")
 async def viewtpanel_command(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
     member_roles = getattr(interaction.user, "roles", [])
     if not any(r.id in VIEWT_EXCLUDE_PANEL_ROLE_IDS for r in member_roles):
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        await interaction.followup.send("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
     embed = discord.Embed(
@@ -2326,7 +2343,7 @@ async def viewtpanel_command(interaction: discord.Interaction):
     )
     excluded_ids = await get_excluded_ids()
     await interaction.channel.send(embed=embed, view=ExcludeTryouterView(excluded_ids, interaction.guild))
-    await interaction.response.send_message("✅ Panel posted.", ephemeral=True)
+    await interaction.followup.send("✅ Panel posted.", ephemeral=True)
 
 
 # =====================================================================================
@@ -2485,15 +2502,16 @@ async def elo_command(interaction: discord.Interaction, player: discord.Member =
 @client.tree.command(name="setelocolor", description="Set a custom accent color for /elo cards")
 @app_commands.describe(color="Hex color code, e.g. ff2e2e or #ff2e2e")
 async def setelocolor_command(interaction: discord.Interaction, color: str):
+    await interaction.response.defer(ephemeral=True)
     rgb = _parse_hex_color(color)
     if rgb is None:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "❌ Invalid hex color. Use a 6-digit hex code, e.g. `ff2e2e`.", ephemeral=True
         )
         return
 
     await set_elo_accent_color(rgb)
-    await interaction.response.send_message(f"✅ /elo accent color updated to `#{color.strip().lstrip('#').upper()}`.", ephemeral=True)
+    await interaction.followup.send(f"✅ /elo accent color updated to `#{color.strip().lstrip('#').upper()}`.", ephemeral=True)
 
 
 @client.tree.command(name="resetelocolor", description="Reset /elo cards to the role-based accent color (staff only)")
@@ -2513,12 +2531,13 @@ MAX_ELO_BANNER_BYTES = 8 * 1024 * 1024  # keep individual banner docs well under
 @client.tree.command(name="setelobanner", description="Set a custom background image for /elo cards")
 @app_commands.describe(image="Image to use as the /elo card background")
 async def setelobanner_command(interaction: discord.Interaction, image: discord.Attachment):
+    await interaction.response.defer(ephemeral=True)
     if not (image.content_type or "").startswith("image/"):
-        await interaction.response.send_message("❌ Please upload an image file.", ephemeral=True)
+        await interaction.followup.send("❌ Please upload an image file.", ephemeral=True)
         return
 
     if image.size > MAX_ELO_BANNER_BYTES:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"❌ That image is too large (max {MAX_ELO_BANNER_BYTES // (1024 * 1024)}MB). Try a smaller file.",
             ephemeral=True,
         )
@@ -2528,18 +2547,18 @@ async def setelobanner_command(interaction: discord.Interaction, image: discord.
         data = await image.read()
     except Exception as e:
         logger.error(f"!!! [SETELOBANNER] Download failed: {e}")
-        await interaction.response.send_message("❌ Couldn't download that image. Try again.", ephemeral=True)
+        await interaction.followup.send("❌ Couldn't download that image. Try again.", ephemeral=True)
         return
 
     # Sanity-check that it actually decodes as an image before saving it permanently.
     try:
         await asyncio.to_thread(lambda: Image.open(io.BytesIO(data)).convert("RGBA"))
     except Exception:
-        await interaction.response.send_message("❌ That file doesn't look like a valid image.", ephemeral=True)
+        await interaction.followup.send("❌ That file doesn't look like a valid image.", ephemeral=True)
         return
 
     await set_elo_banner_data(interaction.user.id, data)
-    await interaction.response.send_message("✅ Your /elo banner updated.", ephemeral=True)
+    await interaction.followup.send("✅ Your /elo banner updated.", ephemeral=True)
 
 
 @client.tree.command(name="resetelobanner", description="Reset your /elo card to the default background")
@@ -2555,9 +2574,10 @@ async def resetelobanner_command(interaction: discord.Interaction):
     reason="Optional reason, included in the log"
 )
 async def addelo_command(interaction: discord.Interaction, player: discord.Member, amount: int, reason: str = None):
+    await interaction.response.defer()
     member_roles = getattr(interaction.user, "roles", [])
     if not any(r.id == ADDELO_ROLE_ID for r in member_roles):
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        await interaction.followup.send("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
     await get_or_create_player(player)  # make sure a row (with username) exists first
@@ -2575,7 +2595,7 @@ async def addelo_command(interaction: discord.Interaction, player: discord.Membe
     if reason:
         embed.add_field(name="Reason", value=reason, inline=False)
 
-    await interaction.response.send_message(embed=embed)
+    await interaction.followup.send(embed=embed)
 
     log_line = (
         f"🛠️ **Manual ELO adjustment** — {player.mention}: "
@@ -2740,59 +2760,63 @@ def _fmt_remaining(until: datetime, now: datetime) -> str:
 async def balance_command(interaction: discord.Interaction, user: discord.Member = None):
     if not await econ_channel_check(interaction):
         return
+    await interaction.response.defer()
     target = user or interaction.user
     doc = await get_econ(target.id)
-    await interaction.response.send_message(f"{CURRENCY} **{target.display_name}** has **{doc['balance']}** coins.")
+    await interaction.followup.send(f"{CURRENCY} **{target.display_name}** has **{doc['balance']}** coins.")
 
 
 @client.tree.command(name="daily", description="Claim your daily coins")
 async def daily_command(interaction: discord.Interaction):
     if not await econ_channel_check(interaction):
         return
+    await interaction.response.defer()
     doc = await get_econ(interaction.user.id)
     now = datetime.now(timezone.utc)
     last = doc.get("last_daily")
     if last and _aware(last) + DAILY_COOLDOWN > now:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"⏳ Already claimed. Come back in **{_fmt_remaining(_aware(last) + DAILY_COOLDOWN, now)}**.", ephemeral=True)
         return
     new_bal = await add_balance(interaction.user.id, DAILY_AMOUNT)
     await set_cooldown(interaction.user.id, "last_daily", now)
-    await interaction.response.send_message(f"✅ Claimed your daily **{DAILY_AMOUNT}** {CURRENCY}! Balance: **{new_bal}**.")
+    await interaction.followup.send(f"✅ Claimed your daily **{DAILY_AMOUNT}** {CURRENCY}! Balance: **{new_bal}**.")
 
 
 @client.tree.command(name="weekly", description="Claim your weekly coins")
 async def weekly_command(interaction: discord.Interaction):
     if not await econ_channel_check(interaction):
         return
+    await interaction.response.defer()
     doc = await get_econ(interaction.user.id)
     now = datetime.now(timezone.utc)
     last = doc.get("last_weekly")
     if last and _aware(last) + WEEKLY_COOLDOWN > now:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"⏳ Already claimed. Come back in **{_fmt_remaining(_aware(last) + WEEKLY_COOLDOWN, now)}**.", ephemeral=True)
         return
     new_bal = await add_balance(interaction.user.id, WEEKLY_AMOUNT)
     await set_cooldown(interaction.user.id, "last_weekly", now)
-    await interaction.response.send_message(f"{COIN3} Claimed your weekly **{WEEKLY_AMOUNT}** {CURRENCY}! Balance: **{new_bal}**.")
+    await interaction.followup.send(f"{COIN3} Claimed your weekly **{WEEKLY_AMOUNT}** {CURRENCY}! Balance: **{new_bal}**.")
 
 
 @client.tree.command(name="work", description="Work a job for some coins")
 async def work_command(interaction: discord.Interaction):
     if not await econ_channel_check(interaction):
         return
+    await interaction.response.defer()
     doc = await get_econ(interaction.user.id)
     now = datetime.now(timezone.utc)
     last = doc.get("last_work")
     if last and _aware(last) + WORK_COOLDOWN > now:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"⏳ You're tired. Rest **{_fmt_remaining(_aware(last) + WORK_COOLDOWN, now)}** more.", ephemeral=True)
         return
     earned = random.randint(WORK_MIN, WORK_MAX)
     jobs = ["delivered pizzas", "coded a bot", "walked dogs", "streamed on Twitch", "mowed a lawn", "fixed a PC"]
     new_bal = await add_balance(interaction.user.id, earned)
     await set_cooldown(interaction.user.id, "last_work", now)
-    await interaction.response.send_message(f"💼 You {random.choice(jobs)} and earned **{earned}** {CURRENCY}! Balance: **{new_bal}**.")
+    await interaction.followup.send(f"💼 You {random.choice(jobs)} and earned **{earned}** {CURRENCY}! Balance: **{new_bal}**.")
 
 
 @client.tree.command(name="shop", description="View the item shop")
@@ -2811,19 +2835,20 @@ async def shop_command(interaction: discord.Interaction):
 async def buy_command(interaction: discord.Interaction, item: str, quantity: int = 1):
     if not await econ_channel_check(interaction):
         return
+    await interaction.response.defer()
     item = item.lower()
     if item not in SHOP_BY_ID or quantity < 1:
-        await interaction.response.send_message("❌ Unknown item or invalid quantity.", ephemeral=True)
+        await interaction.followup.send("❌ Unknown item or invalid quantity.", ephemeral=True)
         return
     it = SHOP_BY_ID[item]
     cost = it["price"] * quantity
     doc = await get_econ(interaction.user.id)
     if doc["balance"] < cost:
-        await interaction.response.send_message(f"❌ Need **{cost}** {CURRENCY}, you have **{doc['balance']}**.", ephemeral=True)
+        await interaction.followup.send(f"❌ Need **{cost}** {CURRENCY}, you have **{doc['balance']}**.", ephemeral=True)
         return
     await add_balance(interaction.user.id, -cost)
     await add_item(interaction.user.id, item, quantity)
-    await interaction.response.send_message(f"✅ Bought **{quantity}x {it['emoji']} {it['name']}** for **{cost}** {CURRENCY}.")
+    await interaction.followup.send(f"✅ Bought **{quantity}x {it['emoji']} {it['name']}** for **{cost}** {CURRENCY}.")
 
 
 @client.tree.command(name="sell", description="Sell an item back for half its price")
@@ -2831,16 +2856,17 @@ async def buy_command(interaction: discord.Interaction, item: str, quantity: int
 async def sell_command(interaction: discord.Interaction, item: str, quantity: int = 1):
     if not await econ_channel_check(interaction):
         return
+    await interaction.response.defer()
     item = item.lower()
     if item not in SHOP_BY_ID or quantity < 1:
-        await interaction.response.send_message("❌ Unknown item or invalid quantity.", ephemeral=True)
+        await interaction.followup.send("❌ Unknown item or invalid quantity.", ephemeral=True)
         return
     if not await remove_item(interaction.user.id, item, quantity):
-        await interaction.response.send_message("❌ You don't have that many.", ephemeral=True)
+        await interaction.followup.send("❌ You don't have that many.", ephemeral=True)
         return
     refund = (SHOP_BY_ID[item]["price"] // 2) * quantity
     new_bal = await add_balance(interaction.user.id, refund)
-    await interaction.response.send_message(f"✅ Sold **{quantity}x {SHOP_BY_ID[item]['name']}** for **{refund}** {CURRENCY}. Balance: **{new_bal}**.")
+    await interaction.followup.send(f"✅ Sold **{quantity}x {SHOP_BY_ID[item]['name']}** for **{refund}** {CURRENCY}. Balance: **{new_bal}**.")
 
 
 @client.tree.command(name="use", description="Use a consumable item from your inventory")
@@ -2848,15 +2874,16 @@ async def sell_command(interaction: discord.Interaction, item: str, quantity: in
 async def use_command(interaction: discord.Interaction, item: str):
     if not await econ_channel_check(interaction):
         return
+    await interaction.response.defer()
     if item.lower() != "chest":
-        await interaction.response.send_message("❌ That item can't be used.", ephemeral=True)
+        await interaction.followup.send("❌ That item can't be used.", ephemeral=True)
         return
     if not await remove_item(interaction.user.id, "chest", 1):
-        await interaction.response.send_message("❌ You don't have a Mystery Chest.", ephemeral=True)
+        await interaction.followup.send("❌ You don't have a Mystery Chest.", ephemeral=True)
         return
     reward = random.randint(100, 1500)
     new_bal = await add_balance(interaction.user.id, reward)
-    await interaction.response.send_message(f"🎁 The chest held **{reward}** {CURRENCY}! Balance: **{new_bal}**.")
+    await interaction.followup.send(f"🎁 The chest held **{reward}** {CURRENCY}! Balance: **{new_bal}**.")
 
 
 @client.tree.command(name="inventory", description="View your (or someone's) inventory")
@@ -2864,15 +2891,16 @@ async def use_command(interaction: discord.Interaction, item: str):
 async def inventory_command(interaction: discord.Interaction, user: discord.Member = None):
     if not await econ_channel_check(interaction):
         return
+    await interaction.response.defer()
     target = user or interaction.user
     doc = await get_econ(target.id)
     inv = {k: v for k, v in doc.get("inventory", {}).items() if v > 0 and k in SHOP_BY_ID}
     if not inv:
-        await interaction.response.send_message(f"{target.display_name}'s inventory is empty.")
+        await interaction.followup.send(f"{target.display_name}'s inventory is empty.")
         return
     lines = [f"{SHOP_BY_ID[i]['emoji']} {SHOP_BY_ID[i]['name']} x{q}" for i, q in inv.items()]
     embed = discord.Embed(title=f"🎒 {target.display_name}'s Inventory", description="\n".join(lines), color=0xE63946)
-    await interaction.response.send_message(embed=embed)
+    await interaction.followup.send(embed=embed)
 
 
 @client.tree.command(name="pay", description="Give coins to another player")
@@ -2880,19 +2908,20 @@ async def inventory_command(interaction: discord.Interaction, user: discord.Memb
 async def pay_command(interaction: discord.Interaction, user: discord.Member, amount: int):
     if not await econ_channel_check(interaction):
         return
+    await interaction.response.defer()
     if amount < 1:
-        await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
+        await interaction.followup.send("❌ Amount must be positive.", ephemeral=True)
         return
     if user.id == interaction.user.id or user.bot:
-        await interaction.response.send_message("❌ Invalid recipient.", ephemeral=True)
+        await interaction.followup.send("❌ Invalid recipient.", ephemeral=True)
         return
     doc = await get_econ(interaction.user.id)
     if doc["balance"] < amount:
-        await interaction.response.send_message("❌ Insufficient balance.", ephemeral=True)
+        await interaction.followup.send("❌ Insufficient balance.", ephemeral=True)
         return
     await add_balance(interaction.user.id, -amount)
     new_bal = await add_balance(user.id, amount)
-    await interaction.response.send_message(f"💸 {interaction.user.mention} paid {user.mention} **{amount}** {CURRENCY}. New balance: **{new_bal}**.")
+    await interaction.followup.send(f"💸 {interaction.user.mention} paid {user.mention} **{amount}** {CURRENCY}. New balance: **{new_bal}**.")
 
 
 @client.tree.command(name="baltop", description="Show the richest players")
@@ -2954,11 +2983,12 @@ async def baltop_command(interaction: discord.Interaction):
 async def rps_command(interaction: discord.Interaction, choice: app_commands.Choice[str], bet: int = 0):
     if not await econ_channel_check(interaction):
         return
+    await interaction.response.defer()
     if bet < 0:
-        await interaction.response.send_message("❌ Bet can't be negative.", ephemeral=True)
+        await interaction.followup.send("❌ Bet can't be negative.", ephemeral=True)
         return
     if bet > 0 and (await get_econ(interaction.user.id))["balance"] < bet:
-        await interaction.response.send_message("❌ Insufficient balance.", ephemeral=True)
+        await interaction.followup.send("❌ Insufficient balance.", ephemeral=True)
         return
     bot_choice = random.choice(["rock", "paper", "scissors"])
     beats = {"rock": "scissors", "paper": "rock", "scissors": "paper"}
@@ -2974,7 +3004,7 @@ async def rps_command(interaction: discord.Interaction, choice: app_commands.Cho
     msg = f"You: {emoji[user_choice]} {user_choice}  vs  Bot: {emoji[bot_choice]} {bot_choice}\n{result}"
     if new_bal is not None:
         msg += f"\nBalance: **{new_bal}**"
-    await interaction.response.send_message(msg)
+    await interaction.followup.send(msg)
 
 
 @client.tree.command(name="coinflip", description="Flip a coin and bet on the outcome")
@@ -2986,16 +3016,17 @@ async def rps_command(interaction: discord.Interaction, choice: app_commands.Cho
 async def coinflip_command(interaction: discord.Interaction, side: app_commands.Choice[str], bet: int):
     if not await econ_channel_check(interaction):
         return
+    await interaction.response.defer()
     if bet < 1:
-        await interaction.response.send_message("❌ Bet must be positive.", ephemeral=True)
+        await interaction.followup.send("❌ Bet must be positive.", ephemeral=True)
         return
     if (await get_econ(interaction.user.id))["balance"] < bet:
-        await interaction.response.send_message("❌ Insufficient balance.", ephemeral=True)
+        await interaction.followup.send("❌ Insufficient balance.", ephemeral=True)
         return
     outcome = random.choice(["heads", "tails"])
     won = outcome == side.value
     new_bal = await add_balance(interaction.user.id, bet if won else -bet)
-    await interaction.response.send_message(
+    await interaction.followup.send(
         f"{COIN4} It landed on **{outcome}**! You {'won' if won else 'lost'} **{bet}** {CURRENCY}.\nBalance: **{new_bal}**")
 
 
@@ -3004,11 +3035,12 @@ async def coinflip_command(interaction: discord.Interaction, side: app_commands.
 async def slots_command(interaction: discord.Interaction, bet: int):
     if not await econ_channel_check(interaction):
         return
+    await interaction.response.defer()
     if bet < 1:
-        await interaction.response.send_message("❌ Bet must be positive.", ephemeral=True)
+        await interaction.followup.send("❌ Bet must be positive.", ephemeral=True)
         return
     if (await get_econ(interaction.user.id))["balance"] < bet:
-        await interaction.response.send_message("❌ Insufficient balance.", ephemeral=True)
+        await interaction.followup.send("❌ Insufficient balance.", ephemeral=True)
         return
     symbols = ["🍒", "🍋", "🍇", "🔔", "💎", "7️⃣"]
     spin = [random.choice(symbols) for _ in range(3)]
@@ -3022,7 +3054,7 @@ async def slots_command(interaction: discord.Interaction, bet: int):
         delta = -bet
         result = f"💀 No match. You lost **{bet}** {CURRENCY}."
     new_bal = await add_balance(interaction.user.id, delta)
-    await interaction.response.send_message(f"[ {' | '.join(spin)} ]\n{result}\nBalance: **{new_bal}**")
+    await interaction.followup.send(f"[ {' | '.join(spin)} ]\n{result}\nBalance: **{new_bal}**")
 
 
 @client.tree.command(name="guess", description="Guess a number 1-10 to win 10x your bet")
@@ -3030,18 +3062,19 @@ async def slots_command(interaction: discord.Interaction, bet: int):
 async def guess_command(interaction: discord.Interaction, number: app_commands.Range[int, 1, 10], bet: int):
     if not await econ_channel_check(interaction):
         return
+    await interaction.response.defer()
     if bet < 1:
-        await interaction.response.send_message("❌ Bet must be positive.", ephemeral=True)
+        await interaction.followup.send("❌ Bet must be positive.", ephemeral=True)
         return
     if (await get_econ(interaction.user.id))["balance"] < bet:
-        await interaction.response.send_message("❌ Insufficient balance.", ephemeral=True)
+        await interaction.followup.send("❌ Insufficient balance.", ephemeral=True)
         return
     answer = random.randint(1, 10)
     won = number == answer
     new_bal = await add_balance(interaction.user.id, bet * 10 if won else -bet)
     result = f"🎯 Correct! It was **{answer}**. You won **{bet * 10}** {CURRENCY}!" if won \
         else f"❌ Wrong, it was **{answer}**. You lost **{bet}** {CURRENCY}."
-    await interaction.response.send_message(f"{result}\nBalance: **{new_bal}**")
+    await interaction.followup.send(f"{result}\nBalance: **{new_bal}**")
 
 
 # =====================================================================================
@@ -3094,6 +3127,26 @@ async def on_ready():
 
     if not quota_reset_check.is_running():
         quota_reset_check.start()
+
+
+@client.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    """Without this, discord.py's default behavior for a failed slash command is to log a
+    traceback and otherwise do nothing — from the user's side the command just silently
+    doesn't respond (e.g. a deferred interaction that timed out, or a DB call that raised).
+    Logging it loudly here makes that visible in Render's logs instead of looking like the
+    bot randomly stopped working, and we try to tell the user something went wrong too."""
+    cmd_name = interaction.command.name if interaction.command else "unknown"
+    logger.error(f"!!! [APP COMMAND ERROR] /{cmd_name} failed: {error!r}")
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send("⚠️ Something went wrong running that command.", ephemeral=True)
+        else:
+            await interaction.response.send_message("⚠️ Something went wrong running that command.", ephemeral=True)
+    except discord.errors.HTTPException:
+        # Interaction token already expired (>15 min) or was already responded to elsewhere —
+        # nothing more we can do for this particular interaction, but it's logged above.
+        pass
 
 
 def _run_with_backoff():
