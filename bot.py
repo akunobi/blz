@@ -43,7 +43,10 @@ RESULTS_CHANNEL_ID = 1538589354790887452  # Channel where ranked/friendly result
 TRYOUT_RESULTS_CHANNEL_ID = 1538589355176890403  # Channel where /tdone tryout results are posted
 TRYOUT_HOST_STATS_CHANNEL_ID = 1538867672937275475  # Channel where per-host tryout tallies are posted
 ELO_COMMAND_CHANNEL_ID = 1538589353800900626  # Only channel where /elo can be used
-ADDELO_ROLE_ID = 1538589345991360527    # Only members with this role can use /addelo
+ADDELO_ROLE_ID = {1538589345991360527, 1539303279195062313}  # Roles that can use /addelo, /in,
+                                                              # /endin, /resetelocolor, and their
+                                                              # dashboard equivalents (ELO adjust,
+                                                              # ELO accent color, Manage IN)
 TDONE_ALLOWED_ROLE_IDS = {               # Only members with one of these roles can use /tdone
     1538589345458692198,
     1538589345458692196,
@@ -2250,7 +2253,7 @@ async def ep_command(interaction: discord.Interaction, player: discord.Member = 
 async def in_command(interaction: discord.Interaction, tryouter: discord.Member, days: int, reason: str = None):
     await interaction.response.defer()
     member_roles = getattr(interaction.user, "roles", [])
-    if not any(r.id == ADDELO_ROLE_ID for r in member_roles):
+    if not any(r.id in ADDELO_ROLE_ID for r in member_roles):
         await interaction.followup.send("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
@@ -2294,7 +2297,7 @@ async def in_command(interaction: discord.Interaction, tryouter: discord.Member,
 async def endin_command(interaction: discord.Interaction, tryouter: discord.Member):
     await interaction.response.defer()
     member_roles = getattr(interaction.user, "roles", [])
-    if not any(r.id == ADDELO_ROLE_ID for r in member_roles):
+    if not any(r.id in ADDELO_ROLE_ID for r in member_roles):
         await interaction.followup.send("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
@@ -2549,7 +2552,7 @@ async def setelocolor_command(interaction: discord.Interaction, color: str):
 @client.tree.command(name="resetelocolor", description="Reset /elo cards to the role-based accent color (staff only)")
 async def resetelocolor_command(interaction: discord.Interaction):
     member_roles = getattr(interaction.user, "roles", [])
-    if not any(r.id == ADDELO_ROLE_ID for r in member_roles):
+    if not any(r.id in ADDELO_ROLE_ID for r in member_roles):
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
@@ -2608,7 +2611,7 @@ async def resetelobanner_command(interaction: discord.Interaction):
 async def addelo_command(interaction: discord.Interaction, player: discord.Member, amount: int, reason: str = None):
     await interaction.response.defer()
     member_roles = getattr(interaction.user, "roles", [])
-    if not any(r.id == ADDELO_ROLE_ID for r in member_roles):
+    if not any(r.id in ADDELO_ROLE_ID for r in member_roles):
         await interaction.followup.send("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
