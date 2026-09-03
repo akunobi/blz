@@ -517,6 +517,10 @@ LAYOUT = """<!doctype html>
     width: 100%; background: var(--surface-2); border: 1px solid var(--line); border-radius: 0;
     padding: 9px 10px; color: var(--text); font-size: 14px; margin-top: 5px; font-family: var(--font-body);
   }
+  input[type=file]::file-selector-button {
+    margin: -9px 10px -9px -10px; padding: 9px 12px; background: var(--accent); color: var(--bg);
+    border: 0; border-right: 1px solid var(--line); font: 700 12px var(--font-body); cursor: pointer;
+  }
   input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
   label { font-size: 11px; color: var(--text-dim); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; font-family: var(--font-body); }
   form.inline { display: inline-block; margin-right: 6px; }
@@ -561,7 +565,7 @@ LAYOUT = """<!doctype html>
   h2 { margin-top:54px; color:var(--accent); border-left:0; border-top:1px solid var(--accent); padding:10px 0 0; }
   .card,.stat { background:linear-gradient(145deg,rgba(255,255,255,.065),rgba(255,255,255,.018)); border-color:var(--line); border-radius:0; padding:24px; box-shadow:4px 4px 0 rgba(215,255,63,.13); }
   .card::before,.stat::before { border-color:var(--accent); } .card::after,.stat::after { border-color:var(--accent); }
-  .grid { gap:20px; } .grid > *:hover { box-shadow:8px 8px 0 var(--accent); }
+  .grid { gap:20px; }
   .stat .value { font-size:42px; color:var(--accent); } .btn { background:var(--accent); border-color:var(--accent); border-radius:0; padding:12px 20px; } .btn.secondary { color:var(--text); border-color:var(--line-bright); }
   .progress > div { background:var(--accent); } .pill.approved { color:var(--accent); border-left-color:var(--accent); }
   .dock, .helpbtn, .idbox { display:none !important; }
@@ -606,7 +610,7 @@ LAYOUT = """<!doctype html>
   .appbar { background:rgba(5,10,20,.9); border-bottom-color:var(--line-bright); box-shadow:0 0 28px rgba(22,191,255,.1); }
   h1 { color:var(--text); text-shadow:0 0 26px rgba(22,191,255,.24); } h1::before { content:'// '; color:var(--accent); }
   h2 { color:var(--accent); } .card,.stat { background:linear-gradient(145deg,rgba(22,191,255,.11),rgba(11,20,36,.9)); border-color:var(--line); box-shadow:0 0 0 1px rgba(22,191,255,.04),0 12px 30px rgba(0,0,0,.24); transition:transform .2s ease,border-color .2s,box-shadow .2s; }
-  .card:hover,.stat:hover { transform:translateY(-5px); border-color:var(--accent); box-shadow:0 0 24px rgba(22,191,255,.18),0 16px 34px rgba(0,0,0,.3); }
+  .card:hover,.stat:hover { transform:translateY(-3px); border-color:var(--accent); box-shadow:0 0 0 1px rgba(22,191,255,.18),0 12px 30px rgba(0,0,0,.3); }
   .btn { background:var(--accent); border-color:var(--accent); box-shadow:0 0 18px rgba(22,191,255,.25); } .btn:hover { opacity:1; box-shadow:0 0 28px rgba(22,191,255,.5); }
   .stat .value { color:var(--accent); } .progress > div { background:linear-gradient(90deg,var(--accent),var(--info)); box-shadow:0 0 14px var(--accent); }
   input[type=text],input[type=number],input[type=password],textarea,select,input[type=file],.search-input { background:var(--surface-2) !important; border-color:var(--line) !important; } input:focus,textarea:focus,select:focus,.search-input:focus { border-color:var(--accent) !important; box-shadow:0 0 0 2px rgba(22,191,255,.12); }
@@ -2757,7 +2761,7 @@ PUBLIC_LAYOUT = """<!doctype html>
   .hero h1 { font-size:clamp(64px,14vw,180px); line-height:.78; letter-spacing:-.03em; max-width:1100px; } .hero h1::before { content:'↳ '; color:var(--accent); }
   section { padding:100px 0; border-top:1px solid var(--line-bright); } section > h2 { font-size:16px; color:var(--accent); border-left:0; border-top:1px solid var(--accent); padding:12px 0 0; max-width:260px; }
   section > h2 { position:sticky; top:82px; z-index:4; background:linear-gradient(var(--bg) 72%,transparent); padding-bottom:18px; }
-  .card,.level-card { background:linear-gradient(145deg,rgba(255,255,255,.07),rgba(255,255,255,.015)); border-color:var(--line); box-shadow:5px 5px 0 rgba(215,255,63,.14); } .card:hover,.level-card:hover { transform:translate(-3px,-3px); box-shadow:9px 9px 0 var(--accent); transition:transform .2s,box-shadow .2s; }
+  .card,.level-card { background:linear-gradient(145deg,rgba(255,255,255,.07),rgba(255,255,255,.015)); border-color:var(--line); box-shadow:5px 5px 0 rgba(215,255,63,.14); } .card:hover,.level-card:hover { transform:translateY(-3px); border-color:var(--accent); box-shadow:0 0 0 1px rgba(22,191,255,.18),0 12px 30px rgba(0,0,0,.3); transition:transform .2s,box-shadow .2s; }
   .grid { gap:22px; } .chip { background:var(--accent); color:var(--bg); border-color:var(--accent); } .btn { background:var(--accent); border-color:var(--accent); } .btn.secondary { border-color:var(--line-bright); }
   @media (max-width:760px) { .topbar-inner { padding:13px 16px; } .topuser { width:100%; justify-content:flex-end; flex-wrap:wrap; } .public-search { width:100%; flex-basis:100%; } .public-search .search-results { width:min(86vw,320px); } main { padding:0 16px 80px; } .hero { min-height:78vh; padding-top:70px; } .hero h1 { font-size:clamp(62px,18vw,120px); } section { padding:70px 0; } section > h2 { top:116px; } }
   .scroll-progress { position:fixed; top:0; left:0; width:100%; height:4px; z-index:100; background:var(--accent); transform:scaleX(0); transform-origin:left; }
@@ -3018,18 +3022,18 @@ def init_dashboard(flask_app=None):
     """
     global app
     if flask_app is not None:
-      if flask_app is not botmod.app:
-        raise ValueError("init_dashboard() must use bot.py's existing Flask app")
-      app = flask_app
+        if flask_app is not botmod.app:
+            raise ValueError("init_dashboard() must use bot.py's existing Flask app")
+        app = flask_app
 
     if getattr(app, "_blz_dashboard_initialized", False):
       return
 
     app.secret_key = DASHBOARD_SECRET_KEY
     app.config.update(
-      SESSION_COOKIE_HTTPONLY=True,
-      SESSION_COOKIE_SAMESITE="Lax",
-      MAX_CONTENT_LENGTH=getattr(botmod, "MAX_ELO_BANNER_BYTES", 8 * 1024 * 1024) + 1024 * 1024,
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+        MAX_CONTENT_LENGTH=getattr(botmod, "MAX_ELO_BANNER_BYTES", 8 * 1024 * 1024) + 1024 * 1024,
     )
     app.register_blueprint(dash_bp)
 
@@ -3037,8 +3041,8 @@ def init_dashboard(flask_app=None):
     # that view so the public landing page is the actual root response.
     root_rules = [rule for rule in app.url_map.iter_rules() if rule.rule == "/"]
     if root_rules:
-      for rule in root_rules:
-        app.view_functions[rule.endpoint] = public_landing
+        for rule in root_rules:
+            app.view_functions[rule.endpoint] = public_landing
     else:
       app.add_url_rule("/", endpoint="public_landing", view_func=public_landing)
 
