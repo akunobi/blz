@@ -145,7 +145,13 @@ if not os.getenv("DASHBOARD_SECRET_KEY"):
 ADMIN_DISCORD_IDS = {1075463469865906216, 898579360720764999, 1375115979285073951}
 
 # Public-facing name used on the landing page / <title> / support-server links.
-SERVER_NAME = "Blaze Strikers"
+SERVER_NAME = "Blazing Lock"
+
+# Staff section — announcements & FAQ are read live from these Discord channels;
+# the sheet just opens externally (staff already have Google access to it).
+STAFF_ANNOUNCEMENTS_CHANNEL_ID = 1538589350768676990
+STAFF_FAQ_CHANNEL_ID = 1538589350768676992
+STAFF_SHEET_URL = "https://docs.google.com/spreadsheets/d/1IFbMfdH1aq_LrK_-owNkZmj1POqQVxs_wJvOwd91VYw/edit?usp=drivesdk"
 
 # Coin emoji images for the web dashboard. bot.py's CURRENCY/COIN1-4 constants are
 # Discord's <:name:id> markup, which only renders inside Discord clients -- in a
@@ -294,6 +300,16 @@ def is_admin_user(user_id):
     return bool(doc and doc.get("is_admin"))
 
 
+def is_staff_user(user_id):
+    """Gates the Staff section (announcements, escalation guide, FAQ, sheet).
+    Admins always have it; anyone else needs to be individually approved from
+    Admin -> Manage Staff."""
+    if is_admin_user(user_id):
+        return True
+    doc = access_col.find_one({"_id": user_id})
+    return bool(doc and doc.get("is_staff"))
+
+
 def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
@@ -328,6 +344,18 @@ def admin_required(view):
     return wrapped
 
 
+def staff_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        user = _discord_user()
+        if not user:
+            return redirect(url_for("dashboard.login", next=request.path))
+        if not is_staff_user(user["id"]):
+            abort(403)
+        return view(*args, **kwargs)
+    return wrapped
+
+
 # =====================================================================================
 # LAYOUT
 # =====================================================================================
@@ -337,18 +365,23 @@ LAYOUT = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ title }} · BLZ-T Dashboard</title>
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#05070d">
+<title>{{ title }} · Blazing Lock</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Big+Shoulders:wght@700;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
   :root {
-    --bg: #08090a; --surface: #101214; --surface-2: #17191c;
-    --line: #2a2e31; --line-bright: #3d4348;
-    --text: #e7e9ea; --text-dim: #7d8489;
-    --accent: #6dff5a; --accent-dim: #234d1c;
-    --danger: #ff4d4d; --danger-dim: #401414;
+    color-scheme: dark; /* stops the OS/browser dark-mode heuristics from
+                            re-tinting form controls/scrollbars — this theme
+                            is always dark, on purpose, everywhere */
+    --bg: #05070d; --surface: #0c111d; --surface-2: #131c30;
+    --line: #1c2740; --line-bright: #2e4064;
+    --text: #eef1f8; --text-dim: #7e89a8;
+    --accent: #2f6bff; --accent-dim: #16224a;
+    --danger: #ff3b4e; --danger-dim: #401019;
     --warn: #ffb020; --warn-dim: #4a3508;
-    --info: #4da3ff;
+    --info: #5ea8ff;
     --font-display: 'Big Shoulders', sans-serif;
     --font-body: 'JetBrains Mono', monospace;
   }
@@ -513,7 +546,7 @@ LAYOUT = """<!doctype html>
 <body>
 <aside class="dock">
   <div class="dock-brand">
-    <span class="mark"></span><span class="word">BLZ<span>—</span>T</span>
+    <span class="mark"></span><span class="word">BLAZING<span> LOCK</span></span>
   </div>
   {% if status == "approved" %}
   <nav class="dock-nav">
@@ -522,8 +555,9 @@ LAYOUT = """<!doctype html>
     <a href="{{ url_for('dashboard.economy_home') }}"><span class="idx">03</span>Economy</a>
     <a href="{{ url_for('dashboard.tryouts_home') }}"><span class="idx">04</span>Tryouts</a>
     <a href="{{ url_for('dashboard.matchmaking') }}"><span class="idx">05</span>Matchmaking</a>
-    {% if show_moderation %}<a href="{{ url_for('dashboard.moderation') }}"><span class="idx">06</span>Moderation</a>{% endif %}
-    {% if is_admin %}<a href="{{ url_for('dashboard.admin_access') }}"><span class="idx">07</span>Admin{% if pending_count %}<span class="badge">{{ pending_count }}</span>{% endif %}</a>{% endif %}
+    {% if show_staff %}<a href="{{ url_for('dashboard.staff_home') }}"><span class="idx">06</span>Staff</a>{% endif %}
+    {% if show_moderation %}<a href="{{ url_for('dashboard.moderation') }}"><span class="idx">07</span>Moderation</a>{% endif %}
+    {% if is_admin %}<a href="{{ url_for('dashboard.admin_access') }}"><span class="idx">08</span>Admin{% if pending_count %}<span class="badge">{{ pending_count }}</span>{% endif %}</a>{% endif %}
   </nav>
   {% endif %}
 </aside>
@@ -658,14 +692,16 @@ def page(title, body_template, **ctx):
         uid = user["id"]
         status = _access_status(uid)
         is_admin = is_admin_user(uid)
+        show_staff = is_staff_user(uid)
         show_moderation = has_role(uid, botmod.BANDM_ROLE_ID) or has_role(uid, botmod.BANDM_TEST_ROLE_ID)
         pending_count = 0
     else:
-        status, is_admin, show_moderation, pending_count = None, False, False, 0
+        status, is_admin, show_staff, show_moderation, pending_count = None, False, False, False, 0
 
     return render_template_string(
         LAYOUT, title=title, content=body_html, user=user,
-        status=status, is_admin=is_admin, show_moderation=show_moderation, pending_count=pending_count,
+        status=status, is_admin=is_admin, show_staff=show_staff,
+        show_moderation=show_moderation, pending_count=pending_count,
     )
 
 
@@ -696,9 +732,9 @@ def _not_found(e):
 def home():
     user = _discord_user()
     if not user:
-        return page("BLZ-T Dashboard", """
+        return page("Dashboard", """
 <div class="login-hero">
-<h1>⚔️ BLZ-T Dashboard</h1>
+<h1>🔒 Blazing Lock</h1>
 <p class="muted">Manage ELO, the economy, tryouts, matchmaking and more — right from the browser.</p>
 <a class="btn" href="{{ url_for('dashboard.login') }}">Log in with Discord</a>
 </div>""")
@@ -751,13 +787,14 @@ def home():
   {% if is_staff_addelo %}<a class="card" href="{{ url_for('dashboard.tryouts_in') }}"><strong>🟢 Manage IN</strong><br><span class="muted">Excuse tryouters from quota</span></a>{% endif %}
   {% if is_staff_addelo %}<a class="card" href="{{ url_for('dashboard.elo_settings') }}"><strong>🎨 ELO Card Settings</strong><br><span class="muted">Accent color &amp; banner</span></a>{% endif %}
   {% if is_moderator %}<a class="card" href="{{ url_for('dashboard.moderation') }}"><strong>🟥 Moderation DMs</strong><br><span class="muted">Send ban/warn notices</span></a>{% endif %}
-  {% if is_admin %}<a class="card" href="{{ url_for('dashboard.admin_access') }}"><strong>🛡️ Manage Admins</strong><br><span class="muted">Escalate or revoke admin access</span></a>{% endif %}
+  {% if show_staff %}<a class="card" href="{{ url_for('dashboard.staff_home') }}"><strong>🔒 Staff</strong><br><span class="muted">Announcements, FAQ, escalation guide &amp; sheet</span></a>{% endif %}
+  {% if is_admin %}<a class="card" href="{{ url_for('dashboard.admin_access') }}"><strong>🛡️ Manage Admins</strong><br><span class="muted">Escalate or revoke admin/staff access</span></a>{% endif %}
 </div>""",
                 elo=row.elo, rank_name=rank_name, rank_emoji=rank_emoji, pct=pct, progress_label=progress_label,
                 balance=econ_doc["balance"], is_tryouter=is_tryouter, ep=ep, quota_ep_target=botmod.TRYOUT_QUOTA_EP,
                 queued_modes=queued_modes, is_staff_addelo=has_role(uid, botmod.ADDELO_ROLE_ID),
                 is_moderator=has_role(uid, botmod.BANDM_ROLE_ID) or has_role(uid, botmod.BANDM_TEST_ROLE_ID),
-                is_admin=is_admin_user(uid))
+                show_staff=is_staff_user(uid), is_admin=is_admin_user(uid))
 
 
 @dash_bp.route("/login")
@@ -879,7 +916,7 @@ def logout():
 
 ADMIN_ACCESS_TMPL = """
 <h1>Manage Admins</h1>
-<p class="muted">Anyone who has ever logged in to the dashboard shows up below. Root admins (the 3 built-in accounts) are always admins and can't be changed here. Everyone else can be escalated to admin — or demoted back to a regular member — with one click.</p>
+<p class="muted">Anyone who has ever logged in to the dashboard shows up below. Root admins (the 3 built-in accounts) are always admins and can't be changed here. Everyone else can be escalated to admin, or individually granted the Staff section, with one click.</p>
 
 <div class="card">
 <h2 style="margin-top:0;">Root Admins</h2>
@@ -913,6 +950,26 @@ ADMIN_ACCESS_TMPL = """
 </div>
 
 <div class="card">
+<h2 style="margin-top:0;">Staff Access ({{ staff_members|length }})</h2>
+<p class="muted" style="margin-top:-6px;">Grants the Staff section (announcements, escalation guide, FAQ, sheet). Admins already have it automatically.</p>
+{% if staff_members %}
+<table><thead><tr><th>User</th><th>Staff since</th><th></th></tr></thead><tbody>
+{% for r in staff_members %}
+<tr>
+  <td>{{ r.username }} <span class="muted">({{ r._id }})</span></td>
+  <td class="muted">{{ r.staff_granted_at.strftime('%Y-%m-%d %H:%M UTC') if r.staff_granted_at else '' }}</td>
+  <td>
+    <form class="inline" method="post" action="{{ url_for('dashboard.admin_staff_action', uid=r._id, action='revoke') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small danger">Revoke Staff</button>
+    </form>
+  </td>
+</tr>
+{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">Nobody's been granted staff access yet.</p>{% endif %}
+</div>
+
+<div class="card">
 <h2 style="margin-top:0;">Members ({{ members|length }})</h2>
 {% if members %}
 <table><thead><tr><th>User</th><th>First login</th><th></th></tr></thead><tbody>
@@ -924,6 +981,11 @@ ADMIN_ACCESS_TMPL = """
     <form class="inline" method="post" action="{{ url_for('dashboard.admin_access_action', uid=r._id, action='promote') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small success">Escalate to Admin</button>
     </form>
+    {% if not r.is_staff %}
+    <form class="inline" method="post" action="{{ url_for('dashboard.admin_staff_action', uid=r._id, action='grant') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small secondary">Grant Staff</button>
+    </form>
+    {% endif %}
   </td>
 </tr>
 {% endfor %}
@@ -938,7 +1000,9 @@ def admin_access():
     root_admins = list(access_col.find({"_id": {"$in": list(ADMIN_DISCORD_IDS)}}))
     promoted = list(access_col.find({"is_admin": True, "_id": {"$nin": list(ADMIN_DISCORD_IDS)}}).sort("promoted_at", -1))
     members = list(access_col.find({"is_admin": {"$ne": True}, "_id": {"$nin": list(ADMIN_DISCORD_IDS)}}).sort("last_login_at", -1))
-    return page("Manage Admins", ADMIN_ACCESS_TMPL, root_admins=root_admins, promoted=promoted, members=members)
+    staff_members = list(access_col.find({"is_staff": True, "is_admin": {"$ne": True}}).sort("staff_granted_at", -1))
+    return page("Manage Admins", ADMIN_ACCESS_TMPL, root_admins=root_admins, promoted=promoted,
+                members=members, staff_members=staff_members)
 
 
 @dash_bp.route("/admin/access/<int:uid>/<action>", methods=["POST"])
@@ -965,6 +1029,156 @@ def admin_access_action(uid, action):
     else:
         flash(f"{uid} is {'now an admin' if make_admin else 'no longer an admin'}.", "success")
     return redirect(url_for("dashboard.admin_access"))
+
+
+@dash_bp.route("/admin/staff/<int:uid>/<action>", methods=["POST"])
+@admin_required
+def admin_staff_action(uid, action):
+    _check_csrf()
+    if action not in ("grant", "revoke"):
+        abort(404)
+    grant = action == "grant"
+    now = datetime.now(timezone.utc)
+    result = access_col.update_one(
+        {"_id": uid},
+        {"$set": {
+            "is_staff": grant,
+            "staff_granted_by": _discord_user()["id"] if grant else None,
+            "staff_granted_at": now if grant else None,
+        }},
+    )
+    if result.matched_count == 0:
+        flash("That user hasn't logged in to the dashboard yet.", "error")
+    else:
+        flash(f"{uid} {'now has' if grant else 'no longer has'} staff access.", "success")
+    return redirect(url_for("dashboard.admin_access"))
+
+
+# =====================================================================================
+# STAFF — announcements/FAQ pulled live from Discord, static escalation guide, sheet link
+# =====================================================================================
+
+def fetch_staff_channel(channel_id, limit=25):
+    try:
+        return run_coro(botmod.fetch_channel_messages(channel_id, limit))
+    except Exception as e:
+        logger.error(f"!!! [STAFF] Failed to fetch channel {channel_id}: {e}")
+        return None
+
+
+STAFF_HOME_TMPL = """
+<h1>Staff</h1>
+<p class="muted section-intro">Internal tools and references for the Blazing Lock staff team.</p>
+<div class="grid">
+  <a class="card" href="{{ url_for('dashboard.staff_announcements') }}"><strong>📣 Announcements</strong><br><span class="muted">Latest from the announcements channel</span></a>
+  <a class="card" href="{{ url_for('dashboard.staff_guide') }}"><strong>⚖️ Escalation Guide</strong><br><span class="muted">Offense tiers &amp; punishment ladder</span></a>
+  <a class="card" href="{{ url_for('dashboard.staff_faq') }}"><strong>❓ Staff FAQ</strong><br><span class="muted">Latest from the staff FAQ channel</span></a>
+  <a class="card" href="{{ sheet_url }}" target="_blank" rel="noopener"><strong>📊 Staff Sheet</strong><br><span class="muted">Opens the shared spreadsheet ↗</span></a>
+</div>"""
+
+STAFF_FEED_TMPL = """
+<h1>{{ heading }}</h1>
+<p class="muted section-intro">Live from <span class="pill approved">#{{ channel_name }}</span> — read-only.</p>
+{% if messages is none %}
+<div class="card"><p class="empty">Couldn't reach Discord right now — try again in a moment.</p></div>
+{% elif messages %}
+{% for m in messages %}
+<div class="card">
+  <img class="avatar-sm" src="{{ m.avatar }}"><strong>{{ m.author }}</strong>
+  <span class="muted" style="float:right;font-size:12px;">{{ m.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
+  <p style="white-space:pre-wrap;margin:10px 0 0;">{{ m.content or '(no text — attachment/embed only)' }}</p>
+</div>
+{% endfor %}
+{% else %}<div class="card"><p class="empty">No messages in that channel yet.</p></div>{% endif %}"""
+
+STAFF_GUIDE_TMPL = """
+<h1>Escalation Guide</h1>
+<p class="muted section-intro">Standard escalation path: <strong>Verbal (2–3)</strong> → Mute → Warn → Ban, unless a row says otherwise.</p>
+
+<h2>Minor Offenses</h2>
+<div class="card"><table><tbody>
+{% for name, path in minor %}<tr><td>{{ name }}</td><td class="muted">{{ path }}</td></tr>{% endfor %}
+</tbody></table></div>
+
+<h2>Major Offenses</h2>
+<div class="card"><table><tbody>
+{% for name, path in major %}<tr><td>{{ name }}</td><td class="muted">{{ path }}</td></tr>{% endfor %}
+</tbody></table></div>
+
+<h2>Special Cases &amp; Unique Rules</h2>
+<div class="card"><table><tbody>
+{% for name, path in special %}<tr><td>{{ name }}</td><td class="muted">{{ path }}</td></tr>{% endfor %}
+</tbody></table></div>
+
+<h2>Proof &amp; Logging</h2>
+<div class="card">
+<p>Mandatory: log every action in <span class="pill approved">#punishments</span> with screenshots.</p>
+<p class="muted" style="margin-bottom:4px;"><strong style="color:var(--text);">Punishments</strong></p>
+<ul class="plain">{% for c in punish_cmds %}<li>{{ c }}</li>{% endfor %}</ul>
+<p class="muted" style="margin-bottom:4px;"><strong style="color:var(--text);">Removal / Reversal</strong></p>
+<ul class="plain">{% for c in reverse_cmds %}<li>{{ c }}</li>{% endfor %}</ul>
+</div>"""
+
+_MINOR_LADDER = "Verbal → 1h → Warn & Mute 1h → Mute 3 Days"
+STAFF_MINOR_OFFENSES = [
+    ("Spamming / Flooding / Chaining", _MINOR_LADDER),
+    ("XP Farming", _MINOR_LADDER),
+    ("Channel Misuse", _MINOR_LADDER),
+    ("Non-English in Main Chat", _MINOR_LADDER),
+    ("Ghost Pings / Useless Pings*", _MINOR_LADDER),
+    ("NSFW Remarks", "2h Mute → Warn → Ban"),
+    ("Toxicity", "Verbal Warning → 3h Mute → Warn → Ban"),
+]
+STAFF_MAJOR_OFFENSES = STAFF_MINOR_OFFENSES + [
+    ("Minor Bypassing", "Verbal → 2h Mute → Warn → Ban"),
+    ("Staff Disrespect", "Verbal Warning → 6h Mute → Warn → Ban"),
+    ("Banned Word Bypass", "Verbal Warning → 2h Mute → Warn → Ban"),
+    ('Casual Harmful Remarks (e.g. "kms")', "Warn → Ban"),
+    ("Staff Impersonation", "Verbal 2x → Warn → Kick"),
+]
+STAFF_SPECIAL_CASES = [
+    ("R-Word Usage", "Verbal Warning → Warn → Ban"),
+    ("N-Word Usage (hard R)", "Instant Ban"),
+    ("N-Word Usage (non-hard R)", "2h Mute → Warn → Ban"),
+    ("Compromised Accounts", "14-Day Mute (until resolved)"),
+    ("NSFW Profile (PFP/Banner)", "Kick → Verbal Warning → Ban"),
+    ("Sensitive Topics (politics, wars, controversial figures, etc.)", "Warn → Ban"),
+    ('Death Threats/Wishes (e.g. "jump off a bridge", "kill yourself")', "Immediate Ban"),
+    ('Minor Death Wishes (e.g. "die")', "Verbal Warning 2x → Warn → Ban"),
+]
+STAFF_PUNISH_CMDS = ["?mute @user [duration] [reason]", "?warn @user [reason]", "?ban @user [reason]"]
+STAFF_REVERSE_CMDS = ["?unmute @user", "?unban @user", "?void case [ID] — removes a warning",
+                      "?void @user — clears modlogs", "?editcase [case number]"]
+
+
+@dash_bp.route("/staff")
+@staff_required
+def staff_home():
+    return page("Staff", STAFF_HOME_TMPL, sheet_url=STAFF_SHEET_URL)
+
+
+@dash_bp.route("/staff/announcements")
+@staff_required
+def staff_announcements():
+    messages = fetch_staff_channel(STAFF_ANNOUNCEMENTS_CHANNEL_ID)
+    return page("Announcements", STAFF_FEED_TMPL, heading="📣 Announcements",
+                channel_name="announcements", messages=messages)
+
+
+@dash_bp.route("/staff/faq")
+@staff_required
+def staff_faq():
+    messages = fetch_staff_channel(STAFF_FAQ_CHANNEL_ID)
+    return page("Staff FAQ", STAFF_FEED_TMPL, heading="❓ Staff FAQ",
+                channel_name="staff-faq", messages=messages)
+
+
+@dash_bp.route("/staff/guide")
+@staff_required
+def staff_guide():
+    return page("Escalation Guide", STAFF_GUIDE_TMPL, minor=STAFF_MINOR_OFFENSES,
+                major=STAFF_MAJOR_OFFENSES, special=STAFF_SPECIAL_CASES,
+                punish_cmds=STAFF_PUNISH_CMDS, reverse_cmds=STAFF_REVERSE_CMDS)
 
 
 # =====================================================================================
@@ -2337,15 +2551,18 @@ PUBLIC_LAYOUT = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#05070d">
 <title>{{ title }} · """ + SERVER_NAME + """</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Big+Shoulders:wght@700;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
   :root {
-    --bg: #08090a; --surface: #101214; --surface-2: #17191c;
-    --line: #2a2e31; --line-bright: #3d4348;
-    --text: #e7e9ea; --text-dim: #7d8489;
-    --accent: #6dff5a; --accent-dim: #234d1c;
-    --danger: #ff4d4d; --warn: #ffb020; --info: #4da3ff;
+    color-scheme: dark;
+    --bg: #05070d; --surface: #0c111d; --surface-2: #131c30;
+    --line: #1c2740; --line-bright: #2e4064;
+    --text: #eef1f8; --text-dim: #7e89a8;
+    --accent: #2f6bff; --accent-dim: #16224a;
+    --danger: #ff3b4e; --warn: #ffb020; --info: #5ea8ff;
     --font-display: 'Big Shoulders', sans-serif;
     --font-body: 'JetBrains Mono', monospace;
   }
@@ -2390,7 +2607,7 @@ PUBLIC_LAYOUT = """<!doctype html>
   }
   /* --- top bar (public site nav — deliberately simpler than the dashboard's dock) --- */
   .topbar {
-    position: sticky; top: 0; z-index: 50; background: rgba(8,9,10,.92); backdrop-filter: blur(6px);
+    position: sticky; top: 0; z-index: 50; background: rgba(5,7,13,.92); backdrop-filter: blur(6px);
     border-bottom: 1px solid var(--line);
   }
   .topbar-inner {
@@ -2439,7 +2656,7 @@ PUBLIC_LAYOUT = """<!doctype html>
 <body>
 <div class="topbar">
   <div class="topbar-inner">
-    <a class="brand" href="#top"><span>⚔️</span> """ + SERVER_NAME.upper() + """</a>
+    <a class="brand" href="#top"><span style="color:var(--accent);vertical-align:-3px;display:inline-block;"><svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg></span> """ + SERVER_NAME.upper() + """</a>
     <nav class="toplinks">
       <a href="#faq">FAQ</a>
       <a href="#levels">XP &amp; Levels</a>
