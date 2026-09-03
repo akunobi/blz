@@ -427,8 +427,8 @@ THEME_CSS = """
   }
   .card:hover, .stat:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 0 0 1px rgba(var(--accent-rgb),.18), 0 12px 30px rgba(0,0,0,.3); }
   .card::before, .card::after, .stat::before, .stat::after { content: ""; position: absolute; width: 9px; height: 9px; border: 2px solid var(--accent); opacity: .7; pointer-events: none; }
-  .card::before, .stat::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
-  .card::after, .stat::after { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+  .card::before, .stat::before { top: 0; left: 0; border-right: none; border-bottom: none; }
+  .card::after, .stat::after { bottom: 0; right: 0; border-left: none; border-top: none; }
   @keyframes pop-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   a.card { display: block; color: var(--text); }
   a.card:hover { text-decoration: none; }
