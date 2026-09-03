@@ -570,9 +570,15 @@ LAYOUT = """<!doctype html>
   .appactions { display:flex; align-items:center; gap:10px; margin-left:auto; white-space:nowrap; } .appactions img { width:26px; height:26px; border:1px solid var(--line-bright); }
   @media (max-width:760px) { .appbar { flex-wrap:wrap; gap:8px; padding:9px 14px; } .appnav { order:3; flex-basis:100%; margin:0 -14px; padding:0 14px 3px; } .appactions { margin-left:auto; } main { padding-top:128px; } }
   @media (max-width:760px) { main { padding-top:128px; } .appactions { width:100%; } .appactions .search-shell { width:100%; } .search-input { width:100% !important; } .search-results { width:min(86vw,320px); } h1 { font-size:clamp(42px,14vw,70px); } }
+  .scroll-progress { position:fixed; top:0; left:0; width:100%; height:3px; z-index:100; background:var(--accent); transform:scaleX(0); transform-origin:left; }
+  main > * { --scroll-shift:0px; opacity:0; transform:translate3d(0,calc(18px + var(--scroll-shift)),0); transition:opacity .7s ease,transform .9s cubic-bezier(.2,.7,.2,1); }
+  main > *.is-visible { opacity:1; transform:translate3d(0,var(--scroll-shift),0); }
+  main h1 { text-wrap:balance; } main .grid > * { transition:transform .6s cubic-bezier(.2,.7,.2,1),box-shadow .25s; }
+  @media (prefers-reduced-motion:reduce) { main > * { opacity:1; transform:none; transition:none; } }
 </style>
 </head>
 <body>
+<div class="scroll-progress"></div>
 <header class="appbar">
   <a class="appbrand" href="{{ url_for('dashboard.home') }}">BLZ<span>/</span>WEB</a>
   {% if status == "approved" %}<nav class="appnav">
@@ -624,6 +630,19 @@ LAYOUT = """<!doctype html>
     window.requestAnimationFrame(frame);
   }
   document.querySelectorAll('.value').forEach(animateValue);
+
+  var scrollProgress = document.querySelector('.scroll-progress');
+  var scenes = Array.prototype.slice.call(document.querySelectorAll('main > *'));
+  function updateScene() {
+    var max = document.documentElement.scrollHeight - window.innerHeight;
+    if (scrollProgress) scrollProgress.style.transform = 'scaleX(' + (max ? window.scrollY / max : 0) + ')';
+    scenes.forEach(function (scene) {
+      var bounds = scene.getBoundingClientRect();
+      scene.classList.toggle('is-visible', bounds.top < window.innerHeight * .88);
+      if (!reduceMotion && bounds.top < window.innerHeight && bounds.bottom > 0) scene.style.setProperty('--scroll-shift', ((window.innerHeight * .5 - (bounds.top + bounds.height * .5)) * .035) + 'px');
+    });
+  }
+  updateScene(); window.addEventListener('scroll', updateScene, { passive:true }); window.addEventListener('resize', updateScene);
 
   document.querySelectorAll('.search-shell, .public-search').forEach(function (shell) {
     var input = shell.querySelector('input'), results = shell.querySelector('.search-results');
@@ -2699,12 +2718,21 @@ PUBLIC_LAYOUT = """<!doctype html>
   .hero::after { content:'SCROLL TO EXPLORE'; position:absolute; bottom:22px; left:50%; color:var(--accent); font-size:10px; letter-spacing:.18em; transform:translateX(-50%); }
   .hero h1 { font-size:clamp(64px,14vw,180px); line-height:.78; letter-spacing:-.03em; max-width:1100px; } .hero h1::before { content:'↳ '; color:var(--accent); }
   section { padding:100px 0; border-top:1px solid var(--line-bright); } section > h2 { font-size:16px; color:var(--accent); border-left:0; border-top:1px solid var(--accent); padding:12px 0 0; max-width:260px; }
+  section > h2 { position:sticky; top:82px; z-index:4; background:linear-gradient(var(--bg) 72%,transparent); padding-bottom:18px; }
   .card,.level-card { background:linear-gradient(145deg,rgba(255,255,255,.07),rgba(255,255,255,.015)); border-color:var(--line); box-shadow:5px 5px 0 rgba(215,255,63,.14); } .card:hover,.level-card:hover { transform:translate(-3px,-3px); box-shadow:9px 9px 0 var(--accent); transition:transform .2s,box-shadow .2s; }
   .grid { gap:22px; } .chip { background:var(--accent); color:var(--bg); border-color:var(--accent); } .btn { background:var(--accent); border-color:var(--accent); } .btn.secondary { border-color:var(--line-bright); }
-  @media (max-width:760px) { .topbar-inner { padding:13px 16px; } .topuser { width:100%; justify-content:flex-end; flex-wrap:wrap; } .public-search { width:100%; flex-basis:100%; } .public-search .search-results { width:min(86vw,320px); } main { padding:0 16px 80px; } .hero { min-height:78vh; padding-top:70px; } .hero h1 { font-size:clamp(62px,18vw,120px); } section { padding:70px 0; } }
+  @media (max-width:760px) { .topbar-inner { padding:13px 16px; } .topuser { width:100%; justify-content:flex-end; flex-wrap:wrap; } .public-search { width:100%; flex-basis:100%; } .public-search .search-results { width:min(86vw,320px); } main { padding:0 16px 80px; } .hero { min-height:78vh; padding-top:70px; } .hero h1 { font-size:clamp(62px,18vw,120px); } section { padding:70px 0; } section > h2 { top:116px; } }
+  .scroll-progress { position:fixed; top:0; left:0; width:100%; height:4px; z-index:100; background:var(--accent); transform:scaleX(0); transform-origin:left; }
+  .hero { min-height:100vh; overflow:hidden; isolation:isolate; } .hero::before { content:'BLAZE / PLAY / COMMUNITY'; position:absolute; top:18%; left:2%; color:var(--accent); font-size:10px; letter-spacing:.2em; writing-mode:vertical-rl; opacity:.65; z-index:-1; }
+  .hero h1,.hero p,.hero .actions { transition:transform .2s linear,opacity .2s linear; } .hero h1 { text-shadow:12px 12px 0 rgba(215,255,63,.08); }
+  main section { opacity:0; transform:translateY(42px); transition:opacity .8s ease,transform 1s cubic-bezier(.2,.7,.2,1); } main section.is-visible { opacity:1; transform:none; }
+  main section .grid > * { opacity:0; transform:translateY(24px); transition:opacity .7s ease,transform .8s cubic-bezier(.2,.7,.2,1); } main section.is-visible .grid > * { opacity:1; transform:none; } main section.is-visible .grid > *:nth-child(2){transition-delay:.08s} main section.is-visible .grid > *:nth-child(3){transition-delay:.16s} main section.is-visible .grid > *:nth-child(4){transition-delay:.24s}
+  #levels { position:relative; } #levels::before { content:'02'; position:absolute; right:0; top:72px; color:var(--accent); font:900 120px var(--font-display); opacity:.08; }
+  @media (prefers-reduced-motion:reduce) { main section,main section .grid > * { opacity:1; transform:none; transition:none; } }
 </style>
 </head>
 <body>
+<div class="scroll-progress"></div>
 <div class="topbar">
   <div class="topbar-inner">
     <a class="brand" href="#top"><span style="color:var(--accent);vertical-align:-3px;display:inline-block;"><svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg></span> """ + SERVER_NAME.upper() + """</a>
@@ -2731,6 +2759,22 @@ PUBLIC_LAYOUT = """<!doctype html>
 </main>
 <script>
 (function () {
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var progress = document.querySelector('.scroll-progress'), hero = document.querySelector('.hero');
+  var sections = Array.prototype.slice.call(document.querySelectorAll('main section'));
+  function cinematicScroll() {
+    var max = document.documentElement.scrollHeight - window.innerHeight;
+    if (progress) progress.style.transform = 'scaleX(' + (max ? window.scrollY / max : 0) + ')';
+    sections.forEach(function (section) { section.classList.toggle('is-visible', section.getBoundingClientRect().top < window.innerHeight * .86); });
+    if (hero && !reduceMotion) {
+      var distance = Math.min(window.scrollY, window.innerHeight);
+      hero.querySelector('h1').style.transform = 'translateY(' + distance * .12 + 'px) scale(' + (1 - distance / window.innerHeight * .16) + ')';
+      hero.querySelector('p').style.transform = 'translateY(' + distance * .2 + 'px)';
+      hero.querySelector('.actions').style.transform = 'translateY(' + distance * .3 + 'px)';
+      hero.style.opacity = String(Math.max(.35, 1 - distance / window.innerHeight * .65));
+    }
+  }
+  cinematicScroll(); window.addEventListener('scroll', cinematicScroll, { passive:true }); window.addEventListener('resize', cinematicScroll);
   document.querySelectorAll('.search-shell, .public-search').forEach(function (shell) {
     var input = shell.querySelector('input'), results = shell.querySelector('.search-results');
     if (!input || !results) return;
