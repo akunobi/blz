@@ -446,20 +446,27 @@ THEME_CSS = """
   .empty { color: var(--text-dim); padding: 18px 0; text-align: center; font-size: 14px; }
 
   /* --- search widget: shared by the dashboard top bar and the public site's top bar --- */
-  .search-shell { position: relative; display: flex; align-items: center; width: 38px; height: 38px; }
+  .search-shell {
+    position: relative; display: flex; align-items: center; width: 38px; height: 38px;
+    flex: 0 0 auto; transition: width .25s cubic-bezier(.2,.8,.2,1);
+  }
   .search-shell::before { content: '\2315'; position: absolute; left: 12px; top: 6px; color: var(--accent); font-size: 22px; pointer-events: none; z-index: 1; }
   .search-input {
-    width: 38px !important; height: 38px; margin: 0 !important; padding: 0 12px 0 38px !important;
+    width: 100% !important; height: 38px; margin: 0 !important; padding: 0 12px 0 38px !important;
     background: var(--surface) !important; border: 1px solid var(--line-bright) !important; color: var(--text) !important;
-    font-family: var(--font-body); transition: width .25s cubic-bezier(.2,.8,.2,1), box-shadow .25s;
+    font-family: var(--font-body); transition: box-shadow .25s;
   }
-  .search-shell:focus-within .search-input { width: clamp(190px,24vw,340px) !important; box-shadow: 4px 4px 0 var(--accent); }
+  /* The shell (not just the input) grows on focus, so it actually reserves the extra
+     space in the surrounding flex row and pushes neighboring buttons/avatar aside
+     instead of the expanded input rendering on top of them. */
+  .search-shell:focus-within { width: clamp(190px,24vw,340px); }
+  .search-shell:focus-within .search-input { box-shadow: 4px 4px 0 var(--accent); }
   .search-results { position: absolute; top: 44px; right: 0; width: 260px; background: var(--surface); border: 1px solid var(--line-bright); display: none; max-height: 280px; overflow: auto; box-shadow: 6px 6px 0 var(--accent); z-index: 60; }
   .search-results.open { display: block; }
   .search-results a { display: block; padding: 11px 13px; color: var(--text-dim); border-bottom: 1px solid var(--line); font-size: 12px; }
   .search-results a:hover { background: var(--accent); color: var(--bg); text-decoration: none; }
   @media (max-width: 760px) {
-    .search-shell:focus-within .search-input { width: 100% !important; }
+    .search-shell:focus-within { width: 100%; }
     .search-results { width: min(86vw,320px); }
   }
 
@@ -484,6 +491,7 @@ LAYOUT_EXTRA_CSS = """
   .appnav { display: flex; align-items: center; gap: 4px; flex: 1; overflow: auto; }
   .appnav a { padding: 8px 10px; color: var(--text-dim); font-size: 11px; font-family: var(--font-body); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
   .appnav a:hover { color: var(--accent); text-decoration: none; background: var(--accent-dim); }
+  .appnav a.active { color: var(--accent); background: var(--accent-dim); box-shadow: inset 0 -2px 0 var(--accent); }
   .appactions { display: flex; align-items: center; gap: 10px; margin-left: auto; white-space: nowrap; }
   .appactions img { width: 26px; height: 26px; border: 1px solid var(--line-bright); }
   @media (max-width: 760px) {
@@ -553,6 +561,7 @@ PUBLIC_EXTRA_CSS = """
   .toplinks { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
   .toplinks a { color: var(--text-dim); font-size: 12px; font-family: var(--font-body); text-transform: uppercase; letter-spacing: .06em; padding: 8px 12px; border: 1px solid transparent; }
   .toplinks a:hover { color: var(--accent); border-color: var(--accent); text-decoration: none; }
+  .toplinks a.active { color: var(--accent); border-color: var(--accent); }
   .topuser { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
   .topuser img { width: 24px; height: 24px; border: 1px solid var(--line-bright); }
   @media (max-width: 760px) {
@@ -611,9 +620,20 @@ LAYOUT = """<!doctype html>
 <body>
 <header class="appbar">
   <a class="appbrand" href="{{ url_for('dashboard.home') }}">BLZ<span>/</span>WEB</a>
-  {% if status == "approved" %}<nav class="appnav">
-    <a href="{{ url_for('dashboard.home') }}">Home</a><a href="{{ url_for('dashboard.elo_leaderboard') }}">ELO</a><a href="{{ url_for('dashboard.economy_home') }}">Economy</a><a href="{{ url_for('dashboard.tryouts_home') }}">Tryouts</a><a href="{{ url_for('dashboard.matchmaking') }}">Matchmaking</a>
-    {% if show_staff %}<a href="{{ url_for('dashboard.staff_home') }}">Staff</a>{% endif %}{% if show_moderation %}<a href="{{ url_for('dashboard.moderation') }}">Moderation</a>{% endif %}{% if is_admin %}<a href="{{ url_for('dashboard.admin_access') }}">Admin</a>{% endif %}
+  {% if status == "approved" %}
+  {% set current_path = request.path %}
+  {% set home_url = url_for('dashboard.home') %}
+  {% set elo_url = url_for('dashboard.elo_leaderboard') %}
+  {% set economy_url = url_for('dashboard.economy_home') %}
+  {% set tryouts_url = url_for('dashboard.tryouts_home') %}
+  {% set mm_url = url_for('dashboard.matchmaking') %}
+  {% set staff_url = url_for('dashboard.staff_home') %}
+  {% set mod_url = url_for('dashboard.moderation') %}
+  {% set admin_url = url_for('dashboard.admin_access') %}
+  {% set admin_base = admin_url.rsplit('/', 1)[0] %}
+  <nav class="appnav">
+    <a href="{{ home_url }}"{% if current_path == home_url %} class="active" aria-current="page"{% endif %}>Home</a><a href="{{ elo_url }}"{% if current_path.startswith(elo_url) %} class="active" aria-current="page"{% endif %}>ELO</a><a href="{{ economy_url }}"{% if current_path.startswith(economy_url) %} class="active" aria-current="page"{% endif %}>Economy</a><a href="{{ tryouts_url }}"{% if current_path.startswith(tryouts_url) %} class="active" aria-current="page"{% endif %}>Tryouts</a><a href="{{ mm_url }}"{% if current_path.startswith(mm_url) %} class="active" aria-current="page"{% endif %}>Matchmaking</a>
+    {% if show_staff %}<a href="{{ staff_url }}"{% if current_path.startswith(staff_url) %} class="active" aria-current="page"{% endif %}>Staff</a>{% endif %}{% if show_moderation %}<a href="{{ mod_url }}"{% if current_path.startswith(mod_url) %} class="active" aria-current="page"{% endif %}>Moderation</a>{% endif %}{% if is_admin %}<a href="{{ admin_url }}"{% if current_path.startswith(admin_base) %} class="active" aria-current="page"{% endif %}>Admin</a>{% endif %}
   </nav>{% endif %}
   <div class="appactions">
     <div class="search-shell"><input class="search-input" type="search" placeholder="Search" aria-label="Search this page"><div class="search-results"></div></div>
@@ -2735,6 +2755,26 @@ PUBLIC_LAYOUT = """<!doctype html>
     input.addEventListener('keydown', function (event) { if (event.key === 'Escape') { input.value = ''; results.classList.remove('open'); input.blur(); } });
     document.addEventListener('click', function (event) { if (!shell.contains(event.target)) results.classList.remove('open'); });
   });
+
+  // Scrollspy: highlight whichever section is currently on screen in the top nav,
+  // so there's some indication of where you are on this long, scroll-heavy page.
+  var navLinks = Array.prototype.slice.call(document.querySelectorAll('.toplinks a'));
+  var sections = navLinks.map(function (link) {
+    return document.getElementById(link.getAttribute('href').slice(1));
+  }).filter(Boolean);
+  if (sections.length && 'IntersectionObserver' in window) {
+    var setActive = function (id) {
+      navLinks.forEach(function (link) {
+        link.classList.toggle('active', link.getAttribute('href') === '#' + id);
+      });
+    };
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) setActive(entry.target.id);
+      });
+    }, { rootMargin: '-40% 0px -55% 0px' });
+    sections.forEach(function (section) { observer.observe(section); });
+  }
 })();
 </script>
 </body>
