@@ -715,13 +715,22 @@ def _bad_request(e):
 @dash_bp.app_errorhandler(403)
 def _forbidden(e):
     return page("Forbidden", "<div class='card center'><h1>🚫 Forbidden</h1>"
-                              "<p class='muted'>You don't have permission to view this page.</p></div>"), 403
+                              "<p class='muted'>You don't have permission to view this page.</p>"
+                              "<a class=\"btn\" href=\"{{ url_for('dashboard.home') }}\">Back to dashboard</a></div>"), 403
 
 
 @dash_bp.app_errorhandler(404)
 def _not_found(e):
     return page("Not Found", "<div class='card center'><h1>🔍 Not Found</h1>"
-                              "<p class='muted'>That page doesn't exist.</p></div>"), 404
+                              "<p class='muted'>That page doesn't exist.</p>"
+                              "<a class=\"btn\" href=\"{{ url_for('dashboard.home') }}\">Back to dashboard</a></div>"), 404
+
+
+@dash_bp.app_errorhandler(500)
+def _server_error(e):
+    return page("Error", "<div class='card center'><h1>💥 Something broke</h1>"
+                          "<p class='muted'>An unexpected error occurred. Try again in a moment.</p>"
+                          "<a class=\"btn\" href=\"{{ url_for('dashboard.home') }}\">Back to dashboard</a></div>"), 500
 
 
 # =====================================================================================
@@ -797,6 +806,15 @@ def home():
                 show_staff=is_staff_user(uid), is_admin=is_admin_user(uid))
 
 
+def _safe_next_path(raw):
+    """Only follow `next` if it's a same-app relative path — an unchecked
+    value here would let someone craft a login link that bounces a member
+    off to an external site right after they authenticate."""
+    if raw and raw.startswith("/") and not raw.startswith("//") and "\\" not in raw:
+        return raw
+    return url_for("dashboard.home")
+
+
 @dash_bp.route("/login")
 def login():
     if not all([DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DASHBOARD_REDIRECT_URI]):
@@ -804,7 +822,7 @@ def login():
                     "DASHBOARD_REDIRECT_URI need to be set in the environment.")
     state = secrets.token_urlsafe(24)
     session["oauth_state"] = state
-    session["next"] = request.args.get("next") or url_for("dashboard.home")
+    session["next"] = _safe_next_path(request.args.get("next"))
     params = {
         "client_id": DISCORD_CLIENT_ID,
         "redirect_uri": DASHBOARD_REDIRECT_URI,
@@ -2681,14 +2699,20 @@ PUBLIC_LAYOUT = """<!doctype html>
 </html>"""
 
 
-def public_page(title, body_html):
+def public_page(title, body_template, **ctx):
+    """Renders body_template as its OWN Jinja pass first (so {% if user %}
+    etc. inside LANDING_BODY actually evaluate) before dropping the result
+    into PUBLIC_LAYOUT — same two-stage pattern as page() above. Passing the
+    raw template straight into `content` here was a bug: {{ }}/{% %} inside
+    it never ran and showed up as literal text on the page."""
     user = _discord_user()
+    body_html = render_template_string(body_template, user=user, **ctx)
     return render_template_string(PUBLIC_LAYOUT, title=title, content=body_html, user=user)
 
 
 LANDING_BODY = """
 <div class="hero" id="top">
-<h1>⚔️ """ + SERVER_NAME + """</h1>
+<h1><span style="color:var(--accent);display:inline-block;vertical-align:-0.08em;"><svg width="0.75em" height="0.75em" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg></span> """ + SERVER_NAME + """</h1>
 <p class="muted">Ranked duels, tryouts, and a community built around competitive play. Log in with Discord to check your ELO, queue for a match, or manage your tryout status — right from the browser.</p>
 <div class="actions">
 <a class="btn" href='""" + botmod.SUPPORT_SERVER_URL + """'>Join the Discord</a>
