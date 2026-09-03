@@ -541,6 +541,29 @@ LAYOUT = """<!doctype html>
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
   }
+  :root { --bg:#080808; --surface:#111; --surface-2:#191919; --line:#303030; --line-bright:#686868; --text:#f4f0e8; --text-dim:#9b968d; --accent:#d7ff3f; --accent-dim:#26300c; --danger:#ff5c5c; --font-display:'Big Shoulders',sans-serif; --font-body:'JetBrains Mono',monospace; }
+  body { background-color:var(--bg); background-image:radial-gradient(circle at 85% 10%,rgba(215,255,63,.12),transparent 28%),linear-gradient(135deg,transparent 0 49%,rgba(255,255,255,.035) 50% 50.2%,transparent 50.4%),linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px); background-size:auto,auto,48px 48px; overflow-x:hidden; }
+  body::before { content:'BLZ / 2026'; position:fixed; right:24px; bottom:18px; color:var(--line-bright); font:10px var(--font-body); letter-spacing:.16em; writing-mode:vertical-rl; z-index:2; pointer-events:none; }
+  main { max-width:1180px; padding:clamp(92px,12vw,150px) clamp(20px,6vw,72px) 110px; }
+  .dock { width:240px; background:rgba(17,17,17,.94); border:1px solid var(--line-bright); box-shadow:12px 12px 0 var(--accent); }
+  .dock-brand { padding:20px; } .dock-brand .mark { background:var(--accent); }
+  .dock-nav a { padding:12px 20px; } .dock-nav a:hover,.dock-nav a:focus-visible,.dock-nav a.kbd-active { background:var(--accent); color:var(--bg); border-left-color:var(--bg); }
+  .dock-nav a:hover .idx,.dock-nav a:focus-visible .idx,.dock-nav a.kbd-active .idx { color:var(--bg); }
+  .idbox { top:22px; right:clamp(18px,5vw,64px); background:transparent; border:0; padding:0; }
+  .search-shell { position:relative; display:flex; align-items:center; width:38px; height:38px; overflow:visible; }
+  .search-shell::before { content:'⌕'; position:absolute; left:12px; top:7px; color:var(--accent); font-size:22px; pointer-events:none; z-index:1; }
+  .search-input { width:38px !important; height:38px; margin:0 !important; padding:0 12px 0 38px !important; background:var(--surface) !important; border:1px solid var(--line-bright) !important; color:var(--text) !important; transition:width .25s cubic-bezier(.2,.8,.2,1),box-shadow .25s; }
+  .search-shell:hover,.search-shell:focus-within { width:260px; } .search-shell:hover .search-input,.search-shell:focus-within .search-input { width:260px !important; box-shadow:6px 6px 0 var(--accent); }
+  .search-results { position:absolute; top:44px; right:0; width:260px; background:var(--surface); border:1px solid var(--line-bright); display:none; max-height:280px; overflow:auto; box-shadow:6px 6px 0 var(--accent); }
+  .search-results.open { display:block; } .search-results a { display:block; padding:11px 13px; color:var(--text-dim); border-bottom:1px solid var(--line); font-size:12px; } .search-results a:hover { background:var(--accent); color:var(--bg); text-decoration:none; }
+  h1 { font-size:clamp(38px,7vw,82px); max-width:850px; line-height:.9; letter-spacing:0; margin-bottom:28px; } h1::before { content:'↳ '; color:var(--accent); }
+  h2 { margin-top:54px; color:var(--accent); border-left:0; border-top:1px solid var(--accent); padding:10px 0 0; }
+  .card,.stat { background:linear-gradient(145deg,rgba(255,255,255,.065),rgba(255,255,255,.018)); border-color:var(--line); border-radius:0; padding:24px; box-shadow:4px 4px 0 rgba(215,255,63,.13); }
+  .card::before,.stat::before { border-color:var(--accent); } .card::after,.stat::after { border-color:var(--accent); }
+  .grid { gap:20px; } .grid > *:hover { box-shadow:8px 8px 0 var(--accent); }
+  .stat .value { font-size:42px; color:var(--accent); } .btn { background:var(--accent); border-color:var(--accent); border-radius:0; padding:12px 20px; } .btn.secondary { color:var(--text); border-color:var(--line-bright); }
+  .progress > div { background:var(--accent); } .pill.approved { color:var(--accent); border-left-color:var(--accent); }
+  @media (max-width:760px) { body::before { display:none; } main { padding-top:92px; } .idbox { top:14px; right:14px; } .search-shell,.search-shell:hover,.search-shell:focus-within { width:min(48vw,220px); } .search-input,.search-shell:hover .search-input,.search-shell:focus-within .search-input { width:100% !important; } .search-results { width:min(70vw,260px); } h1 { font-size:clamp(42px,14vw,70px); } }
 </style>
 </head>
 <body>
@@ -565,6 +588,7 @@ LAYOUT = """<!doctype html>
 <div class="helpbtn" tabindex="0">?<span class="tip">Move your cursor to the left edge to reveal the nav — or press <b>W</b> (not while typing) to pin it open, then <b>↑/↓</b> to move and <b>Enter</b> to jump. <b>W</b> or <b>Esc</b> closes it. On touch it's pinned to the bottom.</span></div>
 {% endif %}
 <div class="idbox">
+  <div class="search-shell"><input class="search-input" type="search" placeholder="Search" aria-label="Search this page"><div class="search-results"></div></div>
   {% if user %}
     <img src="{{ user.avatar_url }}" alt="">
     {{ user.username }}
@@ -677,6 +701,29 @@ LAYOUT = """<!doctype html>
   }
   var help = document.querySelector('.helpbtn');
   if (help) help.addEventListener('click', function () { help.classList.toggle('open'); });
+  document.querySelectorAll('.search-shell, .public-search').forEach(function (shell) {
+    var input = shell.querySelector('input'), results = shell.querySelector('.search-results');
+    if (!input || !results) return;
+    var targets = Array.prototype.slice.call(document.querySelectorAll('h1,h2,h3,.card,.stat,.level-card'));
+    input.addEventListener('input', function () {
+      var term = input.value.trim().toLowerCase(); results.innerHTML = '';
+      if (!term) { results.classList.remove('open'); return; }
+      targets.filter(function (el) { return el.textContent.toLowerCase().indexOf(term) >= 0; }).slice(0, 8).forEach(function (el, i) {
+        if (!el.id) el.id = 'search-result-' + i;
+        var link = document.createElement('a'); link.href = '#' + el.id; link.textContent = el.textContent.trim().replace(/\\s+/g, ' ').slice(0, 70);
+        link.addEventListener('click', function () { results.classList.remove('open'); input.value = ''; }); results.appendChild(link);
+      });
+      results.classList.add('open');
+    });
+    input.addEventListener('keydown', function (event) { if (event.key === 'Escape') { input.value = ''; results.classList.remove('open'); input.blur(); } });
+  });
+  var levelTrack = document.querySelector('#levels .grid');
+  if (levelTrack && window.innerWidth > 760) {
+    window.addEventListener('scroll', function () {
+      var bounds = levelTrack.getBoundingClientRect(), shift = Math.max(-90, Math.min(90, (window.innerHeight / 2 - (bounds.top + bounds.height / 2)) * .12));
+      levelTrack.style.transform = 'translateX(' + shift + 'px)';
+    }, { passive: true });
+  }
 })();
 </script>
 </body>
@@ -2669,6 +2716,22 @@ PUBLIC_LAYOUT = """<!doctype html>
   ::-webkit-scrollbar { width: 12px; height: 12px; }
   ::-webkit-scrollbar-track { background: var(--bg); }
   ::-webkit-scrollbar-thumb { background: var(--line-bright); }
+  :root { --bg:#080808; --surface:#111; --surface-2:#191919; --line:#303030; --line-bright:#686868; --text:#f4f0e8; --text-dim:#9b968d; --accent:#d7ff3f; --accent-dim:#26300c; --font-display:'Big Shoulders',sans-serif; --font-body:'JetBrains Mono',monospace; }
+  body { background-color:var(--bg); background-image:radial-gradient(circle at 85% 4%,rgba(215,255,63,.14),transparent 30%),linear-gradient(135deg,transparent 0 49%,rgba(255,255,255,.04) 50% 50.2%,transparent 50.4%),linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px); background-size:auto,auto,48px 48px; }
+  .topbar { background:rgba(8,8,8,.88); border-bottom:1px solid var(--line-bright); }
+  .topbar-inner { max-width:1280px; padding:18px 28px; } .brand { font-size:25px; } .brand span { color:var(--accent) !important; }
+  .toplinks a:hover { color:var(--accent); border-color:var(--accent); }
+  .topuser { position:relative; } .public-search { position:relative; display:flex; width:38px; height:38px; transition:width .25s; }
+  .public-search::before { content:'⌕'; position:absolute; left:11px; top:6px; color:var(--accent); font-size:22px; z-index:1; pointer-events:none; }
+  .public-search input { width:38px; margin:0; padding:0 10px 0 36px; border-color:var(--line-bright); transition:width .25s; } .public-search:hover,.public-search:focus-within { width:240px; } .public-search:hover input,.public-search:focus-within input { width:240px; }
+  .public-search .search-results { top:44px; right:0; }
+  main { max-width:1280px; padding:0 28px 100px; } .hero { min-height:75vh; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:90px 20px 70px; position:relative; }
+  .hero::after { content:'SCROLL TO EXPLORE'; position:absolute; bottom:22px; color:var(--accent); font-size:10px; letter-spacing:.18em; transform:rotate(-90deg); transform-origin:right; }
+  .hero h1 { font-size:clamp(64px,14vw,180px); line-height:.78; letter-spacing:-.03em; max-width:1100px; } .hero h1::before { content:'↳ '; color:var(--accent); }
+  section { padding:100px 0; border-top:1px solid var(--line-bright); } section > h2 { font-size:16px; color:var(--accent); border-left:0; border-top:1px solid var(--accent); padding:12px 0 0; max-width:260px; }
+  .card,.level-card { background:linear-gradient(145deg,rgba(255,255,255,.07),rgba(255,255,255,.015)); border-color:var(--line); box-shadow:5px 5px 0 rgba(215,255,63,.14); } .card:hover,.level-card:hover { transform:translate(-3px,-3px); box-shadow:9px 9px 0 var(--accent); transition:transform .2s,box-shadow .2s; }
+  .grid { gap:22px; } .chip { background:var(--accent); color:var(--bg); border-color:var(--accent); } .btn { background:var(--accent); border-color:var(--accent); } .btn.secondary { border-color:var(--line-bright); }
+  @media (max-width:760px) { .topbar-inner { padding:13px 16px; } .topuser { width:100%; justify-content:flex-end; } .public-search,.public-search:hover,.public-search:focus-within { width:min(52vw,240px); } .public-search input,.public-search:hover input,.public-search:focus-within input { width:100%; } main { padding:0 16px 80px; } .hero { min-height:78vh; padding-top:70px; } .hero h1 { font-size:clamp(62px,18vw,120px); } section { padding:70px 0; } }
 </style>
 </head>
 <body>
@@ -2682,6 +2745,7 @@ PUBLIC_LAYOUT = """<!doctype html>
       <a href="#community">Community</a>
     </nav>
     <div class="topuser">
+      <div class="public-search"><input type="search" placeholder="Search" aria-label="Search this page"><div class="search-results"></div></div>
       {% if user %}
         <img src="{{ user.avatar_url }}" alt="">
         <a class="btn small" href="{{ url_for('dashboard.home') }}">Dashboard</a>
@@ -2695,6 +2759,26 @@ PUBLIC_LAYOUT = """<!doctype html>
 <main>
 {{ content|safe }}
 </main>
+<script>
+(function () {
+  document.querySelectorAll('.search-shell, .public-search').forEach(function (shell) {
+    var input = shell.querySelector('input'), results = shell.querySelector('.search-results');
+    if (!input || !results) return;
+    var targets = Array.prototype.slice.call(document.querySelectorAll('h1,h2,h3,.card,.stat,.level-card'));
+    input.addEventListener('input', function () {
+      var term = input.value.trim().toLowerCase(); results.innerHTML = '';
+      if (!term) { results.classList.remove('open'); return; }
+      targets.filter(function (el) { return el.textContent.toLowerCase().indexOf(term) >= 0; }).slice(0, 8).forEach(function (el, i) {
+        if (!el.id) el.id = 'public-search-result-' + i;
+        var link = document.createElement('a'); link.href = '#' + el.id; link.textContent = el.textContent.trim().replace(/\\s+/g, ' ').slice(0, 70);
+        link.addEventListener('click', function () { results.classList.remove('open'); input.value = ''; }); results.appendChild(link);
+      });
+      results.classList.add('open');
+    });
+    input.addEventListener('keydown', function (event) { if (event.key === 'Escape') { input.value = ''; results.classList.remove('open'); input.blur(); } });
+  });
+})();
+</script>
 </body>
 </html>"""
 
