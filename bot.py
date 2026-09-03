@@ -2692,19 +2692,65 @@ async def leaderboard_command(interaction: discord.Interaction):
 # All commands below are restricted to ECONOMY_CHANNEL_ID.
 # =====================================================================================
 
-# Custom server coin emojis (Discord custom emoji format: <:name:id>)
-COIN1 = "<:coin1:1328399864526143488>"  # ornate coin - jackpot / big win flourish
-COIN2 = "<:coin2:1345765306655707198>"  # plain coin - everyday currency
-COIN3 = "<:coin3:1321451928864952361>"  # hex coin - weekly bonus flourish
-COIN4 = "<:coin4:1361906308214947880>"  # tilted coin - coinflip flourish
+# Custom server coin emojis (Discord custom emoji format: <:name:id>). These IDs were
+# hardcoded before, which is why the icons could stop showing up in Discord: if any of
+# these emojis is ever deleted and re-uploaded (very easy to do by accident), Discord
+# issues it a brand-new ID and the old hardcoded tag just renders as a broken/missing
+# icon forever with no indication why. _COIN_IDS below is only the *last known* ID for
+# each — _resolve_coin_emojis() (called from on_ready) re-resolves every one of them
+# against the bot's live emoji cache by name first (which survives a re-upload), then by
+# this ID, and only falls back to a plain unicode coin if it truly can't find it.
+_COIN_IDS = {
+    "coin1": 1328399864526143488,  # ornate coin - jackpot / big win flourish
+    "coin2": 1345765306655707198,  # plain coin - everyday currency
+    "coin3": 1321451928864952361,  # hex coin - weekly bonus flourish
+    "coin4": 1361906308214947880,  # tilted coin - coinflip flourish
+}
+_COIN_FALLBACK = {
+    "coin1": "🟡",
+    "coin2": "🪙",
+    "coin3": "🔶",
+    "coin4": "🌕",
+}
+
+COIN1 = f"<:coin1:{_COIN_IDS['coin1']}>"
+COIN2 = f"<:coin2:{_COIN_IDS['coin2']}>"
+COIN3 = f"<:coin3:{_COIN_IDS['coin3']}>"
+COIN4 = f"<:coin4:{_COIN_IDS['coin4']}>"
 
 CURRENCY = COIN2
+
+
+def _resolve_coin_emojis():
+    """Re-resolves COIN1-4 (and CURRENCY) against the bot's live emoji cache. Called once
+    from on_ready(), after the bot has actually connected and populated client.emojis —
+    calling this at import time would always miss since the cache is empty until login."""
+    global COIN1, COIN2, COIN3, COIN4, CURRENCY
+    resolved = {}
+    for key, old_id in _COIN_IDS.items():
+        found = discord.utils.get(client.emojis, name=key) or client.get_emoji(old_id)
+        resolved[key] = str(found) if found else _COIN_FALLBACK[key]
+    COIN1, COIN2, COIN3, COIN4 = resolved["coin1"], resolved["coin2"], resolved["coin3"], resolved["coin4"]
+    CURRENCY = COIN2
+    missing = [k for k, v in resolved.items() if v == _COIN_FALLBACK[k]]
+    if missing:
+        logger.warning(
+            f"!!! [COIN EMOJI] Could not find custom emoji for: {', '.join(missing)} — "
+            f"using unicode fallback instead. Check the emoji still exists and the bot's "
+            f"member cache includes the guild it lives in."
+        )
+    else:
+        logger.info(">>> [COIN EMOJI] All coin emojis resolved from the live cache.")
+
+
 STARTING_BALANCE = 100
 DAILY_AMOUNT = 250
 WEEKLY_AMOUNT = 1500
+MONTHLY_AMOUNT = 6000
 WORK_MIN, WORK_MAX = 50, 200
 DAILY_COOLDOWN = timedelta(hours=20)
 WEEKLY_COOLDOWN = timedelta(days=6, hours=20)
+MONTHLY_COOLDOWN = timedelta(days=29, hours=20)
 WORK_COOLDOWN = timedelta(hours=1)
 
 SHOP_ITEMS = [
@@ -2716,6 +2762,24 @@ SHOP_ITEMS = [
     {"id": "chest", "name": "Mystery Chest", "emoji": "🎁", "price": 750, "desc": "Use with /use for a random coin reward."},
 ]
 SHOP_BY_ID = {i["id"]: i for i in SHOP_ITEMS}
+
+# Mystery Chest reward tiers: (weight, min, max, label). Replaces the old flat
+# random.randint(100, 1500) roll (avg ~800, barely above the 750-coin chest price) with a
+# weighted payout table that's a real boost on average and has some jackpot excitement.
+# Expected value: 0.55*600 + 0.32*1500 + 0.13*3750 ≈ 1,297 coins per chest.
+CHEST_REWARD_TIERS = [
+    (55, 300, 900, "Common"),
+    (32, 900, 2200, "Rare"),
+    (13, 2500, 5000, "Legendary"),
+]
+
+
+def open_chest_reward() -> tuple:
+    """Rolls one Mystery Chest. Returns (coins, tier_label). Shared by the /use command
+    and the web dashboard's chest-open route so both interfaces always pay out the same."""
+    weights = [t[0] for t in CHEST_REWARD_TIERS]
+    _, lo, hi, label = random.choices(CHEST_REWARD_TIERS, weights=weights, k=1)[0]
+    return random.randint(lo, hi), label
 
 
 def _get_econ_sync(user_id: int) -> dict:
@@ -2780,9 +2844,15 @@ async def econ_channel_check(interaction: discord.Interaction) -> bool:
 
 
 def _fmt_remaining(until: datetime, now: datetime) -> str:
-    secs = int((until - now).total_seconds())
-    h, m = divmod(secs // 60, 60)
-    return f"{h}h {m}m" if h else f"{m}m"
+    secs = max(0, int((until - now).total_seconds()))
+    d, rem = divmod(secs, 86400)
+    h, rem = divmod(rem, 3600)
+    m = rem // 60
+    if d:
+        return f"{d}d {h}h"
+    if h:
+        return f"{h}h {m}m"
+    return f"{m}m"
 
 
 # --- Core economy commands ---
@@ -2830,6 +2900,23 @@ async def weekly_command(interaction: discord.Interaction):
     new_bal = await add_balance(interaction.user.id, WEEKLY_AMOUNT)
     await set_cooldown(interaction.user.id, "last_weekly", now)
     await interaction.followup.send(f"{COIN3} Claimed your weekly **{WEEKLY_AMOUNT}** {CURRENCY}! Balance: **{new_bal}**.")
+
+
+@client.tree.command(name="monthly", description="Claim your monthly coins")
+async def monthly_command(interaction: discord.Interaction):
+    if not await econ_channel_check(interaction):
+        return
+    await interaction.response.defer()
+    doc = await get_econ(interaction.user.id)
+    now = datetime.now(timezone.utc)
+    last = doc.get("last_monthly")
+    if last and _aware(last) + MONTHLY_COOLDOWN > now:
+        await interaction.followup.send(
+            f"⏳ Already claimed. Come back in **{_fmt_remaining(_aware(last) + MONTHLY_COOLDOWN, now)}**.", ephemeral=True)
+        return
+    new_bal = await add_balance(interaction.user.id, MONTHLY_AMOUNT)
+    await set_cooldown(interaction.user.id, "last_monthly", now)
+    await interaction.followup.send(f"{COIN1} Claimed your monthly **{MONTHLY_AMOUNT}** {CURRENCY}! Balance: **{new_bal}**.")
 
 
 @client.tree.command(name="work", description="Work a job for some coins")
@@ -2902,20 +2989,34 @@ async def sell_command(interaction: discord.Interaction, item: str, quantity: in
 
 
 @client.tree.command(name="use", description="Use a consumable item from your inventory")
-@app_commands.describe(item="Item id to use")
-async def use_command(interaction: discord.Interaction, item: str):
+@app_commands.describe(item="Item id to use", amount="How many chests to open at once (default 1)")
+async def use_command(interaction: discord.Interaction, item: str, amount: app_commands.Range[int, 1, 25] = 1):
     if not await econ_channel_check(interaction):
         return
     await interaction.response.defer()
     if item.lower() != "chest":
         await interaction.followup.send("❌ That item can't be used.", ephemeral=True)
         return
-    if not await remove_item(interaction.user.id, "chest", 1):
-        await interaction.followup.send("❌ You don't have a Mystery Chest.", ephemeral=True)
+    if not await remove_item(interaction.user.id, "chest", amount):
+        have = (await get_econ(interaction.user.id)).get("inventory", {}).get("chest", 0)
+        await interaction.followup.send(
+            f"❌ You only have **{have}** Mystery Chest(s) — can't open {amount}.", ephemeral=True)
         return
-    reward = random.randint(100, 1500)
-    new_bal = await add_balance(interaction.user.id, reward)
-    await interaction.followup.send(f"🎁 The chest held **{reward}** {CURRENCY}! Balance: **{new_bal}**.")
+    total = 0
+    tier_counts = {}
+    for _ in range(amount):
+        reward, label = open_chest_reward()
+        total += reward
+        tier_counts[label] = tier_counts.get(label, 0) + 1
+    new_bal = await add_balance(interaction.user.id, total)
+    if amount == 1:
+        label = next(iter(tier_counts))
+        await interaction.followup.send(
+            f"🎁 **{label}** chest — it held **{total}** {CURRENCY}! Balance: **{new_bal}**.")
+    else:
+        breakdown = ", ".join(f"{c}x {lbl}" for lbl, c in tier_counts.items())
+        await interaction.followup.send(
+            f"🎁 Opened **{amount}** chests ({breakdown}) for **{total}** {CURRENCY} total! Balance: **{new_bal}**.")
 
 
 @client.tree.command(name="inventory", description="View your (or someone's) inventory")
@@ -3029,9 +3130,9 @@ async def rps_command(interaction: discord.Interaction, choice: app_commands.Cho
     if user_choice == bot_choice:
         result, delta = "🤝 It's a tie!", 0
     elif beats[user_choice] == bot_choice:
-        result, delta = f"🎉 You win{f' **{bet}**' + CURRENCY if bet else ''}!", bet
+        result, delta = f"🎉 You win{f' **{bet}** {CURRENCY}' if bet else ''}!", bet
     else:
-        result, delta = f"💀 You lose{f' **{bet}**' + CURRENCY if bet else ''}!", -bet
+        result, delta = f"💀 You lose{f' **{bet}** {CURRENCY}' if bet else ''}!", -bet
     new_bal = await add_balance(interaction.user.id, delta) if bet else None
     msg = f"You: {emoji[user_choice]} {user_choice}  vs  Bot: {emoji[bot_choice]} {bot_choice}\n{result}"
     if new_bal is not None:
@@ -3117,6 +3218,13 @@ async def guess_command(interaction: discord.Interaction, number: app_commands.R
 async def on_ready():
     logger.info(f">>> [DISCORD]: Logged in as {client.user}")
     bot_ready_event.set()
+
+    # Re-resolve the coin emojis now that client.emojis is populated (fixes coin icons
+    # silently going missing if one was ever deleted/re-uploaded with a new ID)
+    try:
+        _resolve_coin_emojis()
+    except Exception as e:
+        logger.error(f"!!! [COIN EMOJI RESOLVE ERROR]: {e}")
 
     # Register persistent views (buttons survive restarts)
     try:
