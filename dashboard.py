@@ -599,6 +599,20 @@ LAYOUT = """<!doctype html>
   .cinema-track .grid { scrollbar-width:none; } .cinema-track .grid::-webkit-scrollbar { display:none; width:0; height:0; }
   .cinema-track > * { display:block; width:auto; height:auto; min-height:0; overflow:visible; padding:0; }
   @media (max-width:760px) { .cinema-track > * { min-height:0; padding:58px 20px; } .cinema-track .grid { gap:14px; } .cinema-track .grid > * { flex-basis:82vw; } }
+  :root { --bg:#050a14; --surface:#0b1424; --surface-2:#10233b; --line:#183654; --line-bright:#2b79aa; --text:#e9f7ff; --text-dim:#7da1b8; --accent:#16bfff; --accent-dim:#082c49; --info:#68e5ff; --danger:#ff5274; --warn:#ffd166; }
+  html { scroll-behavior:auto; } body { overflow-x:hidden; background-image:radial-gradient(circle at 85% 5%,rgba(22,191,255,.16),transparent 28%),linear-gradient(rgba(22,191,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(22,191,255,.045) 1px,transparent 1px); background-size:auto,32px 32px,32px 32px; }
+  .cinema-scroll,.cinema-world,.cinema-track { display:block; position:static; width:auto; height:auto; min-height:0; overflow:visible; transform:none !important; perspective:none; }
+  .cinema-track > * { display:block; width:auto; height:auto; min-height:0; overflow:visible; padding:clamp(44px,7vw,90px) clamp(20px,6vw,72px); margin:0; }
+  .cinema-track .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:18px; overflow:visible; padding:0; }
+  .cinema-track .grid > * { flex:none; min-width:0; }
+  .scroll-progress,.cinema-orbit,.cinema-camera { display:none; }
+  .appbar { background:rgba(5,10,20,.9); border-bottom-color:var(--line-bright); box-shadow:0 0 28px rgba(22,191,255,.1); }
+  h1 { color:var(--text); text-shadow:0 0 26px rgba(22,191,255,.24); } h1::before { content:'// '; color:var(--accent); }
+  h2 { color:var(--accent); } .card,.stat { background:linear-gradient(145deg,rgba(22,191,255,.11),rgba(11,20,36,.9)); border-color:var(--line); box-shadow:0 0 0 1px rgba(22,191,255,.04),0 12px 30px rgba(0,0,0,.24); transition:transform .2s ease,border-color .2s,box-shadow .2s; }
+  .card:hover,.stat:hover { transform:translateY(-5px); border-color:var(--accent); box-shadow:0 0 24px rgba(22,191,255,.18),0 16px 34px rgba(0,0,0,.3); }
+  .btn { background:var(--accent); border-color:var(--accent); box-shadow:0 0 18px rgba(22,191,255,.25); } .btn:hover { opacity:1; box-shadow:0 0 28px rgba(22,191,255,.5); }
+  .stat .value { color:var(--accent); } .progress > div { background:linear-gradient(90deg,var(--accent),var(--info)); box-shadow:0 0 14px var(--accent); }
+  input[type=text],input[type=number],input[type=password],textarea,select,input[type=file],.search-input { background:var(--surface-2) !important; border-color:var(--line) !important; } input:focus,textarea:focus,select:focus,.search-input:focus { border-color:var(--accent) !important; box-shadow:0 0 0 2px rgba(22,191,255,.12); }
 </style>
 </head>
 <body>
@@ -656,17 +670,6 @@ LAYOUT = """<!doctype html>
     window.requestAnimationFrame(frame);
   }
   document.querySelectorAll('.value').forEach(animateValue);
-
-  var scrollProgress = document.querySelector('.scroll-progress');
-  function updateProgress() { if (scrollProgress) scrollProgress.style.transform = 'scaleX(' + (window.scrollY / Math.max(1, document.documentElement.scrollHeight - window.innerHeight)) + ')'; }
-  document.querySelectorAll('.cinema-track .grid').forEach(function (scene) {
-    scene.addEventListener('wheel', function (event) {
-      var max = scene.scrollWidth - scene.clientWidth, next = scene.scrollLeft + event.deltaY;
-      if (max <= 0 || (next <= 0 && event.deltaY < 0) || (next >= max && event.deltaY > 0)) return;
-      event.preventDefault(); scene.scrollLeft = Math.max(0, Math.min(max, next));
-    }, { passive:false });
-  });
-  updateProgress(); window.addEventListener('scroll', updateProgress, { passive:true });
 
   document.querySelectorAll('.search-shell, .public-search').forEach(function (shell) {
     var input = shell.querySelector('input'), results = shell.querySelector('.search-results');
@@ -2769,6 +2772,20 @@ PUBLIC_LAYOUT = """<!doctype html>
   .cinema-track .grid > * { flex:0 0 min(76vw,390px); min-width:0; }
   .cinema-track .grid { scrollbar-width:none; } .cinema-track .grid::-webkit-scrollbar { display:none; width:0; height:0; }
   @media (max-width:760px) { .cinema-track > section,.cinema-track > footer { min-height:88vh; padding:70px 20px; } .cinema-track .grid { gap:14px; } .cinema-track .grid > * { flex-basis:84vw; } }
+  :root { --bg:#050a14; --surface:#0b1424; --surface-2:#10233b; --line:#183654; --line-bright:#2b79aa; --text:#e9f7ff; --text-dim:#7da1b8; --accent:#16bfff; --accent-dim:#082c49; --info:#68e5ff; --danger:#ff5274; --warn:#ffd166; }
+  html { scroll-behavior:auto; } body { overflow-x:hidden; background-image:radial-gradient(circle at 85% 5%,rgba(22,191,255,.16),transparent 28%),linear-gradient(rgba(22,191,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(22,191,255,.045) 1px,transparent 1px); background-size:auto,32px 32px,32px 32px; }
+  .cinema-scroll,.cinema-world,.cinema-track { display:block; position:static; width:auto; height:auto; min-height:0; overflow:visible; transform:none !important; perspective:none; }
+  .cinema-track > section,.cinema-track > footer { display:block; width:auto; height:auto; min-height:0; overflow:visible; padding:clamp(54px,8vw,110px) clamp(20px,6vw,72px); margin:0; }
+  .cinema-track .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:18px; overflow:visible; padding:0; }
+  .cinema-track .grid > * { flex:none; min-width:0; }
+  .scroll-progress,.cinema-orbit,.cinema-camera { display:none; }
+  .topbar { background:rgba(5,10,20,.9); border-bottom-color:var(--line-bright); box-shadow:0 0 28px rgba(22,191,255,.1); }
+  h1 { color:var(--text); text-shadow:0 0 26px rgba(22,191,255,.24); } h1::before { content:'// '; color:var(--accent); }
+  h2 { color:var(--accent); } .card,.level-card { background:linear-gradient(145deg,rgba(22,191,255,.11),rgba(11,20,36,.9)); border-color:var(--line); box-shadow:0 0 0 1px rgba(22,191,255,.04),0 12px 30px rgba(0,0,0,.24); transition:transform .2s ease,border-color .2s,box-shadow .2s; }
+  .card:hover,.level-card:hover { transform:translateY(-5px); border-color:var(--accent); box-shadow:0 0 24px rgba(22,191,255,.18),0 16px 34px rgba(0,0,0,.3); }
+  .btn { background:var(--accent); border-color:var(--accent); box-shadow:0 0 18px rgba(22,191,255,.25); } .btn:hover { opacity:1; box-shadow:0 0 28px rgba(22,191,255,.5); }
+  .chip { color:var(--accent); border-color:var(--line-bright); background:var(--surface-2); } .role-card p,.level-card ul,.muted { color:var(--text-dim); }
+  .public-search input { background:var(--surface-2); border-color:var(--line) !important; } .public-search input:focus { border-color:var(--accent) !important; box-shadow:0 0 0 2px rgba(22,191,255,.12); }
 </style>
 </head>
 <body>
@@ -2802,16 +2819,6 @@ PUBLIC_LAYOUT = """<!doctype html>
 <script>
 (function () {
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var progress = document.querySelector('.scroll-progress'), hero = document.querySelector('.hero');
-  function updateProgress() { if (progress) progress.style.transform = 'scaleX(' + (window.scrollY / Math.max(1, document.documentElement.scrollHeight - window.innerHeight)) + ')'; }
-  document.querySelectorAll('.cinema-track .grid').forEach(function (scene) {
-    scene.addEventListener('wheel', function (event) {
-      var max = scene.scrollWidth - scene.clientWidth, next = scene.scrollLeft + event.deltaY;
-      if (max <= 0 || (next <= 0 && event.deltaY < 0) || (next >= max && event.deltaY > 0)) return;
-      event.preventDefault(); scene.scrollLeft = Math.max(0, Math.min(max, next));
-    }, { passive:false });
-  });
-  updateProgress(); window.addEventListener('scroll', updateProgress, { passive:true });
   document.querySelectorAll('.search-shell, .public-search').forEach(function (shell) {
     var input = shell.querySelector('input'), results = shell.querySelector('.search-results');
     if (!input || !results) return;
