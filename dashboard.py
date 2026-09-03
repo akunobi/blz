@@ -575,10 +575,25 @@ LAYOUT = """<!doctype html>
   main > *.is-visible { opacity:1; transform:translate3d(0,var(--scroll-shift),0); }
   main h1 { text-wrap:balance; } main .grid > * { transition:transform .6s cubic-bezier(.2,.7,.2,1),box-shadow .25s; }
   @media (prefers-reduced-motion:reduce) { main > * { opacity:1; transform:none; transition:none; } }
+  .cinema-world { position:relative; min-height:100vh; overflow:hidden; perspective:1200px; }
+  .cinema-world::before,.cinema-world::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:-1; }
+  .cinema-world::before { background:radial-gradient(ellipse at 50% 110%,rgba(215,255,63,.16),transparent 44%),linear-gradient(115deg,transparent 0 47%,rgba(215,255,63,.06) 48%,transparent 49%); transform:scale(1.2); }
+  .cinema-world::after { background:linear-gradient(90deg,rgba(8,8,8,.9),transparent 20%,transparent 80%,rgba(8,8,8,.9)),linear-gradient(0deg,rgba(8,8,8,.7),transparent 18%,transparent 82%,rgba(8,8,8,.65)); }
+  .cinema-orbit { position:fixed; width:42vw; height:42vw; max-width:620px; max-height:620px; right:-10vw; top:18vh; border:1px solid rgba(215,255,63,.28); border-radius:50%; transform:rotateX(68deg) rotateZ(var(--orbit,0deg)); pointer-events:none; z-index:-1; box-shadow:0 0 90px rgba(215,255,63,.08); }
+  .cinema-orbit::before { content:''; position:absolute; inset:12%; border:1px solid rgba(215,255,63,.12); border-radius:50%; }
+  main { min-height:calc(100vh - 64px); transform-style:preserve-3d; }
+  main > * { position:relative; min-height:78vh; display:flex; flex-direction:column; justify-content:center; padding:clamp(42px,8vw,110px) 0; margin:0; border:0; transform-origin:50% 50%; }
+  main > *::before { content:attr(data-scene); position:absolute; top:24px; right:0; color:var(--accent); font-size:10px; letter-spacing:.2em; opacity:.55; }
+  main > *.is-visible { transform:translate3d(0,var(--scroll-shift),0) rotateX(0) scale(1); }
+  .cinema-flash { position:relative; z-index:3; }
+  .cinema-camera { position:fixed; bottom:22px; left:clamp(16px,5vw,64px); z-index:20; display:flex; align-items:center; gap:12px; color:var(--text-dim); font-size:10px; letter-spacing:.14em; text-transform:uppercase; }
+  .cinema-camera i { display:block; width:42px; height:1px; background:var(--accent); }
+  @media (max-width:760px) { .cinema-orbit { width:90vw; height:90vw; top:38vh; right:-38vw; } main > * { min-height:72vh; padding:38px 0; } .cinema-camera { bottom:76px; } }
 </style>
 </head>
 <body>
 <div class="scroll-progress"></div>
+<div class="cinema-world"><div class="cinema-orbit"></div><div class="cinema-camera"><i></i><span>scroll / navigate</span></div>
 <header class="appbar">
   <a class="appbrand" href="{{ url_for('dashboard.home') }}">BLZ<span>/</span>WEB</a>
   {% if status == "approved" %}<nav class="appnav">
@@ -593,10 +608,11 @@ LAYOUT = """<!doctype html>
 </header>
 <main>
   {% for category, message in get_flashed_messages(with_categories=true) %}
-    <div class="flash {{ category }}">{{ message }}</div>
+    <div class="flash {{ category }} cinema-flash">{{ message }}</div>
   {% endfor %}
   {{ content|safe }}
 </main>
+</div>
 <script>
 (function () {
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -639,8 +655,13 @@ LAYOUT = """<!doctype html>
     scenes.forEach(function (scene) {
       var bounds = scene.getBoundingClientRect();
       scene.classList.toggle('is-visible', bounds.top < window.innerHeight * .88);
-      if (!reduceMotion && bounds.top < window.innerHeight && bounds.bottom > 0) scene.style.setProperty('--scroll-shift', ((window.innerHeight * .5 - (bounds.top + bounds.height * .5)) * .035) + 'px');
+      if (!reduceMotion && bounds.top < window.innerHeight && bounds.bottom > 0) {
+        var distance = (bounds.top + bounds.height * .5 - window.innerHeight * .5) / window.innerHeight;
+        scene.style.setProperty('--scroll-shift', (distance * -18) + 'px');
+        scene.style.transform = 'translate3d(' + (distance * 22) + 'px,' + (distance * -18) + 'px,0) rotateY(' + (distance * -3) + 'deg) scale(' + (1 - Math.min(.08, Math.abs(distance) * .08)) + ')';
+      }
     });
+    var orbit = document.querySelector('.cinema-orbit'); if (orbit && !reduceMotion) orbit.style.setProperty('--orbit', (window.scrollY * .035) + 'deg');
   }
   updateScene(); window.addEventListener('scroll', updateScene, { passive:true }); window.addEventListener('resize', updateScene);
 
@@ -2729,10 +2750,25 @@ PUBLIC_LAYOUT = """<!doctype html>
   main section .grid > * { opacity:0; transform:translateY(24px); transition:opacity .7s ease,transform .8s cubic-bezier(.2,.7,.2,1); } main section.is-visible .grid > * { opacity:1; transform:none; } main section.is-visible .grid > *:nth-child(2){transition-delay:.08s} main section.is-visible .grid > *:nth-child(3){transition-delay:.16s} main section.is-visible .grid > *:nth-child(4){transition-delay:.24s}
   #levels { position:relative; } #levels::before { content:'02'; position:absolute; right:0; top:72px; color:var(--accent); font:900 120px var(--font-display); opacity:.08; }
   @media (prefers-reduced-motion:reduce) { main section,main section .grid > * { opacity:1; transform:none; transition:none; } }
+  .cinema-world { position:relative; min-height:100vh; overflow:hidden; perspective:1400px; }
+  .cinema-world::before,.cinema-world::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:-1; }
+  .cinema-world::before { background:radial-gradient(ellipse at 50% 115%,rgba(215,255,63,.18),transparent 42%),linear-gradient(120deg,transparent 0 48%,rgba(215,255,63,.06) 49%,transparent 50%); transform:scale(1.3); }
+  .cinema-world::after { background:linear-gradient(90deg,rgba(8,8,8,.9),transparent 22%,transparent 78%,rgba(8,8,8,.9)),linear-gradient(0deg,rgba(8,8,8,.72),transparent 18%,transparent 82%,rgba(8,8,8,.65)); }
+  .cinema-orbit { position:fixed; width:62vw; height:62vw; max-width:900px; max-height:900px; left:50%; top:52%; border:1px solid rgba(215,255,63,.22); border-radius:50%; transform:translate(-50%,-50%) rotateX(68deg) rotateZ(var(--orbit,0deg)); pointer-events:none; z-index:-1; box-shadow:0 0 120px rgba(215,255,63,.08); }
+  .cinema-orbit::before,.cinema-orbit::after { content:''; position:absolute; inset:10%; border:1px solid rgba(215,255,63,.11); border-radius:50%; } .cinema-orbit::after { inset:28%; }
+  main { min-height:100vh; transform-style:preserve-3d; }
+  main > section { position:relative; min-height:100vh; display:flex; flex-direction:column; justify-content:center; padding:clamp(70px,10vw,150px) 0; border:0; transform-origin:50% 50%; }
+  main > section:not(.hero) { transition:opacity .9s ease,transform 1s cubic-bezier(.2,.7,.2,1); }
+  main > section:not(.hero)::before { content:attr(id); position:absolute; top:42px; right:0; color:var(--accent); font:10px var(--font-body); letter-spacing:.2em; opacity:.6; }
+  .cinema-camera { position:fixed; bottom:24px; left:clamp(16px,4vw,54px); z-index:20; display:flex; align-items:center; gap:12px; color:var(--text-dim); font-size:10px; letter-spacing:.14em; text-transform:uppercase; }
+  .cinema-camera i { width:52px; height:1px; background:var(--accent); display:block; }
+  .hero { z-index:2; } .hero::after { bottom:30px; }
+  @media (max-width:760px) { .cinema-orbit { width:120vw; height:120vw; top:55%; } main > section { min-height:88vh; padding:70px 0; } .cinema-camera { bottom:76px; } }
 </style>
 </head>
 <body>
 <div class="scroll-progress"></div>
+<div class="cinema-world"><div class="cinema-orbit"></div><div class="cinema-camera"><i></i><span>scroll / navigate</span></div>
 <div class="topbar">
   <div class="topbar-inner">
     <a class="brand" href="#top"><span style="color:var(--accent);vertical-align:-3px;display:inline-block;"><svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg></span> """ + SERVER_NAME.upper() + """</a>
@@ -2757,6 +2793,7 @@ PUBLIC_LAYOUT = """<!doctype html>
 <main>
 {{ content|safe }}
 </main>
+</div>
 <script>
 (function () {
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -2765,7 +2802,15 @@ PUBLIC_LAYOUT = """<!doctype html>
   function cinematicScroll() {
     var max = document.documentElement.scrollHeight - window.innerHeight;
     if (progress) progress.style.transform = 'scaleX(' + (max ? window.scrollY / max : 0) + ')';
-    sections.forEach(function (section) { section.classList.toggle('is-visible', section.getBoundingClientRect().top < window.innerHeight * .86); });
+    sections.forEach(function (section, index) {
+      var bounds = section.getBoundingClientRect(), distance = (bounds.top + bounds.height * .5 - window.innerHeight * .5) / window.innerHeight;
+      section.classList.toggle('is-visible', bounds.top < window.innerHeight * .86);
+      if (!reduceMotion && section !== hero && bounds.top < window.innerHeight && bounds.bottom > 0) {
+        var direction = index % 2 ? 1 : -1;
+        section.style.transform = 'translate3d(' + (distance * 24 * direction) + 'px,' + (distance * -16) + 'px,0) rotateY(' + (distance * -3 * direction) + 'deg) scale(' + (1 - Math.min(.1, Math.abs(distance) * .1)) + ')';
+      }
+    });
+    var orbit = document.querySelector('.cinema-orbit'); if (orbit && !reduceMotion) orbit.style.setProperty('--orbit', (window.scrollY * .025) + 'deg');
     if (hero && !reduceMotion) {
       var distance = Math.min(window.scrollY, window.innerHeight);
       hero.querySelector('h1').style.transform = 'translateY(' + distance * .12 + 'px) scale(' + (1 - distance / window.innerHeight * .16) + ')';
