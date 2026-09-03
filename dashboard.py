@@ -563,40 +563,28 @@ LAYOUT = """<!doctype html>
   .grid { gap:20px; } .grid > *:hover { box-shadow:8px 8px 0 var(--accent); }
   .stat .value { font-size:42px; color:var(--accent); } .btn { background:var(--accent); border-color:var(--accent); border-radius:0; padding:12px 20px; } .btn.secondary { color:var(--text); border-color:var(--line-bright); }
   .progress > div { background:var(--accent); } .pill.approved { color:var(--accent); border-left-color:var(--accent); }
+  .dock, .helpbtn, .idbox { display:none !important; }
+  .appbar { position:fixed; top:0; left:0; right:0; z-index:25; min-height:64px; display:flex; align-items:center; gap:22px; padding:12px clamp(16px,5vw,64px); background:rgba(8,8,8,.9); border-bottom:1px solid var(--line-bright); backdrop-filter:blur(10px); }
+  .appbrand { color:var(--text); font:900 22px var(--font-display); letter-spacing:.04em; white-space:nowrap; } .appbrand span { color:var(--accent); }
+  .appnav { display:flex; align-items:center; gap:4px; flex:1; overflow:auto; } .appnav a { padding:8px 10px; color:var(--text-dim); font-size:11px; text-transform:uppercase; letter-spacing:.06em; white-space:nowrap; } .appnav a:hover { color:var(--accent); text-decoration:none; background:var(--accent-dim); }
+  .appactions { display:flex; align-items:center; gap:10px; margin-left:auto; white-space:nowrap; } .appactions img { width:26px; height:26px; border:1px solid var(--line-bright); }
+  @media (max-width:760px) { .appbar { flex-wrap:wrap; gap:8px; padding:9px 14px; } .appnav { order:3; flex-basis:100%; margin:0 -14px; padding:0 14px 3px; } .appactions { margin-left:auto; } main { padding-top:128px; } }
   @media (max-width:760px) { body::before { display:none; } main { padding-top:92px; } .idbox { top:14px; right:14px; } .search-shell,.search-shell:hover,.search-shell:focus-within { width:min(48vw,220px); } .search-input,.search-shell:hover .search-input,.search-shell:focus-within .search-input { width:100% !important; } .search-results { width:min(70vw,260px); } h1 { font-size:clamp(42px,14vw,70px); } }
 </style>
 </head>
 <body>
-<aside class="dock">
-  <div class="dock-brand">
-    <span class="mark"></span><span class="word">BLAZING<span> LOCK</span></span>
+<header class="appbar">
+  <a class="appbrand" href="{{ url_for('dashboard.home') }}">BLZ<span>/</span>WEB</a>
+  {% if status == "approved" %}<nav class="appnav">
+    <a href="{{ url_for('dashboard.home') }}">Home</a><a href="{{ url_for('dashboard.elo_leaderboard') }}">ELO</a><a href="{{ url_for('dashboard.economy_home') }}">Economy</a><a href="{{ url_for('dashboard.tryouts_home') }}">Tryouts</a><a href="{{ url_for('dashboard.matchmaking') }}">Matchmaking</a>
+    {% if show_staff %}<a href="{{ url_for('dashboard.staff_home') }}">Staff</a>{% endif %}{% if show_moderation %}<a href="{{ url_for('dashboard.moderation') }}">Moderation</a>{% endif %}{% if is_admin %}<a href="{{ url_for('dashboard.admin_access') }}">Admin</a>{% endif %}
+  </nav>{% endif %}
+  <div class="appactions">
+    <div class="search-shell"><input class="search-input" type="search" placeholder="Search" aria-label="Search this page"><div class="search-results"></div></div>
+    {% if user %}<img src="{{ user.avatar_url }}" alt=""><a href="{{ url_for('dashboard.logout') }}" class="btn small secondary">Log out</a>{% else %}<a href="{{ url_for('dashboard.login') }}" class="btn small">Log in with Discord</a>{% endif %}
+    <a href="/" class="btn small secondary">Back to site</a>
   </div>
-  {% if status == "approved" %}
-  <nav class="dock-nav">
-    <a href="{{ url_for('dashboard.home') }}"><span class="idx">01</span>Home</a>
-    <a href="{{ url_for('dashboard.elo_leaderboard') }}"><span class="idx">02</span>ELO</a>
-    <a href="{{ url_for('dashboard.economy_home') }}"><span class="idx">03</span>Economy</a>
-    <a href="{{ url_for('dashboard.tryouts_home') }}"><span class="idx">04</span>Tryouts</a>
-    <a href="{{ url_for('dashboard.matchmaking') }}"><span class="idx">05</span>Matchmaking</a>
-    {% if show_staff %}<a href="{{ url_for('dashboard.staff_home') }}"><span class="idx">06</span>Staff</a>{% endif %}
-    {% if show_moderation %}<a href="{{ url_for('dashboard.moderation') }}"><span class="idx">07</span>Moderation</a>{% endif %}
-    {% if is_admin %}<a href="{{ url_for('dashboard.admin_access') }}"><span class="idx">08</span>Admin{% if pending_count %}<span class="badge">{{ pending_count }}</span>{% endif %}</a>{% endif %}
-  </nav>
-  {% endif %}
-</aside>
-{% if status == "approved" %}
-<div class="helpbtn" tabindex="0">?<span class="tip">Move your cursor to the left edge to reveal the nav — or press <b>W</b> (not while typing) to pin it open, then <b>↑/↓</b> to move and <b>Enter</b> to jump. <b>W</b> or <b>Esc</b> closes it. On touch it's pinned to the bottom.</span></div>
-{% endif %}
-<div class="idbox">
-  <div class="search-shell"><input class="search-input" type="search" placeholder="Search" aria-label="Search this page"><div class="search-results"></div></div>
-  {% if user %}
-    <img src="{{ user.avatar_url }}" alt="">
-    {{ user.username }}
-    <a href="{{ url_for('dashboard.logout') }}" class="btn small secondary">Log out</a>
-  {% else %}
-    <a href="{{ url_for('dashboard.login') }}" class="btn small">Log in with Discord</a>
-  {% endif %}
-</div>
+</header>
 <main>
   {% for category, message in get_flashed_messages(with_categories=true) %}
     <div class="flash {{ category }}">{{ message }}</div>
@@ -637,70 +625,6 @@ LAYOUT = """<!doctype html>
   }
   document.querySelectorAll('.value').forEach(animateValue);
 
-  // Nav dock: hidden by default, spawns and follows exactly where the
-  // cursor is. Only on wide screens with a real mouse — the mobile media
-  // query pins it to the bottom instead.
-  var dock = document.querySelector('.dock');
-  if (dock && window.matchMedia('(min-width: 761px) and (hover: hover)').matches) {
-    var links = Array.prototype.slice.call(dock.querySelectorAll('.dock-nav a'));
-    var edge = 46, releaseAt = 260, hovering = false, hoverShown = false, pinned = false, selIdx = -1;
-    var mouseX = 0, mouseY = 0;
-
-    function isTyping() {
-      var el = document.activeElement, tag = el && el.tagName;
-      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (el && el.isContentEditable);
-    }
-    function setVisible(v) { dock.classList.toggle('show', v); }
-    function positionAt(x, y) {
-      var left = Math.max(8, Math.min(x + 8, window.innerWidth - dock.offsetWidth - 8));
-      var top = Math.max(8, Math.min(y - dock.offsetHeight / 2, window.innerHeight - dock.offsetHeight - 8));
-      dock.style.left = left + 'px'; dock.style.top = top + 'px';
-    }
-    function select(i) {
-      if (!links.length) return;
-      selIdx = Math.max(0, Math.min(i, links.length - 1));
-      links.forEach(function (a, n) { a.classList.toggle('kbd-active', n === selIdx); });
-    }
-    function clearSelect() {
-      links.forEach(function (a) { a.classList.remove('kbd-active'); });
-      selIdx = -1;
-    }
-
-    dock.addEventListener('mouseenter', function () { hovering = true; });
-    dock.addEventListener('mouseleave', function () { hovering = false; });
-    document.addEventListener('mousemove', function (e) {
-      mouseX = e.clientX; mouseY = e.clientY;
-      if (pinned) return;
-      if (e.clientX < edge || hovering) {
-        if (!hoverShown) { hoverShown = true; setVisible(true); }
-        positionAt(e.clientX, e.clientY);
-      } else if (e.clientX > releaseAt && hoverShown) {
-        hoverShown = false; setVisible(false);
-      }
-    });
-
-    document.addEventListener('keydown', function (e) {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if ((e.key === 'w' || e.key === 'W') && !isTyping()) {
-        e.preventDefault();
-        pinned = !pinned;
-        if (pinned) {
-          positionAt(mouseX, mouseY);
-          setVisible(true); select(0);
-        } else {
-          clearSelect(); setVisible(hoverShown);
-        }
-        return;
-      }
-      if (!pinned) return;
-      if (e.key === 'ArrowDown') { e.preventDefault(); select(selIdx + 1); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); select(selIdx - 1); }
-      else if (e.key === 'Enter' && selIdx >= 0) { links[selIdx].click(); }
-      else if (e.key === 'Escape') { pinned = false; clearSelect(); setVisible(hoverShown); }
-    });
-  }
-  var help = document.querySelector('.helpbtn');
-  if (help) help.addEventListener('click', function () { help.classList.toggle('open'); });
   document.querySelectorAll('.search-shell, .public-search').forEach(function (shell) {
     var input = shell.querySelector('input'), results = shell.querySelector('.search-results');
     if (!input || !results) return;
@@ -713,9 +637,11 @@ LAYOUT = """<!doctype html>
         var link = document.createElement('a'); link.href = '#' + el.id; link.textContent = el.textContent.trim().replace(/\\s+/g, ' ').slice(0, 70);
         link.addEventListener('click', function () { results.classList.remove('open'); input.value = ''; }); results.appendChild(link);
       });
+      if (!results.children.length) { var empty = document.createElement('div'); empty.textContent = 'No matches'; empty.style.cssText = 'padding:12px;color:var(--text-dim);font-size:12px;'; results.appendChild(empty); }
       results.classList.add('open');
     });
     input.addEventListener('keydown', function (event) { if (event.key === 'Escape') { input.value = ''; results.classList.remove('open'); input.blur(); } });
+    document.addEventListener('click', function (event) { if (!shell.contains(event.target)) results.classList.remove('open'); });
   });
   var levelTrack = document.querySelector('#levels .grid');
   if (levelTrack && window.innerWidth > 760) {
@@ -1137,7 +1063,7 @@ STAFF_HOME_TMPL = """
 <div class="grid">
   <a class="card" href="{{ url_for('dashboard.staff_announcements') }}"><strong>📣 Announcements</strong><br><span class="muted">Latest from the announcements channel</span></a>
   <a class="card" href="{{ url_for('dashboard.staff_guide') }}"><strong>⚖️ Escalation Guide</strong><br><span class="muted">Offense tiers &amp; punishment ladder</span></a>
-  <a class="card" href="{{ url_for('dashboard.staff_faq') }}"><strong>❓ Staff FAQ</strong><br><span class="muted">Latest from the staff FAQ channel</span></a>
+  <a class="card" href="{{ url_for('dashboard.staff_faq') }}"><strong>❓ Staff FAQ</strong><br><span class="muted">Moderation policies &amp; quick reference</span></a>
   <a class="card" href="{{ sheet_url }}" target="_blank" rel="noopener"><strong>📊 Staff Sheet</strong><br><span class="muted">Opens the shared spreadsheet ↗</span></a>
 </div>"""
 
@@ -1155,6 +1081,49 @@ STAFF_FEED_TMPL = """
 </div>
 {% endfor %}
 {% else %}<div class="card"><p class="empty">No messages in that channel yet.</p></div>{% endif %}"""
+
+STAFF_FAQ_TMPL = """
+<h1>Staff FAQ</h1>
+<p class="muted section-intro">A quick reference for context, intent, escalation, and staff conduct. When unsure, ask Management or HR before acting.</p>
+<div class="card faq-note"><strong>Core rule</strong><p class="muted">Do not punish a keyword by itself. Review the full context, intent, target, repetition, and severity.</p></div>
+{% for title, items in faq_sections %}<section class="faq-section"><h2>{{ title }}</h2>
+{% for question, answer in items %}<details class="faq-item"><summary>{{ question }}</summary><div class="faq-answer">{{ answer|safe }}</div></details>{% endfor %}
+</section>{% endfor %}
+"""
+
+STAFF_FAQ_SECTIONS = [
+  ("Time Off", [
+    ("How does LOA / Off-Duty work?", "Staff may request up to 7 days in <b>#loa-requests</b> for personal reasons, exams, or stress. Extensions need higher-management approval. While off-duty, do not handle tickets, moderation, staff work, meetings, or decisions. Inform Head Staff or Management when returning so the role can be removed."),
+  ]),
+  ("Context First", [
+    ("When is slang or a bypass acceptable?", "Casual, non-targeted slang and non-offensive bypasses generally need no action. Moderate intent and impact, not isolated words. Aggressive or targeted bypasses can begin with a verbal warning and escalate if repeated."),
+    ("What about drugs, threats, and religion?", "Ordinary conversation may be ignored or handled verbally. Intentional glorification, direct threats, or severe targeted remarks warrant stronger action. Religion disrespect generally starts at warning plus a 2-hour mute; death threats or wishes are ban-worthy because of the threat, not merely the religious topic."),
+    ("How are sensitive topics handled?", "A careless first mention may receive a verbal warning. Serious, repeated, or inappropriate remarks may receive a mute or timeout. Sexual content involving minors, serious harm, or clearly zero-tolerance material is an immediate ban. Always assess context and intent."),
+  ]),
+  ("Content & Profiles", [
+    ("How should GIF bypasses be handled?", "An automodded GIF containing mild bypass text does not need punishment unless it is spammed 3 or more times. Severe material, such as hard slurs, NSFW, or extremist references, may receive the appropriate action."),
+    ("What is the profile punishment rule?", "Severe slurs, extremist references, terrorism or abuse jokes, and similar content can be instant-ban cases. NSFW profile images or banners begin with an instant kick followed by a ban. Do not punish ordinary swear words in a profile."),
+    ("What counts as animal cruelty?", "Direct threats or violent statements toward animals can be banned; lesser violent remarks generally start verbal, then 2-hour mute. Clearly extreme real-looking violence can be an instant ban. Do not treat an overweight animal image as abuse without evidence of intentional harm or neglect."),
+  ]),
+  ("Advertising & Safety", [
+    ("How do I handle advertising and Roblox TOS violations?", "Discord group-chat links, private-server links, random video links, or platform usernames usually start with a verbal warning and can escalate for spam. Malicious or NSFW links can be ban-worthy. Account buying, selling, trading, or wagering money/Robux is a ban for violating Roblox TOS; account giveaways or requests start verbal."),
+    ("What is a compromised account?", "Suspicious links or messages sent without the owner's knowledge may indicate a hacked account. Ask other Staff or HR for guidance before deciding. Do not expose private investigation details."),
+    ("When can staff punish in DMs?", "Only when the situation escalated from the Blaze server and the DM offence itself qualifies, such as malicious or NSFW links, black-market activity, death threats, doxxing, hard slurs, or pedophilia. Random unsolicited DMs with no server connection should be ignored."),
+  ]),
+  ("Escalation & Confidentiality", [
+    ("How does stacking work?", "Stacking is allowed only within one specific offence path: verbal → mute → warn → ban, starting at the severity listed for that offence. Do not combine punishments from different offences. Harmful remarks have no mute step: warn, then ban if repeated."),
+    ("What is leaking?", "Do not share logs involving another person, internal discussions, guidelines, notes, or protocols with non-staff. A member may be told about action taken against themselves only when they ask. Leaking can lead to strikes or demotion."),
+    ("How should weird remarks, drama, and rule encouragement be handled?", "These generally begin with a verbal warning. Repetition can escalate to a 1- or 2-hour mute, then warn and ban. Use judgment and ask HR when the context is unclear."),
+  ]),
+  ("Commands & Corrections", [
+    ("Which commands are useful?", "<code>?modlogs [user]</code> shows history; <code>?reason [case id]</code> edits a reason; <code>?warn</code>, <code>?mute</code>, <code>?unmute</code>, <code>?kick</code>, and <code>?ban</code> apply moderation; <code>?modstats</code> shows stats; <code>?w [user]</code> checks profile details; <code>?case</code> changes a duration. Use <code>?modlogs</code> to find case numbers."),
+    ("How do I manually unmute someone?", "For an incorrect punishment, use <code>?w [user id]</code>, open the user's profile, choose Remove Timeout, and confirm. Do not use the unmute command for this correction."),
+  ]),
+]
+
+FAQ_STYLE = """
+<style>.faq-section{padding:0;border:0;margin:32px 0}.faq-item{border:1px solid var(--line);background:var(--surface);margin:8px 0;box-shadow:3px 3px 0 rgba(215,255,63,.12)}.faq-item summary{cursor:pointer;padding:16px 18px;font-weight:700;color:var(--text);list-style:'＋  '}.faq-item[open] summary{color:var(--accent);list-style:'－  '}.faq-answer{padding:0 18px 18px;color:var(--text-dim);line-height:1.7}.faq-answer code{color:var(--accent);background:var(--surface-2);padding:2px 5px}.faq-note{border-left:4px solid var(--accent)}</style>
+"""
 
 STAFF_GUIDE_TMPL = """
 <h1>Escalation Guide</h1>
@@ -1233,9 +1202,7 @@ def staff_announcements():
 @dash_bp.route("/staff/faq")
 @staff_required
 def staff_faq():
-    messages = fetch_staff_channel(STAFF_FAQ_CHANNEL_ID)
-    return page("Staff FAQ", STAFF_FEED_TMPL, heading="❓ Staff FAQ",
-                channel_name="staff-faq", messages=messages)
+  return page("Staff FAQ", FAQ_STYLE + STAFF_FAQ_TMPL, faq_sections=STAFF_FAQ_SECTIONS)
 
 
 @dash_bp.route("/staff/guide")
@@ -2724,14 +2691,16 @@ PUBLIC_LAYOUT = """<!doctype html>
   .topuser { position:relative; } .public-search { position:relative; display:flex; width:38px; height:38px; transition:width .25s; }
   .public-search::before { content:'⌕'; position:absolute; left:11px; top:6px; color:var(--accent); font-size:22px; z-index:1; pointer-events:none; }
   .public-search input { width:38px; margin:0; padding:0 10px 0 36px; border-color:var(--line-bright); transition:width .25s; } .public-search:hover,.public-search:focus-within { width:240px; } .public-search:hover input,.public-search:focus-within input { width:240px; }
-  .public-search .search-results { top:44px; right:0; }
+  .public-search input { height:38px; background:var(--surface); color:var(--text); font:12px var(--font-body); border:1px solid var(--line-bright); outline:none; }
+  .public-search .search-results { position:absolute; top:44px; right:0; width:240px; display:none; max-height:280px; overflow:auto; background:var(--surface); border:1px solid var(--line-bright); box-shadow:6px 6px 0 var(--accent); z-index:60; }
+  .public-search .search-results.open { display:block; } .public-search .search-results a { display:block; padding:11px 13px; color:var(--text-dim); border-bottom:1px solid var(--line); font-size:12px; } .public-search .search-results a:hover { background:var(--accent); color:var(--bg); text-decoration:none; }
   main { max-width:1280px; padding:0 28px 100px; } .hero { min-height:75vh; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:90px 20px 70px; position:relative; }
   .hero::after { content:'SCROLL TO EXPLORE'; position:absolute; bottom:22px; color:var(--accent); font-size:10px; letter-spacing:.18em; transform:rotate(-90deg); transform-origin:right; }
   .hero h1 { font-size:clamp(64px,14vw,180px); line-height:.78; letter-spacing:-.03em; max-width:1100px; } .hero h1::before { content:'↳ '; color:var(--accent); }
   section { padding:100px 0; border-top:1px solid var(--line-bright); } section > h2 { font-size:16px; color:var(--accent); border-left:0; border-top:1px solid var(--accent); padding:12px 0 0; max-width:260px; }
   .card,.level-card { background:linear-gradient(145deg,rgba(255,255,255,.07),rgba(255,255,255,.015)); border-color:var(--line); box-shadow:5px 5px 0 rgba(215,255,63,.14); } .card:hover,.level-card:hover { transform:translate(-3px,-3px); box-shadow:9px 9px 0 var(--accent); transition:transform .2s,box-shadow .2s; }
   .grid { gap:22px; } .chip { background:var(--accent); color:var(--bg); border-color:var(--accent); } .btn { background:var(--accent); border-color:var(--accent); } .btn.secondary { border-color:var(--line-bright); }
-  @media (max-width:760px) { .topbar-inner { padding:13px 16px; } .topuser { width:100%; justify-content:flex-end; } .public-search,.public-search:hover,.public-search:focus-within { width:min(52vw,240px); } .public-search input,.public-search:hover input,.public-search:focus-within input { width:100%; } main { padding:0 16px 80px; } .hero { min-height:78vh; padding-top:70px; } .hero h1 { font-size:clamp(62px,18vw,120px); } section { padding:70px 0; } }
+  @media (max-width:760px) { .topbar-inner { padding:13px 16px; } .topuser { width:100%; justify-content:flex-end; } .public-search,.public-search:hover,.public-search:focus-within { width:min(52vw,240px); } .public-search input,.public-search:hover input,.public-search:focus-within input { width:100%; } .public-search .search-results { width:min(78vw,280px); } main { padding:0 16px 80px; } .hero { min-height:78vh; padding-top:70px; } .hero h1 { font-size:clamp(62px,18vw,120px); } section { padding:70px 0; } }
 </style>
 </head>
 <body>
@@ -2773,9 +2742,11 @@ PUBLIC_LAYOUT = """<!doctype html>
         var link = document.createElement('a'); link.href = '#' + el.id; link.textContent = el.textContent.trim().replace(/\\s+/g, ' ').slice(0, 70);
         link.addEventListener('click', function () { results.classList.remove('open'); input.value = ''; }); results.appendChild(link);
       });
+      if (!results.children.length) { var empty = document.createElement('div'); empty.textContent = 'No matches'; empty.style.cssText = 'padding:12px;color:var(--text-dim);font-size:12px;'; results.appendChild(empty); }
       results.classList.add('open');
     });
     input.addEventListener('keydown', function (event) { if (event.key === 'Escape') { input.value = ''; results.classList.remove('open'); input.blur(); } });
+    document.addEventListener('click', function (event) { if (!shell.contains(event.target)) results.classList.remove('open'); });
   });
 })();
 </script>
@@ -2799,7 +2770,7 @@ LANDING_BODY = """
 <h1><span style="color:var(--accent);display:inline-block;vertical-align:-0.08em;"><svg width="0.75em" height="0.75em" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg></span> """ + SERVER_NAME + """</h1>
 <p class="muted">Ranked duels, tryouts, and a community built around competitive play. Log in with Discord to check your ELO, queue for a match, or manage your tryout status — right from the browser.</p>
 <div class="actions">
-<a class="btn" href='""" + botmod.SUPPORT_SERVER_URL + """'>Join the Discord</a>
+<a class="btn" href='""" + botmod.SUPPORT_SERVER_URL + """'>Support Discord Server</a>
 {% if user %}
 <a class="btn secondary" href="{{ url_for('dashboard.home') }}">Open Dashboard</a>
 {% else %}
