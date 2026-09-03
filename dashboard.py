@@ -463,6 +463,7 @@ LAYOUT = """<!doctype html>
   .flash {
     padding: 12px 16px; margin-bottom: 12px; font-size: 14px; position: relative;
     background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--text-dim);
+    overflow-wrap: anywhere;
   }
   .flash.success { border-left-color: var(--accent); }
   .flash.error { border-left-color: var(--danger); }
@@ -872,25 +873,45 @@ browser (like tapping the link inside Discord itself) instead of your regular br
         flash("Missing authorization code from Discord — please try again.", "error")
         return redirect(url_for("dashboard.home"))
 
-    token_resp = requests.post(
+    try:
+      token_resp = requests.post(
         OAUTH_TOKEN_URL,
         data={
-            "client_id": DISCORD_CLIENT_ID,
-            "client_secret": DISCORD_CLIENT_SECRET,
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": DASHBOARD_REDIRECT_URI,
+          "client_id": DISCORD_CLIENT_ID,
+          "client_secret": DISCORD_CLIENT_SECRET,
+          "grant_type": "authorization_code",
+          "code": code,
+          "redirect_uri": DASHBOARD_REDIRECT_URI,
         },
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         timeout=10,
-    )
+      )
+    except requests.RequestException:
+      logger.exception("!!! [DASHBOARD OAUTH] Token exchange request failed")
+      flash("Discord login is temporarily unavailable. Please try again.", "error")
+      return redirect(url_for("dashboard.home"))
     if token_resp.status_code != 200:
         logger.error(f"!!! [DASHBOARD OAUTH] Token exchange failed: {token_resp.status_code} {token_resp.text}")
         flash("Discord login failed during token exchange. Please try again.", "error")
         return redirect(url_for("dashboard.home"))
 
-    access_token = token_resp.json().get("access_token")
-    user_resp = requests.get(OAUTH_USER_URL, headers={"Authorization": f"Bearer {access_token}"}, timeout=10)
+    try:
+      access_token = token_resp.json().get("access_token")
+    except ValueError:
+      logger.error("!!! [DASHBOARD OAUTH] Token exchange returned invalid JSON")
+      flash("Discord login failed during token exchange. Please try again.", "error")
+      return redirect(url_for("dashboard.home"))
+    if not access_token:
+      logger.error("!!! [DASHBOARD OAUTH] Token exchange returned no access token")
+      flash("Discord login failed during token exchange. Please try again.", "error")
+      return redirect(url_for("dashboard.home"))
+
+    try:
+      user_resp = requests.get(OAUTH_USER_URL, headers={"Authorization": f"Bearer {access_token}"}, timeout=10)
+    except requests.RequestException:
+      logger.exception("!!! [DASHBOARD OAUTH] User profile request failed")
+      flash("Discord login is temporarily unavailable. Please try again.", "error")
+      return redirect(url_for("dashboard.home"))
     if user_resp.status_code != 200:
         logger.error(f"!!! [DASHBOARD OAUTH] User fetch failed: {user_resp.status_code} {user_resp.text}")
         flash("Discord login failed while fetching your profile. Please try again.", "error")
@@ -2965,7 +2986,6 @@ LANDING_BODY = """
 """
 
 
-@app.route("/")
 def public_landing():
     return public_page("Home", LANDING_BODY)
 
@@ -2985,7 +3005,7 @@ def _run_server():
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 
-def init_dashboard():
+def init_dashboard(flask_app=None):
     """Call this once from main.py, before starting the Discord bot:
 
         from dashboard import init_dashboard
@@ -2996,9 +3016,33 @@ def init_dashboard():
     thread — the SAME app/port Render's health check hits at "/", so nothing
     new needs to listen on a second port.
     """
+    global app
+    if flask_app is not None:
+      if flask_app is not botmod.app:
+        raise ValueError("init_dashboard() must use bot.py's existing Flask app")
+      app = flask_app
+
+    if getattr(app, "_blz_dashboard_initialized", False):
+      return
+
     app.secret_key = DASHBOARD_SECRET_KEY
-    app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
+    app.config.update(
+      SESSION_COOKIE_HTTPONLY=True,
+      SESSION_COOKIE_SAMESITE="Lax",
+      MAX_CONTENT_LENGTH=getattr(botmod, "MAX_ELO_BANNER_BYTES", 8 * 1024 * 1024) + 1024 * 1024,
+    )
     app.register_blueprint(dash_bp)
+
+    # bot.py may already have registered its health endpoint at '/'. Replace
+    # that view so the public landing page is the actual root response.
+    root_rules = [rule for rule in app.url_map.iter_rules() if rule.rule == "/"]
+    if root_rules:
+      for rule in root_rules:
+        app.view_functions[rule.endpoint] = public_landing
+    else:
+      app.add_url_rule("/", endpoint="public_landing", view_func=public_landing)
+
+    app._blz_dashboard_initialized = True
     logger.info(">>> [DASHBOARD] Web dashboard mounted at /dashboard")
 
     server_thread = Thread(target=_run_server, daemon=True)
