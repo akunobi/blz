@@ -190,6 +190,31 @@ access_col = botmod.db["dashboard_access"]
 access_col.create_index("status")
 access_col.create_index("is_admin")
 
+# Permanent audit trail for the admin-only EP/ELO Manager pages below. Every manual
+# override made from those pages is appended here and is never edited or deleted from
+# the dashboard itself — it's meant to be a durable accountability record, independent
+# of the weekly EP reset (which wipes tryout_quota_col) or any future ELO changes.
+audit_log_col = botmod.db["admin_audit_log"]
+audit_log_col.create_index([("type", 1), ("at", -1)])
+ADMIN_LOG_LIMIT = 300  # how many entries the log viewer pages show at once
+
+
+def _log_admin_change(change_type, target_id, target_name, old_value, new_value, reason, actor):
+    """Appends one permanent entry to the admin audit log. `change_type` is "ep" or
+    "elo". `actor` is the session's discord_user dict (the admin who made the change)."""
+    audit_log_col.insert_one({
+        "type": change_type,
+        "target_id": target_id,
+        "target_name": target_name,
+        "old_value": old_value,
+        "new_value": new_value,
+        "delta": new_value - old_value,
+        "reason": reason,
+        "changed_by": actor["id"],
+        "changed_by_name": actor["username"],
+        "at": datetime.now(timezone.utc),
+    })
+
 
 # =====================================================================================
 # HELPERS — running coroutines on the bot's event loop from this Flask thread
@@ -518,6 +543,7 @@ LAYOUT_EXTRA_CSS = """
   th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); }
   th { font-size: 11px; font-family: var(--font-body); text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim); border-bottom: 2px solid var(--line-bright); }
   tr:hover td { background: var(--surface-2); }
+  tr.hl td { background: rgba(var(--accent-rgb),.14); }
   .avatar-sm { width: 22px; height: 22px; border: 1px solid var(--line-bright); vertical-align: middle; margin-right: 9px; }
 
   .progress { background: var(--surface-2); border: 1px solid var(--line); height: 16px; overflow: hidden; padding: 2px; }
@@ -819,6 +845,8 @@ def home():
   {% if is_staff_addelo %}<a class="card" href="{{ url_for('dashboard.elo_settings') }}"><strong>🎨 ELO Card Settings</strong><br><span class="muted">Accent color &amp; banner</span></a>{% endif %}
   {% if is_moderator %}<a class="card" href="{{ url_for('dashboard.moderation') }}"><strong>🟥 Moderation DMs</strong><br><span class="muted">Send ban/warn notices</span></a>{% endif %}
   {% if show_staff %}<a class="card" href="{{ url_for('dashboard.staff_home') }}"><strong>🔒 Staff</strong><br><span class="muted">Announcements, FAQ, escalation guide &amp; sheet</span></a>{% endif %}
+  {% if is_admin %}<a class="card" href="{{ url_for('dashboard.admin_ep_manager') }}"><strong>📋 EP Manager</strong><br><span class="muted">Admin-only: edit tryouters' EP, with a permanent log</span></a>{% endif %}
+  {% if is_admin %}<a class="card" href="{{ url_for('dashboard.admin_elo_manager') }}"><strong>🏆 ELO Manager</strong><br><span class="muted">Admin-only: edit any player's ELO, with a permanent log</span></a>{% endif %}
   {% if is_admin %}<a class="card" href="{{ url_for('dashboard.admin_access') }}"><strong>🛡️ Manage Admins</strong><br><span class="muted">Escalate or revoke admin/staff access</span></a>{% endif %}
 </div>""",
                 elo=row.elo, rank_name=rank_name, rank_emoji=rank_emoji, pct=pct, progress_label=progress_label,
@@ -978,6 +1006,8 @@ ADMIN_ACCESS_TMPL = """
 <h1>Manage Admins</h1>
 <p class="muted">Anyone who has ever logged in to the dashboard shows up below. Root admins (the 3 built-in accounts) are always admins and can't be changed here. Everyone else can be escalated to admin, or individually granted the Staff section, with one click.</p>
 
+<div class="linkrow"><a href="{{ url_for('dashboard.admin_ep_manager') }}">📋 EP Manager</a><a href="{{ url_for('dashboard.admin_elo_manager') }}">🏆 ELO Manager</a></div>
+
 <div class="card">
 <h2 style="margin-top:0;">Root Admins</h2>
 <table><thead><tr><th>User</th><th></th></tr></thead><tbody>
@@ -1112,6 +1142,223 @@ def admin_staff_action(uid, action):
     else:
         flash(f"{uid} {'now has' if grant else 'no longer has'} staff access.", "success")
     return redirect(url_for("dashboard.admin_access"))
+
+
+# =====================================================================================
+# ADMIN — EP Manager (admin-only: set any tryouter's weekly EP directly)
+# =====================================================================================
+
+ADMIN_EP_MANAGER_TMPL = """
+<h1>📋 EP Manager</h1>
+<p class="muted">Admin-only. Set any tryouter's weekly EP directly — every change here is written to a permanent log below, it's never silent.</p>
+<div class="linkrow"><a href="{{ url_for('dashboard.admin_ep_logs') }}">🗒️ View change log</a></div>
+
+<h2>Check / add a specific user</h2>
+<div class="card">
+<form method="get" action="{{ url_for('dashboard.admin_ep_manager') }}">
+  <div class="row">
+    <div class="field"><label>Discord ID</label><input type="text" name="uid" placeholder="e.g. 123456789012345678"></div>
+  </div>
+  <button class="btn secondary">Add to table</button>
+</form>
+</div>
+
+<h2>Tryouters ({{ rows|length }})</h2>
+<div class="card">
+{% if rows %}
+<table><thead><tr><th>User</th><th>Current EP</th><th>Update</th></tr></thead><tbody>
+{% for r in rows %}
+<tr{% if r.id == highlight_id %} class="hl"{% endif %}>
+  <td>{{ r.name }} <span class="muted">({{ r.id }})</span></td>
+  <td>{{ r.ep }}</td>
+  <td>
+    <form class="inline" method="post" action="{{ url_for('dashboard.admin_ep_update', uid=r.id) }}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <input type="number" name="value" value="{{ r.ep }}" style="width:90px;margin:0;" required>
+      <input type="text" name="reason" placeholder="Reason (optional)" style="width:200px;margin:0;">
+      <button class="btn small">Save</button>
+    </form>
+  </td>
+</tr>
+{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">No tryouters with recorded EP right now.</p>{% endif %}
+</div>"""
+
+
+@dash_bp.route("/admin/ep")
+@admin_required
+def admin_ep_manager():
+    # Anyone currently holding a tryouter role, plus anyone with an EP entry for the
+    # current quota week (tryout_quota_col is wiped on each weekly reset, so this
+    # stays a short, relevant list rather than every tryouter who ever existed).
+    ids = _tryouter_ids() | {d["_id"] for d in botmod.tryout_quota_col.find({}, {"_id": 1})}
+    highlight_id = None
+    search_uid = request.args.get("uid", "").strip()
+    if search_uid:
+        try:
+            highlight_id = int(search_uid)
+            ids.add(highlight_id)
+        except ValueError:
+            flash("That doesn't look like a valid Discord ID.", "error")
+    rows = [{"id": uid, "name": display_name_for(uid), "ep": botmod._get_quota_ep_sync(uid)} for uid in ids]
+    rows.sort(key=lambda r: (-r["ep"], r["name"].lower()))
+    return page("EP Manager", ADMIN_EP_MANAGER_TMPL, rows=rows, highlight_id=highlight_id)
+
+
+@dash_bp.route("/admin/ep/<int:uid>/update", methods=["POST"])
+@admin_required
+def admin_ep_update(uid):
+    _check_csrf()
+    try:
+        new_value = max(0, int(request.form.get("value", "")))
+    except ValueError:
+        flash("EP must be a whole number.", "error")
+        return redirect(url_for("dashboard.admin_ep_manager"))
+    reason = request.form.get("reason", "").strip() or None
+    target_name = display_name_for(uid)
+    old_value = botmod._get_quota_ep_sync(uid)
+
+    botmod.tryout_quota_col.update_one({"_id": uid}, {"$set": {"ep": new_value}}, upsert=True)
+    _log_admin_change("ep", uid, target_name, old_value, new_value, reason, _discord_user())
+
+    flash(f"{target_name}'s EP: {old_value} → {new_value} ({new_value - old_value:+d}).", "success")
+    return redirect(url_for("dashboard.admin_ep_manager", uid=uid))
+
+
+@dash_bp.route("/admin/ep/logs")
+@admin_required
+def admin_ep_logs():
+    logs = list(audit_log_col.find({"type": "ep"}).sort("at", -1).limit(ADMIN_LOG_LIMIT))
+    return page("EP Change Log", ADMIN_LOG_TMPL, logs=logs, log_title="📋 EP Change Log",
+                back_url=url_for("dashboard.admin_ep_manager"), limit=ADMIN_LOG_LIMIT)
+
+
+# =====================================================================================
+# ADMIN — ELO Manager (admin-only: set any player's ELO directly)
+# =====================================================================================
+
+ADMIN_ELO_MANAGER_TMPL = """
+<h1>🏆 ELO Manager</h1>
+<p class="muted">Admin-only. Set any player's ELO directly — every change here is written to a permanent log below, it's never silent.</p>
+<div class="linkrow"><a href="{{ url_for('dashboard.admin_elo_logs') }}">🗒️ View change log</a></div>
+
+<h2>Check / add a specific user</h2>
+<div class="card">
+<form method="get" action="{{ url_for('dashboard.admin_elo_manager') }}">
+  <div class="row">
+    <div class="field"><label>Discord ID</label><input type="text" name="uid" placeholder="e.g. 123456789012345678"></div>
+  </div>
+  <button class="btn secondary">Add to table</button>
+</form>
+</div>
+
+<h2>Players (top {{ rows|length }} by ELO)</h2>
+<div class="card">
+{% if rows %}
+<table><thead><tr><th>User</th><th>Current ELO</th><th>Update</th></tr></thead><tbody>
+{% for r in rows %}
+<tr{% if r.id == highlight_id %} class="hl"{% endif %}>
+  <td>{{ r.name }} <span class="muted">({{ r.id }})</span></td>
+  <td>{{ r.elo }}</td>
+  <td>
+    <form class="inline" method="post" action="{{ url_for('dashboard.admin_elo_update', uid=r.id) }}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <input type="number" name="value" value="{{ r.elo }}" style="width:90px;margin:0;" required>
+      <input type="text" name="reason" placeholder="Reason (optional)" style="width:200px;margin:0;">
+      <button class="btn small">Save</button>
+    </form>
+  </td>
+</tr>
+{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">No players yet.</p>{% endif %}
+</div>"""
+
+
+@dash_bp.route("/admin/elo")
+@admin_required
+def admin_elo_manager():
+    rows = [
+        {"id": r.user_id, "name": display_name_for(r.user_id, fallback=r.username), "elo": r.elo}
+        for r in botmod._get_top_players_sync(100)
+    ]
+    highlight_id = None
+    search_uid = request.args.get("uid", "").strip()
+    if search_uid:
+        try:
+            highlight_id = int(search_uid)
+        except ValueError:
+            flash("That doesn't look like a valid Discord ID.", "error")
+        else:
+            # Only fetch/insert if they're not already in the top-100 list above.
+            if not any(r["id"] == highlight_id for r in rows):
+                found = _player_row(highlight_id)
+                rows.insert(0, {
+                    "id": found.user_id,
+                    "name": display_name_for(highlight_id, fallback=found.username),
+                    "elo": found.elo,
+                })
+    return page("ELO Manager", ADMIN_ELO_MANAGER_TMPL, rows=rows, highlight_id=highlight_id)
+
+
+@dash_bp.route("/admin/elo/<int:uid>/update", methods=["POST"])
+@admin_required
+def admin_elo_update(uid):
+    _check_csrf()
+    try:
+        new_value = max(0, int(request.form.get("value", "")))
+    except ValueError:
+        flash("ELO must be a whole number.", "error")
+        return redirect(url_for("dashboard.admin_elo_manager"))
+    reason = request.form.get("reason", "").strip() or None
+    target_name = display_name_for(uid)
+
+    botmod._get_or_create_player_sync(uid, target_name)
+    old_value = _player_row(uid).elo
+    delta = new_value - old_value
+    botmod._adjust_elo_sync(uid, delta)
+    _log_admin_change("elo", uid, target_name, old_value, new_value, reason, _discord_user())
+
+    flash(f"{target_name}'s ELO: {old_value} → {new_value} ({delta:+d}).", "success")
+    return redirect(url_for("dashboard.admin_elo_manager", uid=uid))
+
+
+@dash_bp.route("/admin/elo/logs")
+@admin_required
+def admin_elo_logs():
+    logs = list(audit_log_col.find({"type": "elo"}).sort("at", -1).limit(ADMIN_LOG_LIMIT))
+    return page("ELO Change Log", ADMIN_LOG_TMPL, logs=logs, log_title="🏆 ELO Change Log",
+                back_url=url_for("dashboard.admin_elo_manager"), limit=ADMIN_LOG_LIMIT)
+
+
+# =====================================================================================
+# ADMIN — shared change-log viewer template (EP and ELO manager pages both use this;
+# it's deliberately its own page rather than shown inline, so the manager pages stay
+# short and the full structured history is only ever a click away).
+# =====================================================================================
+
+ADMIN_LOG_TMPL = """
+<h1>{{ log_title }}</h1>
+<p class="muted">The last {{ logs|length }} change(s) (max {{ limit }}), newest first. This log is permanent — it can't be edited or cleared from the dashboard.</p>
+<div class="card">
+{% if logs %}
+<table><thead><tr><th>When (UTC)</th><th>Target</th><th>Old</th><th>New</th><th>Δ</th><th>Reason</th><th>Changed by</th></tr></thead><tbody>
+{% for l in logs %}
+<tr>
+  <td class="muted">{{ l.at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+  <td>{{ l.target_name }} <span class="muted">({{ l.target_id }})</span></td>
+  <td>{{ l.old_value }}</td>
+  <td>{{ l.new_value }}</td>
+  <td>{{ '%+d' % l.delta }}</td>
+  <td class="muted">{{ l.reason or "—" }}</td>
+  <td>{{ l.changed_by_name }} <span class="muted">({{ l.changed_by }})</span></td>
+</tr>
+{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">No changes have been logged yet.</p>{% endif %}
+</div>
+<div class="linkrow"><a href="{{ back_url }}">← Back</a></div>"""
 
 
 # =====================================================================================
