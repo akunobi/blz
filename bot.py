@@ -100,9 +100,31 @@ def health():
 intents = discord.Intents.default()
 intents.guilds = True
 intents.members = True  # needed to resolve players by ID when matching / reporting
+intents.message_content = True  # needed so the web dashboard's Staff pages can read
+                                 # the Announcements/Staff FAQ channels (enable this
+                                 # privileged intent for the app in the Discord dev portal)
 
 client = commands.Bot(command_prefix="!", intents=intents)
 bot_ready_event = threading.Event()
+
+
+async def fetch_channel_messages(channel_id, limit=25):
+    """Reads the most recent messages from a channel (bot has admin perms in the
+    guild, so this works on any channel) and returns them oldest-first as plain
+    dicts — used by the dashboard's Staff -> Announcements/FAQ pages."""
+    channel = client.get_channel(channel_id) or await client.fetch_channel(channel_id)
+    messages = [m async for m in channel.history(limit=limit)]
+    messages.reverse()
+    return [
+        {
+            "author": m.author.display_name,
+            "avatar": str(m.author.display_avatar.replace(size=64)),
+            "content": m.content,
+            "created_at": m.created_at,
+            "jump_url": m.jump_url,
+        }
+        for m in messages
+    ]
 
 # =====================================================================================
 # DATABASE (MongoDB Atlas via pymongo) — player ELO, records, and duel history for
