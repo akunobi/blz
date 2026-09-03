@@ -74,16 +74,26 @@ LARGE_ELO_GAP_UNRANKED = 500    # ELO gap above which a ranked duel is voided (n
 app = Flask(__name__)
 
 
-@app.route("/")
+@app.route("/health")
 def health():
     return jsonify({"status": "ok", "bot": "BLZ-T Matchmaking"}), 200
 
 
-# NOTE: this `app` is served by dashboard.py's init_dashboard() (started from
+# NOTE: "/" itself is NOT defined here anymore — it used to just return the
+# JSON blob above, but dashboard.py now registers a real public landing page
+# (server FAQ / XP+levels / roles, with a "Log in with Discord" button)
+# directly on this same `app` object at "/". That route only gets registered
+# once dashboard.py is imported (see main.py), so don't add another
+# @app.route("/") here — Flask/Werkzeug will happily register two rules for
+# the same path, but only the FIRST one added ever gets matched, silently
+# shadowing the second. Use /health above if something just needs a plain
+# JSON status ping (e.g. an uptime monitor) instead of the full HTML page.
+#
+# This `app` is served by dashboard.py's init_dashboard() (started from
 # main.py in a background thread), which also mounts the /dashboard blueprint
-# onto it — so this same Flask instance answers both "/" (health check) and
-# every "/dashboard/..." page on the one Render port. Nothing here needs to
-# call app.run() itself.
+# onto it — so this same Flask instance answers "/", "/health", and every
+# "/dashboard/..." page on the one Render port. Nothing here needs to call
+# app.run() itself.
 
 
 # --- DISCORD BOT SETUP ---
