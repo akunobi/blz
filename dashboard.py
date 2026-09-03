@@ -543,7 +543,7 @@ LAYOUT = """<!doctype html>
   }
   :root { --bg:#080808; --surface:#111; --surface-2:#191919; --line:#303030; --line-bright:#686868; --text:#f4f0e8; --text-dim:#9b968d; --accent:#d7ff3f; --accent-dim:#26300c; --danger:#ff5c5c; --font-display:'Big Shoulders',sans-serif; --font-body:'JetBrains Mono',monospace; }
   body { background-color:var(--bg); background-image:radial-gradient(circle at 85% 10%,rgba(215,255,63,.12),transparent 28%),linear-gradient(135deg,transparent 0 49%,rgba(255,255,255,.035) 50% 50.2%,transparent 50.4%),linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px); background-size:auto,auto,48px 48px; overflow-x:hidden; }
-  body::before { content:'BLZ / 2026'; position:fixed; right:24px; bottom:18px; color:var(--line-bright); font:10px var(--font-body); letter-spacing:.16em; writing-mode:vertical-rl; z-index:2; pointer-events:none; }
+  body::before { display:none; }
   main { max-width:1180px; padding:clamp(92px,12vw,150px) clamp(20px,6vw,72px) 110px; }
   .dock { width:240px; background:rgba(17,17,17,.94); border:1px solid var(--line-bright); box-shadow:12px 12px 0 var(--accent); }
   .dock-brand { padding:20px; } .dock-brand .mark { background:var(--accent); }
@@ -553,7 +553,7 @@ LAYOUT = """<!doctype html>
   .search-shell { position:relative; display:flex; align-items:center; width:38px; height:38px; overflow:visible; }
   .search-shell::before { content:'⌕'; position:absolute; left:12px; top:7px; color:var(--accent); font-size:22px; pointer-events:none; z-index:1; }
   .search-input { width:38px !important; height:38px; margin:0 !important; padding:0 12px 0 38px !important; background:var(--surface) !important; border:1px solid var(--line-bright) !important; color:var(--text) !important; transition:width .25s cubic-bezier(.2,.8,.2,1),box-shadow .25s; }
-  .search-shell:hover,.search-shell:focus-within { width:260px; } .search-shell:hover .search-input,.search-shell:focus-within .search-input { width:260px !important; box-shadow:6px 6px 0 var(--accent); }
+  .appactions .search-shell { width:clamp(190px,24vw,380px); } .appactions .search-input { width:100% !important; box-shadow:none; } .appactions .search-shell:focus-within .search-input { box-shadow:4px 4px 0 var(--accent); }
   .search-results { position:absolute; top:44px; right:0; width:260px; background:var(--surface); border:1px solid var(--line-bright); display:none; max-height:280px; overflow:auto; box-shadow:6px 6px 0 var(--accent); }
   .search-results.open { display:block; } .search-results a { display:block; padding:11px 13px; color:var(--text-dim); border-bottom:1px solid var(--line); font-size:12px; } .search-results a:hover { background:var(--accent); color:var(--bg); text-decoration:none; }
   h1 { font-size:clamp(38px,7vw,82px); max-width:850px; line-height:.9; letter-spacing:0; margin-bottom:28px; } h1::before { content:'↳ '; color:var(--accent); }
@@ -569,7 +569,7 @@ LAYOUT = """<!doctype html>
   .appnav { display:flex; align-items:center; gap:4px; flex:1; overflow:auto; } .appnav a { padding:8px 10px; color:var(--text-dim); font-size:11px; text-transform:uppercase; letter-spacing:.06em; white-space:nowrap; } .appnav a:hover { color:var(--accent); text-decoration:none; background:var(--accent-dim); }
   .appactions { display:flex; align-items:center; gap:10px; margin-left:auto; white-space:nowrap; } .appactions img { width:26px; height:26px; border:1px solid var(--line-bright); }
   @media (max-width:760px) { .appbar { flex-wrap:wrap; gap:8px; padding:9px 14px; } .appnav { order:3; flex-basis:100%; margin:0 -14px; padding:0 14px 3px; } .appactions { margin-left:auto; } main { padding-top:128px; } }
-  @media (max-width:760px) { body::before { display:none; } main { padding-top:92px; } .idbox { top:14px; right:14px; } .search-shell,.search-shell:hover,.search-shell:focus-within { width:min(48vw,220px); } .search-input,.search-shell:hover .search-input,.search-shell:focus-within .search-input { width:100% !important; } .search-results { width:min(70vw,260px); } h1 { font-size:clamp(42px,14vw,70px); } }
+  @media (max-width:760px) { main { padding-top:128px; } .appactions { width:100%; } .appactions .search-shell { width:100%; } .search-input { width:100% !important; } .search-results { width:min(86vw,320px); } h1 { font-size:clamp(42px,14vw,70px); } }
 </style>
 </head>
 <body>
@@ -2690,17 +2690,18 @@ PUBLIC_LAYOUT = """<!doctype html>
   .toplinks a:hover { color:var(--accent); border-color:var(--accent); }
   .topuser { position:relative; } .public-search { position:relative; display:flex; width:38px; height:38px; transition:width .25s; }
   .public-search::before { content:'⌕'; position:absolute; left:11px; top:6px; color:var(--accent); font-size:22px; z-index:1; pointer-events:none; }
-  .public-search input { width:38px; margin:0; padding:0 10px 0 36px; border-color:var(--line-bright); transition:width .25s; } .public-search:hover,.public-search:focus-within { width:240px; } .public-search:hover input,.public-search:focus-within input { width:240px; }
+  .public-search { width:clamp(190px,22vw,320px); }
+  .public-search input { width:100%; margin:0; padding:0 10px 0 36px; border-color:var(--line-bright); }
   .public-search input { height:38px; background:var(--surface); color:var(--text); font:12px var(--font-body); border:1px solid var(--line-bright); outline:none; }
   .public-search .search-results { position:absolute; top:44px; right:0; width:240px; display:none; max-height:280px; overflow:auto; background:var(--surface); border:1px solid var(--line-bright); box-shadow:6px 6px 0 var(--accent); z-index:60; }
   .public-search .search-results.open { display:block; } .public-search .search-results a { display:block; padding:11px 13px; color:var(--text-dim); border-bottom:1px solid var(--line); font-size:12px; } .public-search .search-results a:hover { background:var(--accent); color:var(--bg); text-decoration:none; }
   main { max-width:1280px; padding:0 28px 100px; } .hero { min-height:75vh; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:90px 20px 70px; position:relative; }
-  .hero::after { content:'SCROLL TO EXPLORE'; position:absolute; bottom:22px; color:var(--accent); font-size:10px; letter-spacing:.18em; transform:rotate(-90deg); transform-origin:right; }
+  .hero::after { content:'SCROLL TO EXPLORE'; position:absolute; bottom:22px; left:50%; color:var(--accent); font-size:10px; letter-spacing:.18em; transform:translateX(-50%); }
   .hero h1 { font-size:clamp(64px,14vw,180px); line-height:.78; letter-spacing:-.03em; max-width:1100px; } .hero h1::before { content:'↳ '; color:var(--accent); }
   section { padding:100px 0; border-top:1px solid var(--line-bright); } section > h2 { font-size:16px; color:var(--accent); border-left:0; border-top:1px solid var(--accent); padding:12px 0 0; max-width:260px; }
   .card,.level-card { background:linear-gradient(145deg,rgba(255,255,255,.07),rgba(255,255,255,.015)); border-color:var(--line); box-shadow:5px 5px 0 rgba(215,255,63,.14); } .card:hover,.level-card:hover { transform:translate(-3px,-3px); box-shadow:9px 9px 0 var(--accent); transition:transform .2s,box-shadow .2s; }
   .grid { gap:22px; } .chip { background:var(--accent); color:var(--bg); border-color:var(--accent); } .btn { background:var(--accent); border-color:var(--accent); } .btn.secondary { border-color:var(--line-bright); }
-  @media (max-width:760px) { .topbar-inner { padding:13px 16px; } .topuser { width:100%; justify-content:flex-end; } .public-search,.public-search:hover,.public-search:focus-within { width:min(52vw,240px); } .public-search input,.public-search:hover input,.public-search:focus-within input { width:100%; } .public-search .search-results { width:min(78vw,280px); } main { padding:0 16px 80px; } .hero { min-height:78vh; padding-top:70px; } .hero h1 { font-size:clamp(62px,18vw,120px); } section { padding:70px 0; } }
+  @media (max-width:760px) { .topbar-inner { padding:13px 16px; } .topuser { width:100%; justify-content:flex-end; flex-wrap:wrap; } .public-search { width:100%; flex-basis:100%; } .public-search .search-results { width:min(86vw,320px); } main { padding:0 16px 80px; } .hero { min-height:78vh; padding-top:70px; } .hero h1 { font-size:clamp(62px,18vw,120px); } section { padding:70px 0; } }
 </style>
 </head>
 <body>
