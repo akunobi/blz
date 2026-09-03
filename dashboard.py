@@ -9,13 +9,18 @@ a browser instead of typing commands.
 
 WHAT IT DOES
 ------------
-1. Discord login (OAuth2) instead of a bot invite / server nickname.
-2. Every NEW login is put in a "pending" queue. Only the 3 admin Discord
-   accounts below can approve or deny a pending login, from
-   Admin -> Access Requests. Nobody else can use the rest of the dashboard
-   until one of those 3 approves them. Approved status is remembered
-   (stored in Mongo), so people don't need re-approval on every login.
-3. Web pages standing in for the slash commands:
+1. A public landing page at "/" — server info (FAQ, XP/levels, roles) with
+   a "Log in with Discord" button. This is what visitors see automatically;
+   nobody needs to know the "/dashboard" URL exists.
+2. Discord login (OAuth2) instead of a bot invite / server nickname. Any
+   Discord account can log in and use the dashboard right away — there is
+   no manual "approve this person" step anymore.
+3. The 3 admin Discord accounts below (ADMIN_DISCORD_IDS) — plus anyone
+   they promote — can grant or revoke "admin" status for other logged-in
+   members, from Admin -> Manage Admins. This only controls access to the
+   admin-only pages (moderation DMs stay role-gated exactly as before); it
+   no longer gates basic dashboard login the way the old approval queue did.
+4. Web pages standing in for the slash commands:
 
      /elo             -> /elo, /leaderboard
      /elo/<id>        -> /elo <player>, /addelo (staff)
@@ -134,9 +139,13 @@ if not os.getenv("DASHBOARD_SECRET_KEY"):
         "in Render's env vars to fix this permanently."
     )
 
-# The only 3 people who can approve/deny dashboard login requests. They are
-# always treated as approved themselves the moment they log in.
+# The 3 "root" admins. They always have admin access and can promote/demote
+# any other logged-in member to/from admin from Admin -> Manage Admins. Root
+# admins themselves can't be demoted through the dashboard UI.
 ADMIN_DISCORD_IDS = {1075463469865906216, 898579360720764999, 1375115979285073951}
+
+# Public-facing name used on the landing page / <title> / support-server links.
+SERVER_NAME = "Blaze Strikers"
 
 # Coin emoji images for the web dashboard. bot.py's CURRENCY/COIN1-4 constants are
 # Discord's <:name:id> markup, which only renders inside Discord clients -- in a
@@ -173,6 +182,7 @@ dash_bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
 # to — nothing new to configure.
 access_col = botmod.db["dashboard_access"]
 access_col.create_index("status")
+access_col.create_index("is_admin")
 
 
 # =====================================================================================
@@ -265,10 +275,23 @@ def _check_csrf():
 
 
 def _access_status(user_id):
+    """Any Discord account that has ever logged in (or a root admin) has
+    full dashboard access — there's no approval queue anymore. This still
+    returns the string "approved" (rather than a bool) so every existing
+    `{% if status == "approved" %}` check in the templates keeps working
+    unchanged."""
     if user_id in ADMIN_DISCORD_IDS:
         return "approved"
+    return "approved" if access_col.find_one({"_id": user_id}) else None
+
+
+def is_admin_user(user_id):
+    """True for the 3 root admins, or anyone a root admin has promoted from
+    Admin -> Manage Admins."""
+    if user_id in ADMIN_DISCORD_IDS:
+        return True
     doc = access_col.find_one({"_id": user_id})
-    return doc["status"] if doc else None
+    return bool(doc and doc.get("is_admin"))
 
 
 def login_required(view):
@@ -281,6 +304,9 @@ def login_required(view):
 
 
 def approved_required(view):
+    """Kept as its own decorator (rather than swapping every route over to
+    login_required) in case a future feature needs to suspend a specific
+    member's dashboard access again without touching every route."""
     @wraps(view)
     def wrapped(*args, **kwargs):
         user = _discord_user()
@@ -296,7 +322,7 @@ def admin_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         user = _discord_user()
-        if not user or user["id"] not in ADMIN_DISCORD_IDS:
+        if not user or not is_admin_user(user["id"]):
             abort(403)
         return view(*args, **kwargs)
     return wrapped
@@ -631,9 +657,9 @@ def page(title, body_template, **ctx):
     if user:
         uid = user["id"]
         status = _access_status(uid)
-        is_admin = uid in ADMIN_DISCORD_IDS
+        is_admin = is_admin_user(uid)
         show_moderation = has_role(uid, botmod.BANDM_ROLE_ID) or has_role(uid, botmod.BANDM_TEST_ROLE_ID)
-        pending_count = access_col.count_documents({"status": "pending"}) if is_admin else 0
+        pending_count = 0
     else:
         status, is_admin, show_moderation, pending_count = None, False, False, 0
 
@@ -675,21 +701,7 @@ def home():
 <h1>⚔️ BLZ-T Dashboard</h1>
 <p class="muted">Manage ELO, the economy, tryouts, matchmaking and more — right from the browser.</p>
 <a class="btn" href="{{ url_for('dashboard.login') }}">Log in with Discord</a>
-<p class="muted" style="margin-top:16px;font-size:13px;">First-time logins need to be approved by a BLZ-T admin before the rest of the dashboard unlocks.</p>
 </div>""")
-
-    status = _access_status(user["id"])
-    if status != "approved":
-        return page("Pending Approval", """
-<div class="card center" style="padding:50px 20px;">
-{% if status == "denied" %}
-<h1>🚫 Access denied</h1>
-<p class="muted">An admin has denied dashboard access for your account. If you think this is a mistake, reach out to a BLZ-T admin.</p>
-{% else %}
-<h1>⏳ Waiting for approval</h1>
-<p class="muted">Your login request has been sent. One of the 3 dashboard admins needs to approve it before you can use the rest of the dashboard. Check back soon!</p>
-{% endif %}
-</div>""", status=status)
 
     uid = user["id"]
     row = _player_row(uid)
@@ -739,13 +751,13 @@ def home():
   {% if is_staff_addelo %}<a class="card" href="{{ url_for('dashboard.tryouts_in') }}"><strong>🟢 Manage IN</strong><br><span class="muted">Excuse tryouters from quota</span></a>{% endif %}
   {% if is_staff_addelo %}<a class="card" href="{{ url_for('dashboard.elo_settings') }}"><strong>🎨 ELO Card Settings</strong><br><span class="muted">Accent color &amp; banner</span></a>{% endif %}
   {% if is_moderator %}<a class="card" href="{{ url_for('dashboard.moderation') }}"><strong>🟥 Moderation DMs</strong><br><span class="muted">Send ban/warn notices</span></a>{% endif %}
-  {% if is_admin %}<a class="card" href="{{ url_for('dashboard.admin_access') }}"><strong>🛡️ Access Requests</strong><br><span class="muted">Approve or deny new logins</span></a>{% endif %}
+  {% if is_admin %}<a class="card" href="{{ url_for('dashboard.admin_access') }}"><strong>🛡️ Manage Admins</strong><br><span class="muted">Escalate or revoke admin access</span></a>{% endif %}
 </div>""",
                 elo=row.elo, rank_name=rank_name, rank_emoji=rank_emoji, pct=pct, progress_label=progress_label,
                 balance=econ_doc["balance"], is_tryouter=is_tryouter, ep=ep, quota_ep_target=botmod.TRYOUT_QUOTA_EP,
                 queued_modes=queued_modes, is_staff_addelo=has_role(uid, botmod.ADDELO_ROLE_ID),
                 is_moderator=has_role(uid, botmod.BANDM_ROLE_ID) or has_role(uid, botmod.BANDM_TEST_ROLE_ID),
-                is_admin=uid in ADMIN_DISCORD_IDS)
+                is_admin=is_admin_user(uid))
 
 
 @dash_bp.route("/login")
@@ -831,24 +843,25 @@ browser (like tapping the link inside Discord itself) instead of your regular br
     }
     session["csrf"] = secrets.token_hex(16)
 
+    # Every login is granted dashboard access immediately — no admin needs to
+    # approve it. We still upsert a record per user so the "Manage Admins"
+    # page has a list of logged-in members to promote from, and so we can
+    # tell root admins apart from promoted ones.
     now = datetime.now(timezone.utc)
-    if user_id in ADMIN_DISCORD_IDS:
+    existing = access_col.find_one({"_id": user_id})
+    if existing is None:
+        access_col.insert_one({
+            "_id": user_id, "username": username, "avatar": avatar_hash,
+            "status": "approved", "is_admin": user_id in ADMIN_DISCORD_IDS,
+            "first_login_at": now, "last_login_at": now,
+            "promoted_by": None, "promoted_at": None,
+        })
+        logger.info(f">>> [DASHBOARD] New dashboard login from {username} ({user_id})")
+    else:
         access_col.update_one(
             {"_id": user_id},
-            {"$set": {"username": username, "avatar": avatar_hash, "status": "approved"},
-             "$setOnInsert": {"requested_at": now}},
-            upsert=True,
+            {"$set": {"username": username, "avatar": avatar_hash, "status": "approved", "last_login_at": now}},
         )
-    else:
-        existing = access_col.find_one({"_id": user_id})
-        if existing is None:
-            access_col.insert_one({
-                "_id": user_id, "username": username, "avatar": avatar_hash,
-                "status": "pending", "requested_at": now, "decided_at": None, "decided_by": None,
-            })
-            logger.info(f">>> [DASHBOARD] New access request from {username} ({user_id})")
-        else:
-            access_col.update_one({"_id": user_id}, {"$set": {"username": username, "avatar": avatar_hash}})
 
     dest = session.pop("next", None) or url_for("dashboard.home")
     return redirect(dest)
@@ -865,95 +878,92 @@ def logout():
 # =====================================================================================
 
 ADMIN_ACCESS_TMPL = """
-<h1>Access Requests</h1>
-<p class="muted">Only the 3 configured admin accounts can see this page. Approve or deny people who've logged in to the dashboard.</p>
+<h1>Manage Admins</h1>
+<p class="muted">Anyone who has ever logged in to the dashboard shows up below. Root admins (the 3 built-in accounts) are always admins and can't be changed here. Everyone else can be escalated to admin — or demoted back to a regular member — with one click.</p>
 
 <div class="card">
-<h2 style="margin-top:0;">Pending ({{ pending|length }})</h2>
-{% if pending %}
-<table><thead><tr><th>User</th><th>Requested</th><th></th></tr></thead><tbody>
-{% for r in pending %}
+<h2 style="margin-top:0;">Root Admins</h2>
+<table><thead><tr><th>User</th><th></th></tr></thead><tbody>
+{% for r in root_admins %}
 <tr>
   <td>{{ r.username }} <span class="muted">({{ r._id }})</span></td>
-  <td class="muted">{{ r.requested_at.strftime('%Y-%m-%d %H:%M UTC') if r.requested_at else '' }}</td>
-  <td>
-    <form class="inline" method="post" action="{{ url_for('dashboard.admin_access_action', uid=r._id, action='approve') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small success">Approve</button>
-    </form>
-    <form class="inline" method="post" action="{{ url_for('dashboard.admin_access_action', uid=r._id, action='deny') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small danger">Deny</button>
-    </form>
-  </td>
+  <td><span class="pill approved">Root Admin</span></td>
 </tr>
 {% endfor %}
 </tbody></table>
-{% else %}<p class="empty">No pending requests.</p>{% endif %}
 </div>
 
 <div class="card">
-<h2 style="margin-top:0;">Approved</h2>
-{% if approved %}
-<table><thead><tr><th>User</th><th>Decided</th><th></th></tr></thead><tbody>
-{% for r in approved %}
+<h2 style="margin-top:0;">Promoted Admins ({{ promoted|length }})</h2>
+{% if promoted %}
+<table><thead><tr><th>User</th><th>Admin since</th><th></th></tr></thead><tbody>
+{% for r in promoted %}
 <tr>
   <td>{{ r.username }} <span class="muted">({{ r._id }})</span></td>
-  <td class="muted">{{ r.decided_at.strftime('%Y-%m-%d %H:%M UTC') if r.decided_at else '' }}</td>
+  <td class="muted">{{ r.promoted_at.strftime('%Y-%m-%d %H:%M UTC') if r.promoted_at else '' }}</td>
   <td>
-    <form class="inline" method="post" action="{{ url_for('dashboard.admin_access_action', uid=r._id, action='deny') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small danger">Revoke</button>
+    <form class="inline" method="post" action="{{ url_for('dashboard.admin_access_action', uid=r._id, action='demote') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small danger">Revoke Admin</button>
     </form>
   </td>
 </tr>
 {% endfor %}
 </tbody></table>
-{% else %}<p class="empty">Nobody approved yet.</p>{% endif %}
+{% else %}<p class="empty">Nobody's been promoted yet.</p>{% endif %}
 </div>
 
 <div class="card">
-<h2 style="margin-top:0;">Denied</h2>
-{% if denied %}
-<table><thead><tr><th>User</th><th>Decided</th><th></th></tr></thead><tbody>
-{% for r in denied %}
+<h2 style="margin-top:0;">Members ({{ members|length }})</h2>
+{% if members %}
+<table><thead><tr><th>User</th><th>First login</th><th></th></tr></thead><tbody>
+{% for r in members %}
 <tr>
   <td>{{ r.username }} <span class="muted">({{ r._id }})</span></td>
-  <td class="muted">{{ r.decided_at.strftime('%Y-%m-%d %H:%M UTC') if r.decided_at else '' }}</td>
+  <td class="muted">{{ r.first_login_at.strftime('%Y-%m-%d %H:%M UTC') if r.first_login_at else '' }}</td>
   <td>
-    <form class="inline" method="post" action="{{ url_for('dashboard.admin_access_action', uid=r._id, action='approve') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small success">Approve</button>
+    <form class="inline" method="post" action="{{ url_for('dashboard.admin_access_action', uid=r._id, action='promote') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small success">Escalate to Admin</button>
     </form>
   </td>
 </tr>
 {% endfor %}
 </tbody></table>
-{% else %}<p class="empty">Nobody denied.</p>{% endif %}
+{% else %}<p class="empty">Nobody's logged in yet.</p>{% endif %}
 </div>"""
 
 
 @dash_bp.route("/admin/access")
 @admin_required
 def admin_access():
-    pending = list(access_col.find({"status": "pending"}).sort("requested_at", 1))
-    approved = list(access_col.find({"status": "approved"}).sort("decided_at", -1))
-    denied = list(access_col.find({"status": "denied"}).sort("decided_at", -1))
-    return page("Access Requests", ADMIN_ACCESS_TMPL, pending=pending, approved=approved, denied=denied)
+    root_admins = list(access_col.find({"_id": {"$in": list(ADMIN_DISCORD_IDS)}}))
+    promoted = list(access_col.find({"is_admin": True, "_id": {"$nin": list(ADMIN_DISCORD_IDS)}}).sort("promoted_at", -1))
+    members = list(access_col.find({"is_admin": {"$ne": True}, "_id": {"$nin": list(ADMIN_DISCORD_IDS)}}).sort("last_login_at", -1))
+    return page("Manage Admins", ADMIN_ACCESS_TMPL, root_admins=root_admins, promoted=promoted, members=members)
 
 
 @dash_bp.route("/admin/access/<int:uid>/<action>", methods=["POST"])
 @admin_required
 def admin_access_action(uid, action):
     _check_csrf()
-    if action not in ("approve", "deny"):
+    if action not in ("promote", "demote"):
         abort(404)
     if uid in ADMIN_DISCORD_IDS:
-        flash("Admins are always approved — nothing to change.", "info")
+        flash("Root admins already have admin access — nothing to change.", "info")
         return redirect(url_for("dashboard.admin_access"))
-    status = "approved" if action == "approve" else "denied"
-    access_col.update_one(
+    make_admin = action == "promote"
+    now = datetime.now(timezone.utc)
+    result = access_col.update_one(
         {"_id": uid},
-        {"$set": {"status": status, "decided_at": datetime.now(timezone.utc), "decided_by": _discord_user()["id"]}},
-        upsert=True,
+        {"$set": {
+            "is_admin": make_admin,
+            "promoted_by": _discord_user()["id"] if make_admin else None,
+            "promoted_at": now if make_admin else None,
+        }},
     )
-    flash(f"Request for {uid} set to {status}.", "success")
+    if result.matched_count == 0:
+        flash("That user hasn't logged in to the dashboard yet.", "error")
+    else:
+        flash(f"{uid} is {'now an admin' if make_admin else 'no longer an admin'}.", "success")
     return redirect(url_for("dashboard.admin_access"))
 
 
@@ -2306,6 +2316,276 @@ def moderation_warn():
         ok, msg = False, str(e)
     flash(msg, "success" if ok else "error")
     return redirect(url_for("dashboard.moderation"))
+
+
+# =====================================================================================
+# PUBLIC LANDING PAGE — served at site root "/" (NOT under /dashboard, and not
+# gated by login). This is what blazing.devs.surf shows automatically now,
+# replacing the old {"bot": "BLZ-T Matchmaking", "status": "ok"} JSON health
+# check (that route lived in bot.py — see the comment left there). It reuses
+# the same color/font scheme as the dashboard above for consistency, but
+# with a plain top bar instead of the dashboard's hover-triggered side dock,
+# since this page is public and doesn't need a big authenticated nav.
+#
+# Content below is transcribed from the server's own info channels (FAQ,
+# level-role perks, staff/community role descriptions). Edit the HTML in
+# LANDING_BODY directly to add/change sections later.
+# =====================================================================================
+
+PUBLIC_LAYOUT = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }} · """ + SERVER_NAME + """</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Big+Shoulders:wght@700;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+  :root {
+    --bg: #08090a; --surface: #101214; --surface-2: #17191c;
+    --line: #2a2e31; --line-bright: #3d4348;
+    --text: #e7e9ea; --text-dim: #7d8489;
+    --accent: #6dff5a; --accent-dim: #234d1c;
+    --danger: #ff4d4d; --warn: #ffb020; --info: #4da3ff;
+    --font-display: 'Big Shoulders', sans-serif;
+    --font-body: 'JetBrains Mono', monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; font-family: var(--font-body); font-size: 15px; color: var(--text); min-height: 100vh;
+    background-color: var(--bg);
+    background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+                       linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+    background-size: 34px 34px;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  h1 { font-family: var(--font-display); font-weight: 900; font-size: 30px; line-height: 1.2; margin: 0 0 20px; color: var(--text); text-transform: uppercase; letter-spacing: .02em; }
+  h1::before { content: "// "; font-family: var(--font-body); color: var(--accent); }
+  h2 {
+    font-family: var(--font-body); font-weight: 700; font-size: 12px; margin: 0 0 14px; color: var(--text-dim);
+    letter-spacing: .1em; text-transform: uppercase; border-left: 3px solid var(--accent); padding-left: 10px;
+  }
+  .muted { color: var(--text-dim); }
+  .btn {
+    display: inline-block; background: var(--accent); color: var(--bg); border: 1px solid var(--accent);
+    padding: 10px 18px; font-family: var(--font-body); font-size: 14px; cursor: pointer; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .05em; transition: opacity .1s;
+  }
+  .btn:hover { opacity: .85; text-decoration: none; }
+  .btn.secondary { background: transparent; color: var(--text); border-color: var(--line-bright); }
+  .btn.small { padding: 6px 11px; font-size: 12px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); padding: 20px; position: relative;
+  }
+  .card::before, .card::after {
+    content: ""; position: absolute; width: 9px; height: 9px; border: 2px solid var(--accent); opacity: .7; pointer-events: none;
+  }
+  .card::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+  .card::after { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  .pill { display: inline-block; padding: 3px 10px 3px 8px; font-size: 12px; background: var(--surface-2); border-left: 3px solid var(--text-dim); text-transform: uppercase; letter-spacing: .04em; color: var(--text-dim); }
+  .chip {
+    display: inline-block; background: var(--surface-2); border: 1px solid var(--line-bright); color: var(--accent);
+    font-size: 13px; padding: 2px 8px; font-weight: 700;
+  }
+  /* --- top bar (public site nav — deliberately simpler than the dashboard's dock) --- */
+  .topbar {
+    position: sticky; top: 0; z-index: 50; background: rgba(8,9,10,.92); backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--line);
+  }
+  .topbar-inner {
+    max-width: 1080px; margin: 0 auto; padding: 14px 24px; display: flex; align-items: center; gap: 24px;
+  }
+  .brand {
+    font-family: var(--font-display); font-weight: 900; font-size: 20px; letter-spacing: .03em;
+    color: var(--text); text-transform: uppercase; white-space: nowrap;
+  }
+  .brand span { color: var(--accent); }
+  .toplinks { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
+  .toplinks a {
+    color: var(--text-dim); font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+    padding: 8px 12px; border: 1px solid transparent;
+  }
+  .toplinks a:hover { color: var(--text); border-color: var(--line); text-decoration: none; }
+  .topuser { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+  .topuser img { width: 24px; height: 24px; border: 1px solid var(--line-bright); }
+  @media (max-width: 760px) {
+    .toplinks { order: 3; width: 100%; overflow-x: auto; justify-content: flex-start; }
+    .topbar-inner { flex-wrap: wrap; padding: 12px 16px; }
+  }
+  /* --- page content --- */
+  main { max-width: 1080px; margin: 0 auto; padding: 0 24px 80px; }
+  .hero { text-align: center; padding: 70px 20px 60px; }
+  .hero h1 { font-size: 42px; }
+  .hero p { max-width: 560px; margin: 0 auto 26px; }
+  .hero .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  section { padding: 56px 0; border-top: 1px solid var(--line); }
+  .section-intro { margin: -6px 0 22px; }
+  .level-card { background: var(--surface); border: 1px solid var(--line); padding: 16px 18px; position: relative; }
+  .level-card::before { content: ""; position: absolute; top: -1px; left: -1px; width: 9px; height: 9px; border: 2px solid var(--accent); border-right: none; border-bottom: none; opacity: .7; }
+  .level-card .lvl-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  .level-card .lvl-num { font-family: var(--font-display); font-weight: 900; font-size: 22px; color: var(--accent); }
+  .level-card .lvl-role { font-weight: 700; font-size: 14px; text-transform: uppercase; letter-spacing: .03em; }
+  .level-card ul { margin: 0; padding-left: 18px; color: var(--text-dim); font-size: 13.5px; line-height: 1.7; }
+  .role-card h3 { margin: 0 0 8px; font-size: 15px; text-transform: uppercase; letter-spacing: .02em; }
+  .role-card p { margin: 0; color: var(--text-dim); font-size: 13.5px; line-height: 1.6; }
+  ul.plain { margin: 0; padding-left: 18px; color: var(--text-dim); font-size: 14px; line-height: 1.85; }
+  footer { text-align: center; padding: 40px 20px 60px; color: var(--text-dim); font-size: 12.5px; }
+  ::-webkit-scrollbar { width: 12px; height: 12px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--line-bright); }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="#top"><span>⚔️</span> """ + SERVER_NAME.upper() + """</a>
+    <nav class="toplinks">
+      <a href="#faq">FAQ</a>
+      <a href="#levels">XP &amp; Levels</a>
+      <a href="#roles">Roles</a>
+      <a href="#community">Community</a>
+    </nav>
+    <div class="topuser">
+      {% if user %}
+        <img src="{{ user.avatar_url }}" alt="">
+        <a class="btn small" href="{{ url_for('dashboard.home') }}">Dashboard</a>
+        <a class="btn small secondary" href="{{ url_for('dashboard.logout') }}">Log out</a>
+      {% else %}
+        <a class="btn small" href="{{ url_for('dashboard.login') }}">Log in with Discord</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+<main>
+{{ content|safe }}
+</main>
+</body>
+</html>"""
+
+
+def public_page(title, body_html):
+    user = _discord_user()
+    return render_template_string(PUBLIC_LAYOUT, title=title, content=body_html, user=user)
+
+
+LANDING_BODY = """
+<div class="hero" id="top">
+<h1>⚔️ """ + SERVER_NAME + """</h1>
+<p class="muted">Ranked duels, tryouts, and a community built around competitive play. Log in with Discord to check your ELO, queue for a match, or manage your tryout status — right from the browser.</p>
+<div class="actions">
+<a class="btn" href='""" + botmod.SUPPORT_SERVER_URL + """'>Join the Discord</a>
+{% if user %}
+<a class="btn secondary" href="{{ url_for('dashboard.home') }}">Open Dashboard</a>
+{% else %}
+<a class="btn secondary" href="{{ url_for('dashboard.login') }}">Log in with Discord</a>
+{% endif %}
+</div>
+</div>
+
+<section id="faq">
+<h2>Server FAQ</h2>
+<p class="muted section-intro">You can find various information about the server itself here.</p>
+<div class="grid">
+  <div class="card">
+    <strong>Q: How do I become a Question Helper?</strong>
+    <p class="muted" style="margin-bottom:0;">The Question Helper team is primarily composed of individuals that actively partake in answering questions within the questions channel, and the requirements are similar to Banner Helpers, however with the added requirement of being knowledgeable about topics related to the game itself. They are likewise handpicked.</p>
+  </div>
+  <div class="card">
+    <strong>Q: How do I get the Artist / Community Showcase role?</strong>
+    <p class="muted" style="margin-bottom:0;">Please head to <span class="chip">#server-inquiries</span> to learn more about this.</p>
+  </div>
+  <div class="card">
+    <strong>Q: How do I become staff?</strong>
+    <p class="muted" style="margin-bottom:0;">Get handpicked by the Owner, or the best way is to apply in <span class="chip">#applications</span>.</p>
+  </div>
+</div>
+</section>
+
+<section id="levels">
+<h2>XP &amp; Levels</h2>
+<p class="muted section-intro">These are the role rewards you unlock gradually by staying active and reaching certain levels. Type <span class="chip">/rank</span> in bot commands to view your rank. Every checkpoint stacks — you keep all previous perks along with the new ones.</p>
+
+<h3 style="font-family:var(--font-body);font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--text);margin:26px 0 12px;">XP Boosts</h3>
+<div class="card">
+<ul class="plain">
+  <li>Boosting the server gives you a global 5% XP multiplier.</li>
+  <li>Sending messages in booster chat gives you a 10% XP multiplier.</li>
+  <li>Upvoting the server on Bloxlink gives you a 10% XP multiplier (link in the Links tab).</li>
+  <li>Upvoting Arcane bot gives you a 10% XP multiplier.</li>
+  <li>The Gambler role, obtained through Unbelievaboat (LVL 50+ only), grants a 10% XP multiplier.</li>
+  <li>A permanent XP boost can be obtained through Unbelievaboat for a 5% XP multiplier.</li>
+  <li>The Donator role gives a 10% global XP multiplier, obtained by donating at least $30 or 3 battlepasses worth of giveaways.</li>
+</ul>
+</div>
+
+<h3 style="font-family:var(--font-body);font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--text);margin:30px 0 12px;">Level Rewards</h3>
+<div class="grid">
+  <div class="level-card"><div class="lvl-head"><span class="lvl-num">05</span><span class="lvl-role">Demon Lord</span></div>
+    <ul><li>External sticker permission</li><li>Access to <span class="chip">#media</span></li><li>Access to create suggestions</li></ul></div>
+  <div class="level-card"><div class="lvl-head"><span class="lvl-num">10</span><span class="lvl-role">Ace Eater</span></div>
+    <ul><li>Unlocks sending images/GIFs outside media channels</li></ul></div>
+  <div class="level-card"><div class="lvl-head"><span class="lvl-num">15</span><span class="lvl-role">Godspeed</span></div>
+    <ul><li>Access to stream in voice channels</li><li>AFK command access</li></ul></div>
+  <div class="level-card"><div class="lvl-head"><span class="lvl-num">20</span><span class="lvl-role">Eren</span></div>
+    <ul><li>Access to General 2</li><li>Spoiler perms</li></ul></div>
+  <div class="level-card"><div class="lvl-head"><span class="lvl-num">25</span><span class="lvl-role">Slug Princess</span></div>
+    <ul><li>Ability to change nickname</li></ul></div>
+  <div class="level-card"><div class="lvl-head"><span class="lvl-num">30</span><span class="lvl-role">Beatrice</span></div>
+    <ul><li>Access to make polls</li><li>Embed permission</li></ul></div>
+  <div class="level-card"><div class="lvl-head"><span class="lvl-num">35</span><span class="lvl-role">Love Hashira</span></div>
+    <ul><li>Reaction perms</li></ul></div>
+  <div class="level-card"><div class="lvl-head"><span class="lvl-num">40</span><span class="lvl-role">Sorcerer King</span></div>
+    <ul><li>Immune to slowmode</li><li>Voice message perms in most channels</li><li class="muted">More to be added</li></ul></div>
+  <div class="level-card"><div class="lvl-head"><span class="lvl-num">—</span><span class="lvl-role">Unlockable Role</span></div>
+    <ul><li>No mention limit</li><li>Activity perms in some channels</li><li class="muted">More to be added</li></ul></div>
+  <div class="level-card"><div class="lvl-head"><span class="lvl-num">50</span><span class="lvl-role">Uta Queen</span></div>
+    <ul><li>Lockdown immunity</li><li>Access to the Meals channel</li><li>Shown separately on the member list</li><li class="muted">More to be added</li></ul></div>
+</div>
+</section>
+
+<section id="roles">
+<h2>Server Roles</h2>
+
+<h3 style="font-family:var(--font-body);font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--text);margin:0 0 12px;">Server Management</h3>
+<div class="grid">
+  <div class="role-card card"><h3>Owner</h3><p>The highest authority of the server — manages everything, makes final decisions, oversees all operations, and ensures the community runs smoothly.</p></div>
+  <div class="role-card card"><h3>Co-owner</h3><p>Assists the owner in managing the entire server, oversees all staff operations, handles major decisions, and ensures everything runs smoothly.</p></div>
+  <div class="role-card card"><h3>Manager</h3><p>Oversees the entire server, keeping it fun, clean, and active.</p></div>
+  <div class="role-card card"><h3>Head of Staff</h3><p>Oversees the entire server and staff team.</p></div>
+  <div class="role-card card"><h3>Senior Administrator</h3><p>Supervises admins and moderators, manages high-level server operations, and assists in major decision-making.</p></div>
+  <div class="role-card card"><h3>Administrator</h3><p>Oversees the moderation team and works with the moderator team.</p></div>
+  <div class="role-card card"><h3>Senior Moderator</h3><p>Ensures the server is safe and enjoyable for all members.</p></div>
+  <div class="role-card card"><h3>Moderator</h3><p>Ensures the server is safe and enjoyable for all members by moderating the chat.</p></div>
+  <div class="role-card card"><h3>Junior Moderator</h3><p>Individuals on trial to become full-fledged moderators.</p></div>
+</div>
+
+<h3 style="font-family:var(--font-body);font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--text);margin:30px 0 12px;">Helper Team</h3>
+<div class="grid">
+  <div class="role-card card"><h3>Lead Helper</h3><p>Experienced members of the Question Helper team who assist and help newer helpers. They lead by example and keep things running smoothly within the helper group.</p></div>
+  <div class="role-card card"><h3>Question Helper</h3><p>Question Helpers assist with server questions, game mechanics, and anything else members need help with — quickly and accurately.</p></div>
+</div>
+<p class="muted" style="margin-top:16px;font-size:13px;"><strong style="color:var(--text);">Staff role requirement:</strong> to become a staff member for """ + SERVER_NAME + """, you must patiently wait for applications from time to time.</p>
+</section>
+
+<section id="community">
+<h2>Community Roles</h2>
+<div class="grid">
+  <div class="role-card card"><h3>GameNight Host</h3><p>Responsible for hosting game nights, engaging members with fun activities, managing lobbies, and ensuring everyone has a great time.</p></div>
+  <div class="role-card card"><h3>Movie Night Host</h3><p>Hosts movie nights, handles movie suggestions, sets up watch parties, and ensures smooth streaming for all members.</p></div>
+  <div class="role-card card"><h3>Server Booster</h3><p>Supports the server by boosting it. Perks: nickname permissions, pic perms, external emote &amp; sticker permissions, a custom role, access to the exclusive booster chat, and 1.5x more XP from chatting.</p></div>
+  <div class="role-card card"><h3>Content Creator</h3><p>Officially recognized for the content they make. Requirements: at least one video uploaded in the past month, and 500+ subscribers/followers.</p></div>
+  <div class="role-card card"><h3>Artist</h3><p>Artists deemed talented by staff can showcase their artwork in the server. Contact a staff member for your art piece to be reviewed and approved.</p></div>
+</div>
+</section>
+
+<footer>More info gets added here over time — check back for updates.</footer>
+"""
+
+
+@app.route("/")
+def public_landing():
+    return public_page("Home", LANDING_BODY)
 
 
 # =====================================================================================
