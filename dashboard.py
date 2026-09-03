@@ -592,6 +592,13 @@ LAYOUT = """<!doctype html>
   .cinema-camera { position:fixed; bottom:22px; left:clamp(16px,5vw,64px); z-index:20; display:flex; align-items:center; gap:12px; color:var(--text-dim); font-size:10px; letter-spacing:.14em; text-transform:uppercase; }
   .cinema-camera i { display:block; width:42px; height:1px; background:var(--accent); }
   @media (max-width:760px) { .cinema-orbit { width:90vw; height:90vw; top:38vh; right:-38vw; } .cinema-track > * { padding:38px 20px; } .cinema-camera { bottom:76px; } }
+  .cinema-scroll { height:auto; } .cinema-world { position:relative; top:auto; height:auto; min-height:100vh; overflow:visible; } main { width:auto; height:auto; min-height:100vh; overflow:visible; } .cinema-track { display:block; width:auto; height:auto; transform:none !important; }
+  .cinema-track > * { width:auto; height:auto; min-height:78vh; overflow:visible; padding:clamp(70px,10vw,150px) clamp(24px,7vw,110px); }
+  .cinema-track .grid { display:flex; flex-wrap:nowrap; gap:20px; overflow:hidden; width:100%; padding:6px 4px 20px; scroll-behavior:auto; overscroll-behavior-x:contain; }
+  .cinema-track .grid > * { flex:0 0 min(78vw,360px); min-width:0; }
+  .cinema-track .grid { scrollbar-width:none; } .cinema-track .grid::-webkit-scrollbar { display:none; width:0; height:0; }
+  .cinema-track > * { display:block; width:auto; height:auto; min-height:0; overflow:visible; padding:0; }
+  @media (max-width:760px) { .cinema-track > * { min-height:0; padding:58px 20px; } .cinema-track .grid { gap:14px; } .cinema-track .grid > * { flex-basis:82vw; } }
 </style>
 </head>
 <body>
@@ -651,28 +658,15 @@ LAYOUT = """<!doctype html>
   document.querySelectorAll('.value').forEach(animateValue);
 
   var scrollProgress = document.querySelector('.scroll-progress');
-  var rail = document.querySelector('.cinema-track');
-  var runway = document.querySelector('.cinema-scroll');
-  var scenes = Array.prototype.slice.call(document.querySelectorAll('.cinema-track > *'));
-  function sizeRunway() { if (rail && runway) runway.style.height = Math.max(window.innerHeight, rail.scrollWidth) + 'px'; }
-  function updateScene() {
-    var max = runway ? runway.offsetHeight - window.innerHeight : 0;
-    var progress = max ? Math.min(1, window.scrollY / max) : 0;
-    if (scrollProgress) scrollProgress.style.transform = 'scaleX(' + progress + ')';
-    if (rail) rail.style.transform = 'translate3d(' + (-window.scrollY) + 'px,0,0)';
-    scenes.forEach(function (scene) {
-      var sceneIndex = scenes.indexOf(scene), distance = sceneIndex - progress * Math.max(0, scenes.length - 1);
-      scene.classList.toggle('is-visible', Math.abs(distance) < 1.2);
-      if (!reduceMotion && Math.abs(distance) < 1.5) {
-        scene.style.setProperty('--scroll-shift', (distance * -18) + 'px');
-        scene.style.transform = 'translate3d(' + (distance * 22) + 'px,' + (distance * -18) + 'px,0) rotateY(' + (distance * -3) + 'deg) scale(' + (1 - Math.min(.08, Math.abs(distance) * .08)) + ')';
-      }
-    });
-    var orbit = document.querySelector('.cinema-orbit'); if (orbit && !reduceMotion) orbit.style.setProperty('--orbit', (window.scrollY * .035) + 'deg');
-  }
-  var cameraFrame = false;
-  function requestCameraFrame() { if (cameraFrame) return; cameraFrame = true; window.requestAnimationFrame(function () { cameraFrame = false; updateScene(); }); }
-  sizeRunway(); updateScene(); window.addEventListener('scroll', requestCameraFrame, { passive:true }); window.addEventListener('resize', function () { sizeRunway(); requestCameraFrame(); });
+  function updateProgress() { if (scrollProgress) scrollProgress.style.transform = 'scaleX(' + (window.scrollY / Math.max(1, document.documentElement.scrollHeight - window.innerHeight)) + ')'; }
+  document.querySelectorAll('.cinema-track .grid').forEach(function (scene) {
+    scene.addEventListener('wheel', function (event) {
+      var max = scene.scrollWidth - scene.clientWidth, next = scene.scrollLeft + event.deltaY;
+      if (max <= 0 || (next <= 0 && event.deltaY < 0) || (next >= max && event.deltaY > 0)) return;
+      event.preventDefault(); scene.scrollLeft = Math.max(0, Math.min(max, next));
+    }, { passive:false });
+  });
+  updateProgress(); window.addEventListener('scroll', updateProgress, { passive:true });
 
   document.querySelectorAll('.search-shell, .public-search').forEach(function (shell) {
     var input = shell.querySelector('input'), results = shell.querySelector('.search-results');
@@ -2769,6 +2763,12 @@ PUBLIC_LAYOUT = """<!doctype html>
   .cinema-camera i { width:52px; height:1px; background:var(--accent); display:block; }
   .hero { z-index:2; } .hero::after { bottom:30px; }
   @media (max-width:760px) { .cinema-orbit { width:120vw; height:120vw; top:55%; } .cinema-track > section,.cinema-track > footer { padding:70px 20px; } .cinema-camera { bottom:76px; } }
+  .cinema-scroll { height:auto; } .cinema-world { position:relative; top:auto; height:auto; min-height:100vh; overflow:visible; } main { width:auto; height:auto; min-height:100vh; overflow:visible; } .cinema-track { display:block; width:auto; height:auto; transform:none !important; }
+  .cinema-track > section,.cinema-track > footer { width:auto; height:auto; min-height:100vh; overflow:visible; padding:clamp(70px,10vw,150px) clamp(28px,7vw,110px); }
+  .cinema-track .grid { display:flex; flex-wrap:nowrap; gap:22px; overflow:hidden; width:100%; padding:6px 4px 20px; scroll-behavior:auto; overscroll-behavior-x:contain; }
+  .cinema-track .grid > * { flex:0 0 min(76vw,390px); min-width:0; }
+  .cinema-track .grid { scrollbar-width:none; } .cinema-track .grid::-webkit-scrollbar { display:none; width:0; height:0; }
+  @media (max-width:760px) { .cinema-track > section,.cinema-track > footer { min-height:88vh; padding:70px 20px; } .cinema-track .grid { gap:14px; } .cinema-track .grid > * { flex-basis:84vw; } }
 </style>
 </head>
 <body>
@@ -2803,33 +2803,15 @@ PUBLIC_LAYOUT = """<!doctype html>
 (function () {
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var progress = document.querySelector('.scroll-progress'), hero = document.querySelector('.hero');
-  var rail = document.querySelector('.cinema-track'), runway = document.querySelector('.cinema-scroll');
-  var sections = Array.prototype.slice.call(document.querySelectorAll('.cinema-track > section, .cinema-track > footer'));
-  function sizeRunway() { if (rail && runway) runway.style.height = Math.max(window.innerHeight, rail.scrollWidth) + 'px'; }
-  function cinematicScroll() {
-    var max = runway ? runway.offsetHeight - window.innerHeight : 0, journey = max ? Math.min(1, window.scrollY / max) : 0;
-    if (progress) progress.style.transform = 'scaleX(' + journey + ')';
-    if (rail) rail.style.transform = 'translate3d(' + (-window.scrollY) + 'px,0,0)';
-    sections.forEach(function (section, index) {
-      var distance = index - journey * Math.max(0, sections.length - 1);
-      section.classList.toggle('is-visible', Math.abs(distance) < 1.2);
-      if (!reduceMotion && section !== hero && Math.abs(distance) < 1.5) {
-        var direction = index % 2 ? 1 : -1;
-        section.style.transform = 'translate3d(' + (distance * 24 * direction) + 'px,' + (distance * -16) + 'px,0) rotateY(' + (distance * -3 * direction) + 'deg) scale(' + (1 - Math.min(.1, Math.abs(distance) * .1)) + ')';
-      }
-    });
-    var orbit = document.querySelector('.cinema-orbit'); if (orbit && !reduceMotion) orbit.style.setProperty('--orbit', (window.scrollY * .025) + 'deg');
-    if (hero && !reduceMotion) {
-      var distance = Math.min(window.scrollY, window.innerHeight);
-      hero.querySelector('h1').style.transform = 'translateY(' + distance * .12 + 'px) scale(' + (1 - distance / window.innerHeight * .16) + ')';
-      hero.querySelector('p').style.transform = 'translateY(' + distance * .2 + 'px)';
-      hero.querySelector('.actions').style.transform = 'translateY(' + distance * .3 + 'px)';
-      hero.style.opacity = String(Math.max(.35, 1 - distance / window.innerHeight * .65));
-    }
-  }
-  var cameraFrame = false;
-  function requestCameraFrame() { if (cameraFrame) return; cameraFrame = true; window.requestAnimationFrame(function () { cameraFrame = false; cinematicScroll(); }); }
-  sizeRunway(); cinematicScroll(); window.addEventListener('scroll', requestCameraFrame, { passive:true }); window.addEventListener('resize', function () { sizeRunway(); requestCameraFrame(); });
+  function updateProgress() { if (progress) progress.style.transform = 'scaleX(' + (window.scrollY / Math.max(1, document.documentElement.scrollHeight - window.innerHeight)) + ')'; }
+  document.querySelectorAll('.cinema-track .grid').forEach(function (scene) {
+    scene.addEventListener('wheel', function (event) {
+      var max = scene.scrollWidth - scene.clientWidth, next = scene.scrollLeft + event.deltaY;
+      if (max <= 0 || (next <= 0 && event.deltaY < 0) || (next >= max && event.deltaY > 0)) return;
+      event.preventDefault(); scene.scrollLeft = Math.max(0, Math.min(max, next));
+    }, { passive:false });
+  });
+  updateProgress(); window.addEventListener('scroll', updateProgress, { passive:true });
   document.querySelectorAll('.search-shell, .public-search').forEach(function (shell) {
     var input = shell.querySelector('input'), results = shell.querySelector('.search-results');
     if (!input || !results) return;
