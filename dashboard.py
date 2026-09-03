@@ -369,7 +369,7 @@ LAYOUT = """<!doctype html>
 <meta name="theme-color" content="#05070d">
 <title>{{ title }} · Blazing Lock</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Big+Shoulders:wght@700;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Big+Shoulders:wght@700;900&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
   :root {
     color-scheme: dark; /* stops the OS/browser dark-mode heuristics from
@@ -571,10 +571,6 @@ LAYOUT = """<!doctype html>
   @media (max-width:760px) { .appbar { flex-wrap:wrap; gap:8px; padding:9px 14px; } .appnav { order:3; flex-basis:100%; margin:0 -14px; padding:0 14px 3px; } .appactions { margin-left:auto; } main { padding-top:128px; } }
   @media (max-width:760px) { main { padding-top:128px; } .appactions { width:100%; } .appactions .search-shell { width:100%; } .search-input { width:100% !important; } .search-results { width:min(86vw,320px); } h1 { font-size:clamp(42px,14vw,70px); } }
   .scroll-progress { position:fixed; top:0; left:0; width:100%; height:3px; z-index:100; background:var(--accent); transform:scaleX(0); transform-origin:left; }
-  main > * { --scroll-shift:0px; opacity:0; transform:translate3d(0,calc(18px + var(--scroll-shift)),0); transition:opacity .7s ease,transform .9s cubic-bezier(.2,.7,.2,1); }
-  main > *.is-visible { opacity:1; transform:translate3d(0,var(--scroll-shift),0); }
-  main h1 { text-wrap:balance; } main .grid > * { transition:transform .6s cubic-bezier(.2,.7,.2,1),box-shadow .25s; }
-  @media (prefers-reduced-motion:reduce) { main > * { opacity:1; transform:none; transition:none; } }
   .cinema-scroll { position:relative; height:100vh; }
   .cinema-world { position:sticky; top:0; height:100vh; overflow:hidden; perspective:1200px; }
   .cinema-world::before,.cinema-world::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:-1; }
@@ -613,10 +609,11 @@ LAYOUT = """<!doctype html>
   .btn { background:var(--accent); border-color:var(--accent); box-shadow:0 0 18px rgba(22,191,255,.25); } .btn:hover { opacity:1; box-shadow:0 0 28px rgba(22,191,255,.5); }
   .stat .value { color:var(--accent); } .progress > div { background:linear-gradient(90deg,var(--accent),var(--info)); box-shadow:0 0 14px var(--accent); }
   input[type=text],input[type=number],input[type=password],textarea,select,input[type=file],.search-input { background:var(--surface-2) !important; border-color:var(--line) !important; } input:focus,textarea:focus,select:focus,.search-input:focus { border-color:var(--accent) !important; box-shadow:0 0 0 2px rgba(22,191,255,.12); }
+  body { font-family:'DM Sans','Segoe UI',sans-serif; } h1,.stat .value,.appbrand { font-family:var(--font-display); } h2,label,.btn,.appnav,.search-input,th,code { font-family:var(--font-body); }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:3px; } .card { overflow-x:auto; } table { min-width:560px; }
 </style>
 </head>
 <body>
-<div class="scroll-progress"></div>
 <div class="cinema-scroll"><div class="cinema-world"><div class="cinema-orbit"></div><div class="cinema-camera"><i></i><span>scroll / navigate</span></div>
 <header class="appbar">
   <a class="appbrand" href="{{ url_for('dashboard.home') }}">BLZ<span>/</span>WEB</a>
@@ -2626,7 +2623,7 @@ PUBLIC_LAYOUT = """<!doctype html>
 <meta name="theme-color" content="#05070d">
 <title>{{ title }} · """ + SERVER_NAME + """</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Big+Shoulders:wght@700;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Big+Shoulders:wght@700;900&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
   :root {
     color-scheme: dark;
     --bg: #05070d; --surface: #0c111d; --surface-2: #131c30;
@@ -2745,10 +2742,7 @@ PUBLIC_LAYOUT = """<!doctype html>
   .scroll-progress { position:fixed; top:0; left:0; width:100%; height:4px; z-index:100; background:var(--accent); transform:scaleX(0); transform-origin:left; }
   .hero { min-height:100vh; overflow:hidden; isolation:isolate; } .hero::before { content:'BLAZE / PLAY / COMMUNITY'; position:absolute; top:18%; left:2%; color:var(--accent); font-size:10px; letter-spacing:.2em; writing-mode:vertical-rl; opacity:.65; z-index:-1; }
   .hero h1,.hero p,.hero .actions { transition:transform .2s linear,opacity .2s linear; } .hero h1 { text-shadow:12px 12px 0 rgba(215,255,63,.08); }
-  main section { opacity:0; transform:translateY(42px); transition:opacity .8s ease,transform 1s cubic-bezier(.2,.7,.2,1); } main section.is-visible { opacity:1; transform:none; }
-  main section .grid > * { opacity:0; transform:translateY(24px); transition:opacity .7s ease,transform .8s cubic-bezier(.2,.7,.2,1); } main section.is-visible .grid > * { opacity:1; transform:none; } main section.is-visible .grid > *:nth-child(2){transition-delay:.08s} main section.is-visible .grid > *:nth-child(3){transition-delay:.16s} main section.is-visible .grid > *:nth-child(4){transition-delay:.24s}
   #levels { position:relative; } #levels::before { content:'02'; position:absolute; right:0; top:72px; color:var(--accent); font:900 120px var(--font-display); opacity:.08; }
-  @media (prefers-reduced-motion:reduce) { main section,main section .grid > * { opacity:1; transform:none; transition:none; } }
   .cinema-scroll { position:relative; height:100vh; }
   .cinema-world { position:sticky; top:0; height:100vh; overflow:hidden; perspective:1400px; }
   .cinema-world::before,.cinema-world::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:-1; }
@@ -2786,10 +2780,13 @@ PUBLIC_LAYOUT = """<!doctype html>
   .btn { background:var(--accent); border-color:var(--accent); box-shadow:0 0 18px rgba(22,191,255,.25); } .btn:hover { opacity:1; box-shadow:0 0 28px rgba(22,191,255,.5); }
   .chip { color:var(--accent); border-color:var(--line-bright); background:var(--surface-2); } .role-card p,.level-card ul,.muted { color:var(--text-dim); }
   .public-search input { background:var(--surface-2); border-color:var(--line) !important; } .public-search input:focus { border-color:var(--accent) !important; box-shadow:0 0 0 2px rgba(22,191,255,.12); }
+  body { font-family:'DM Sans','Segoe UI',sans-serif; } h1,.brand,.lvl-num { font-family:var(--font-display); } h2,.toplinks,.search-input,th,code { font-family:var(--font-body); }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:3px; } .card { overflow-x:auto; } table { min-width:560px; }
+  main section,main section .grid > *,main footer { opacity:1; transform:none; transition:opacity .25s ease,transform .25s ease; }
+  main section .grid > * { transition:transform .2s ease,box-shadow .2s ease; }
 </style>
 </head>
 <body>
-<div class="scroll-progress"></div>
 <div class="cinema-scroll"><div class="cinema-world"><div class="cinema-orbit"></div><div class="cinema-camera"><i></i><span>scroll / navigate</span></div>
 <div class="topbar">
   <div class="topbar-inner">
