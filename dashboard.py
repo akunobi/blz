@@ -1504,6 +1504,14 @@ ECONOMY_HOME_TMPL = """
     {% else %}<div class="muted" style="margin-top:6px;">Ready in {{ weekly_wait }}</div>{% endif %}
   </div>
   <div class="stat">
+    <div class="label">Monthly</div>
+    {% if monthly_ready %}
+    <form method="post" action="{{ url_for('dashboard.economy_monthly') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small" style="margin-top:6px;">Claim {{ monthly_amount }} {{ currency|safe }}</button>
+    </form>
+    {% else %}<div class="muted" style="margin-top:6px;">Ready in {{ monthly_wait }}</div>{% endif %}
+  </div>
+  <div class="stat">
     <div class="label">Work</div>
     {% if work_ready %}
     <form method="post" action="{{ url_for('dashboard.economy_work') }}">
@@ -1542,6 +1550,7 @@ ECONOMY_HOME_TMPL = """
     {% if entry.item.id == 'chest' %}
     <form class="inline" method="post" action="{{ url_for('dashboard.economy_use') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="item" value="chest">
+      <input type="number" name="quantity" value="1" min="1" max="{{ entry.qty }}" style="width:56px;">
       <button class="btn small">Open</button>
     </form>
     {% endif %}
@@ -1629,20 +1638,25 @@ def economy_home():
     uid = _discord_user()["id"]
     doc = botmod._get_econ_sync(uid)
     now = datetime.now(timezone.utc)
-    last_daily, last_weekly, last_work = doc.get("last_daily"), doc.get("last_weekly"), doc.get("last_work")
+    last_daily, last_weekly, last_monthly, last_work = (
+        doc.get("last_daily"), doc.get("last_weekly"), doc.get("last_monthly"), doc.get("last_work")
+    )
     daily_ready = not last_daily or botmod._aware(last_daily) + botmod.DAILY_COOLDOWN <= now
     weekly_ready = not last_weekly or botmod._aware(last_weekly) + botmod.WEEKLY_COOLDOWN <= now
+    monthly_ready = not last_monthly or botmod._aware(last_monthly) + botmod.MONTHLY_COOLDOWN <= now
     work_ready = not last_work or botmod._aware(last_work) + botmod.WORK_COOLDOWN <= now
     daily_wait = None if daily_ready else botmod._fmt_remaining(botmod._aware(last_daily) + botmod.DAILY_COOLDOWN, now)
     weekly_wait = None if weekly_ready else botmod._fmt_remaining(botmod._aware(last_weekly) + botmod.WEEKLY_COOLDOWN, now)
+    monthly_wait = None if monthly_ready else botmod._fmt_remaining(botmod._aware(last_monthly) + botmod.MONTHLY_COOLDOWN, now)
     work_wait = None if work_ready else botmod._fmt_remaining(botmod._aware(last_work) + botmod.WORK_COOLDOWN, now)
     inventory = [
         {"item": botmod.SHOP_BY_ID[i], "qty": q}
         for i, q in doc.get("inventory", {}).items() if q > 0 and i in botmod.SHOP_BY_ID
     ]
     return page("Economy", ECONOMY_HOME_TMPL, balance=doc["balance"], daily_ready=daily_ready, weekly_ready=weekly_ready,
-                work_ready=work_ready, daily_wait=daily_wait, weekly_wait=weekly_wait, work_wait=work_wait,
-                daily_amount=botmod.DAILY_AMOUNT, weekly_amount=botmod.WEEKLY_AMOUNT,
+                monthly_ready=monthly_ready, work_ready=work_ready, daily_wait=daily_wait, weekly_wait=weekly_wait,
+                monthly_wait=monthly_wait, work_wait=work_wait,
+                daily_amount=botmod.DAILY_AMOUNT, weekly_amount=botmod.WEEKLY_AMOUNT, monthly_amount=botmod.MONTHLY_AMOUNT,
                 inventory=inventory, currency=coin_img("coin2"))
 
 
@@ -1677,6 +1691,23 @@ def economy_weekly():
         new_bal = botmod._add_balance_sync(uid, botmod.WEEKLY_AMOUNT)
         botmod.economy_col.update_one({"_id": uid}, {"$set": {"last_weekly": now}}, upsert=True)
         flash(f"Claimed your weekly {botmod.WEEKLY_AMOUNT} {CURRENCY_TEXT}! Balance: {new_bal}.", "success")
+    return redirect(url_for("dashboard.economy_home"))
+
+
+@dash_bp.route("/economy/monthly", methods=["POST"])
+@approved_required
+def economy_monthly():
+    _check_csrf()
+    uid = _discord_user()["id"]
+    doc = botmod._get_econ_sync(uid)
+    now = datetime.now(timezone.utc)
+    last = doc.get("last_monthly")
+    if last and botmod._aware(last) + botmod.MONTHLY_COOLDOWN > now:
+        flash(f"Already claimed. Come back in {botmod._fmt_remaining(botmod._aware(last) + botmod.MONTHLY_COOLDOWN, now)}.", "error")
+    else:
+        new_bal = botmod._add_balance_sync(uid, botmod.MONTHLY_AMOUNT)
+        botmod.economy_col.update_one({"_id": uid}, {"$set": {"last_monthly": now}}, upsert=True)
+        flash(f"Claimed your monthly {botmod.MONTHLY_AMOUNT} {CURRENCY_TEXT}! Balance: {new_bal}.", "success")
     return redirect(url_for("dashboard.economy_home"))
 
 
@@ -1762,12 +1793,26 @@ def economy_use():
     if item != "chest":
         flash("That item can't be used.", "error")
         return redirect(url_for("dashboard.economy_home"))
-    if not botmod._remove_item_sync(uid, "chest", 1):
-        flash("You don't have a Mystery Chest.", "error")
+    try:
+        qty = max(1, min(25, int(request.form.get("quantity", "1"))))
+    except ValueError:
+        qty = 1
+    if not botmod._remove_item_sync(uid, "chest", qty):
+        flash(f"You don't have {qty} Mystery Chest(s).", "error")
         return redirect(url_for("dashboard.economy_home"))
-    reward = random.randint(100, 1500)
-    new_bal = botmod._add_balance_sync(uid, reward)
-    flash(f"The chest held {reward} {CURRENCY_TEXT}! Balance: {new_bal}.", "success")
+    total = 0
+    tier_counts = {}
+    for _ in range(qty):
+        reward, label = botmod.open_chest_reward()
+        total += reward
+        tier_counts[label] = tier_counts.get(label, 0) + 1
+    new_bal = botmod._add_balance_sync(uid, total)
+    if qty == 1:
+        label = next(iter(tier_counts))
+        flash(f"{label} chest — it held {total} {CURRENCY_TEXT}! Balance: {new_bal}.", "success")
+    else:
+        breakdown = ", ".join(f"{c}x {lbl}" for lbl, c in tier_counts.items())
+        flash(f"Opened {qty} chests ({breakdown}) for {total} {CURRENCY_TEXT} total! Balance: {new_bal}.", "success")
     return redirect(url_for("dashboard.economy_home"))
 
 
