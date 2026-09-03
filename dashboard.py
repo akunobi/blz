@@ -584,7 +584,8 @@ LAYOUT = """<!doctype html>
   .cinema-orbit::before { content:''; position:absolute; inset:12%; border:1px solid rgba(215,255,63,.12); border-radius:50%; }
   main { width:100vw; height:calc(100vh - 64px); overflow:hidden; transform-style:preserve-3d; }
   .cinema-track { display:flex; height:100%; width:max-content; opacity:1 !important; transform-style:preserve-3d; will-change:transform; }
-  .cinema-track > * { position:relative; flex:0 0 100vw; width:100vw; height:100%; min-height:0; overflow-y:auto; display:flex; flex-direction:column; justify-content:center; padding:clamp(42px,8vw,110px) clamp(24px,7vw,110px); margin:0; border:0; transform-origin:50% 50%; }
+  html,body { scrollbar-width:none; -ms-overflow-style:none; overflow-x:hidden; } html::-webkit-scrollbar,body::-webkit-scrollbar,.cinema-world::-webkit-scrollbar,.cinema-track::-webkit-scrollbar { display:none; width:0; height:0; }
+  .cinema-track > * { position:relative; flex:0 0 100vw; width:100vw; height:100%; min-height:0; overflow:hidden; display:flex; flex-direction:column; justify-content:center; padding:clamp(42px,8vw,110px) clamp(24px,7vw,110px); margin:0; border:0; transform-origin:50% 50%; }
   .cinema-track > *::before { content:attr(data-scene); position:absolute; top:24px; right:clamp(24px,7vw,110px); color:var(--accent); font-size:10px; letter-spacing:.2em; opacity:.55; }
   .cinema-track > *.is-visible { transform:scale(1); }
   .cinema-flash { position:relative; z-index:3; }
@@ -669,7 +670,9 @@ LAYOUT = """<!doctype html>
     });
     var orbit = document.querySelector('.cinema-orbit'); if (orbit && !reduceMotion) orbit.style.setProperty('--orbit', (window.scrollY * .035) + 'deg');
   }
-  sizeRunway(); updateScene(); window.addEventListener('scroll', updateScene, { passive:true }); window.addEventListener('resize', function () { sizeRunway(); updateScene(); });
+  var cameraFrame = false;
+  function requestCameraFrame() { if (cameraFrame) return; cameraFrame = true; window.requestAnimationFrame(function () { cameraFrame = false; updateScene(); }); }
+  sizeRunway(); updateScene(); window.addEventListener('scroll', requestCameraFrame, { passive:true }); window.addEventListener('resize', function () { sizeRunway(); requestCameraFrame(); });
 
   document.querySelectorAll('.search-shell, .public-search').forEach(function (shell) {
     var input = shell.querySelector('input'), results = shell.querySelector('.search-results');
@@ -689,13 +692,6 @@ LAYOUT = """<!doctype html>
     input.addEventListener('keydown', function (event) { if (event.key === 'Escape') { input.value = ''; results.classList.remove('open'); input.blur(); } });
     document.addEventListener('click', function (event) { if (!shell.contains(event.target)) results.classList.remove('open'); });
   });
-  var levelTrack = document.querySelector('#levels .grid');
-  if (levelTrack && window.innerWidth > 760) {
-    window.addEventListener('scroll', function () {
-      var bounds = levelTrack.getBoundingClientRect(), shift = Math.max(-90, Math.min(90, (window.innerHeight / 2 - (bounds.top + bounds.height / 2)) * .12));
-      levelTrack.style.transform = 'translateX(' + shift + 'px)';
-    }, { passive: true });
-  }
 })();
 </script>
 </body>
@@ -2765,7 +2761,8 @@ PUBLIC_LAYOUT = """<!doctype html>
   .cinema-orbit::before,.cinema-orbit::after { content:''; position:absolute; inset:10%; border:1px solid rgba(215,255,63,.11); border-radius:50%; } .cinema-orbit::after { inset:28%; }
   main { width:100vw; height:100vh; overflow:hidden; transform-style:preserve-3d; }
   .cinema-track { display:flex; height:100%; width:max-content; transform-style:preserve-3d; will-change:transform; }
-  .cinema-track > section,.cinema-track > footer { position:relative; flex:0 0 100vw; width:100vw; height:100%; min-height:0; overflow-y:auto; display:flex; flex-direction:column; justify-content:center; padding:clamp(70px,10vw,150px) clamp(28px,7vw,110px); border:0; transform-origin:50% 50%; }
+  html,body { scrollbar-width:none; -ms-overflow-style:none; overflow-x:hidden; } html::-webkit-scrollbar,body::-webkit-scrollbar,.cinema-world::-webkit-scrollbar,.cinema-track::-webkit-scrollbar { display:none; width:0; height:0; }
+  .cinema-track > section,.cinema-track > footer { position:relative; flex:0 0 100vw; width:100vw; height:100%; min-height:0; overflow:hidden; display:flex; flex-direction:column; justify-content:center; padding:clamp(70px,10vw,150px) clamp(28px,7vw,110px); border:0; transform-origin:50% 50%; }
   .cinema-track > section::before { content:attr(id); position:absolute; top:42px; right:clamp(28px,7vw,110px); color:var(--accent); font:10px var(--font-body); letter-spacing:.2em; opacity:.6; }
   .cinema-track > section.is-visible { transform:scale(1); }
   .cinema-camera { position:fixed; bottom:24px; left:clamp(16px,4vw,54px); z-index:20; display:flex; align-items:center; gap:12px; color:var(--text-dim); font-size:10px; letter-spacing:.14em; text-transform:uppercase; }
@@ -2830,7 +2827,9 @@ PUBLIC_LAYOUT = """<!doctype html>
       hero.style.opacity = String(Math.max(.35, 1 - distance / window.innerHeight * .65));
     }
   }
-  sizeRunway(); cinematicScroll(); window.addEventListener('scroll', cinematicScroll, { passive:true }); window.addEventListener('resize', function () { sizeRunway(); cinematicScroll(); });
+  var cameraFrame = false;
+  function requestCameraFrame() { if (cameraFrame) return; cameraFrame = true; window.requestAnimationFrame(function () { cameraFrame = false; cinematicScroll(); }); }
+  sizeRunway(); cinematicScroll(); window.addEventListener('scroll', requestCameraFrame, { passive:true }); window.addEventListener('resize', function () { sizeRunway(); requestCameraFrame(); });
   document.querySelectorAll('.search-shell, .public-search').forEach(function (shell) {
     var input = shell.querySelector('input'), results = shell.querySelector('.search-results');
     if (!input || !results) return;
