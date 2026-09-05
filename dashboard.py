@@ -923,7 +923,14 @@ browser (like tapping the link inside Discord itself) instead of your regular br
           "code": code,
           "redirect_uri": DASHBOARD_REDIRECT_URI,
         },
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        headers={
+          "Content-Type": "application/x-www-form-urlencoded",
+          # Without a real User-Agent, requests' default ("python-requests/x.x")
+          # sometimes gets flagged by Cloudflare in front of discord.com, which
+          # returns an HTML error/challenge page instead of the token JSON —
+          # that's what was showing up as a wall of HTML in the logs here.
+          "User-Agent": "BLZ-T-Dashboard/1.0 (+https://discord.gg/FZmjTSBpSZ)",
+        },
         timeout=10,
       )
     except requests.RequestException:
@@ -947,7 +954,14 @@ browser (like tapping the link inside Discord itself) instead of your regular br
       return redirect(url_for("dashboard.home"))
 
     try:
-      user_resp = requests.get(OAUTH_USER_URL, headers={"Authorization": f"Bearer {access_token}"}, timeout=10)
+      user_resp = requests.get(
+        OAUTH_USER_URL,
+        headers={
+          "Authorization": f"Bearer {access_token}",
+          "User-Agent": "BLZ-T-Dashboard/1.0 (+https://discord.gg/FZmjTSBpSZ)",
+        },
+        timeout=10,
+      )
     except requests.RequestException:
       logger.exception("!!! [DASHBOARD OAUTH] User profile request failed")
       flash("Discord login is temporarily unavailable. Please try again.", "error")
