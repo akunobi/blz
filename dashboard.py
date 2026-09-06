@@ -431,11 +431,11 @@ THEME_CSS = """
 
   :root {
     color-scheme: dark; /* a facility built for night sessions — the theme stays dark everywhere */
-    --bg: #0a0e17; --surface: #131b2b; --surface-2: #1b2740;
-    --line: #232f47; --line-bright: #34456b;
-    --text: #eef2fa; --text-dim: #8b96ac;
-    --accent: #3865ff; --accent-rgb: 56,101,255; --accent-dim: #16213a; --accent-strong: #7590ff;
-    --danger: #ff4d5e; --warn: #ffb43a; --info: #33d6ff;
+    --bg: #170a10; --surface: #23111a; --surface-2: #331825;
+    --line: #3f1f2f; --line-bright: #5c2c44;
+    --text: #f7eef1; --text-dim: #b98a9c;
+    --accent: #22d9e6; --accent-rgb: 34,217,230; --accent-dim: #123236; --accent-strong: #7cf0fa;
+    --danger: #ff3b57; --warn: #ffb43a; --info: #7c9cff;
     --font-display: 'Oswald', sans-serif;
     --font-body: 'IBM Plex Mono', monospace;
     --font-sans: 'Inter', 'Segoe UI', sans-serif;
@@ -654,7 +654,7 @@ LAYOUT = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#0a0e17">
+<meta name="theme-color" content="#170a10">
 <title>{{ title }} · Blazing Lock</title>
 <style>
 """ + THEME_CSS + LAYOUT_EXTRA_CSS + """
@@ -3113,7 +3113,7 @@ PUBLIC_LAYOUT = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#0a0e17">
+<meta name="theme-color" content="#170a10">
 <title>{{ title }} · """ + SERVER_NAME + """</title>
 <style>
 """ + THEME_CSS + PUBLIC_EXTRA_CSS + """
