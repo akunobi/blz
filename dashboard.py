@@ -67,6 +67,21 @@ OAuth2) and set:
                               (must be added under OAuth2 -> Redirects in
                               the Discord dev portal, EXACTLY as written)
 
+To let members link a Roblox account from /userinfo in Discord (register an OAuth
+app at https://create.roblox.com/dashboard/credentials -> your experience/app ->
+OAuth), also set:
+
+    ROBLOX_CLIENT_ID        — the Roblox OAuth application's Client ID
+    ROBLOX_CLIENT_SECRET    — the Roblox OAuth application's Client Secret
+    ROBLOX_REDIRECT_URI     — e.g. https://your-app.onrender.com/dashboard/roblox/callback
+                              (must be added under Redirect URIs in the Roblox
+                              Creator Hub OAuth app settings, EXACTLY as written)
+
+And set this on bot.py's side (read directly by bot.py, not by this file) so the
+/userinfo command knows where to point its "Login with Roblox" button:
+
+    DASHBOARD_BASE_URL      — e.g. https://your-app.onrender.com (no trailing slash)
+
 Optional:
     DASHBOARD_SECRET_KEY    — Flask session signing key. If unset, a random
                               one is generated at boot, which means every
@@ -181,6 +196,20 @@ DISCORD_API = "https://discord.com/api"
 OAUTH_AUTHORIZE_URL = f"{DISCORD_API}/oauth2/authorize"
 OAUTH_TOKEN_URL = f"{DISCORD_API}/oauth2/token"
 OAUTH_USER_URL = f"{DISCORD_API}/users/@me"
+
+# --- Roblox OAuth ("Login with Roblox", linked from the bot's /userinfo command) -------
+ROBLOX_CLIENT_ID = os.getenv("ROBLOX_CLIENT_ID")
+ROBLOX_CLIENT_SECRET = os.getenv("ROBLOX_CLIENT_SECRET")
+ROBLOX_REDIRECT_URI = os.getenv("ROBLOX_REDIRECT_URI")
+ROBLOX_AUTHORIZE_URL = "https://apis.roblox.com/oauth/v1/authorize"
+ROBLOX_TOKEN_URL = "https://apis.roblox.com/oauth/v1/token"
+ROBLOX_USERINFO_URL = "https://apis.roblox.com/oauth/v1/userinfo"
+
+if not all([ROBLOX_CLIENT_ID, ROBLOX_CLIENT_SECRET, ROBLOX_REDIRECT_URI]):
+    logger.warning(
+        "!!! [DASHBOARD] ROBLOX_CLIENT_ID / ROBLOX_CLIENT_SECRET / ROBLOX_REDIRECT_URI "
+        "are not fully set in the environment — Roblox linking will fail until they are."
+    )
 
 dash_bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
 
@@ -1009,6 +1038,138 @@ browser (like tapping the link inside Discord itself) instead of your regular br
 @dash_bp.route("/logout")
 def logout():
     session.clear()
+    return redirect(url_for("dashboard.home"))
+
+
+# =====================================================================================
+# ROBLOX OAUTH — "Login with Roblox", linked from the bot's /userinfo command. This
+# reuses the Discord session set up by the login flow above (via login_required): a
+# member has to be logged in with Discord before they can link Roblox, so we always
+# know which Discord account to attach the Roblox profile to without inventing any
+# extra identity-passing of our own. If they aren't logged in yet, login_required
+# bounces them through /login first and back here automatically (same "next" pattern
+# every other page on this dashboard already uses).
+# =====================================================================================
+
+def _roblox_groups(roblox_user_id):
+    """Public Roblox endpoint, no auth needed beyond the user's ID. Returns a simple
+    [{"id":, "name":}, ...] list, or [] if the lookup fails — a broken groups call
+    shouldn't block linking the account itself."""
+    try:
+        resp = requests.get(
+            f"https://groups.roblox.com/v1/users/{roblox_user_id}/groups/roles",
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return [
+            {"id": entry["group"]["id"], "name": entry["group"]["name"]}
+            for entry in resp.json().get("data", [])
+        ]
+    except Exception:
+        logger.exception("!!! [ROBLOX] Groups lookup failed")
+        return []
+
+
+@dash_bp.route("/roblox/login")
+@login_required
+def roblox_login():
+    if not all([ROBLOX_CLIENT_ID, ROBLOX_CLIENT_SECRET, ROBLOX_REDIRECT_URI]):
+        abort(500, "Roblox login isn't configured yet — ROBLOX_CLIENT_ID / ROBLOX_CLIENT_SECRET / "
+                    "ROBLOX_REDIRECT_URI need to be set in the environment.")
+    state = secrets.token_urlsafe(24)
+    session["roblox_oauth_state"] = state
+    params = {
+        "client_id": ROBLOX_CLIENT_ID,
+        "redirect_uri": ROBLOX_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "openid profile",
+        "state": state,
+    }
+    return redirect(f"{ROBLOX_AUTHORIZE_URL}?{urlencode(params)}")
+
+
+@dash_bp.route("/roblox/callback")
+@login_required
+def roblox_callback():
+    error = request.args.get("error")
+    if error:
+        flash(f"Roblox login was cancelled ({error}).", "error")
+        return redirect(url_for("dashboard.home"))
+
+    state = request.args.get("state")
+    if not state or state != session.pop("roblox_oauth_state", None):
+        flash("That Roblox login link expired — please try linking again.", "error")
+        return redirect(url_for("dashboard.home"))
+
+    code = request.args.get("code")
+    if not code:
+        flash("Missing authorization code from Roblox — please try again.", "error")
+        return redirect(url_for("dashboard.home"))
+
+    try:
+        token_resp = requests.post(
+            ROBLOX_TOKEN_URL,
+            data={
+                "client_id": ROBLOX_CLIENT_ID,
+                "client_secret": ROBLOX_CLIENT_SECRET,
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": ROBLOX_REDIRECT_URI,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=10,
+        )
+    except requests.RequestException:
+        logger.exception("!!! [ROBLOX OAUTH] Token exchange request failed")
+        flash("Roblox login is temporarily unavailable. Please try again.", "error")
+        return redirect(url_for("dashboard.home"))
+    if token_resp.status_code != 200:
+        logger.error(f"!!! [ROBLOX OAUTH] Token exchange failed: {token_resp.status_code} {token_resp.text}")
+        flash("Roblox login failed during token exchange. Please try again.", "error")
+        return redirect(url_for("dashboard.home"))
+
+    try:
+        access_token = token_resp.json().get("access_token")
+    except ValueError:
+        logger.error("!!! [ROBLOX OAUTH] Token exchange returned invalid JSON")
+        access_token = None
+    if not access_token:
+        flash("Roblox login failed during token exchange. Please try again.", "error")
+        return redirect(url_for("dashboard.home"))
+
+    try:
+        user_resp = requests.get(
+            ROBLOX_USERINFO_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10,
+        )
+    except requests.RequestException:
+        logger.exception("!!! [ROBLOX OAUTH] User profile request failed")
+        flash("Roblox login is temporarily unavailable. Please try again.", "error")
+        return redirect(url_for("dashboard.home"))
+    if user_resp.status_code != 200:
+        logger.error(f"!!! [ROBLOX OAUTH] User fetch failed: {user_resp.status_code} {user_resp.text}")
+        flash("Roblox login failed while fetching your profile. Please try again.", "error")
+        return redirect(url_for("dashboard.home"))
+
+    profile = user_resp.json()
+    roblox_id = profile.get("sub")
+    roblox_username = profile.get("preferred_username") or profile.get("name") or f"User {roblox_id}"
+    avatar_url = profile.get("picture")
+
+    discord_user = _discord_user()
+    botmod.roblox_accounts_col.update_one(
+        {"_id": discord_user["id"]},
+        {"$set": {
+            "roblox_id": roblox_id,
+            "username": roblox_username,
+            "avatar_url": avatar_url,
+            "groups": _roblox_groups(roblox_id),
+            "linked_at": datetime.now(timezone.utc),
+        }},
+        upsert=True,
+    )
+    flash(f"✅ Linked Roblox account @{roblox_username} — check /userinfo in Discord to see it.", "success")
     return redirect(url_for("dashboard.home"))
 
 
