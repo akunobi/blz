@@ -60,6 +60,10 @@ ECONOMY_CHANNEL_ID = 1543393700539801671  # Only channel where economy/game comm
 BANDM_ROLE_ID = 1538589345991360527      # Only members with this role can use /bandm and /warndm
 BANDM_TEST_ROLE_ID = 1539303279195062313  # Only members with this role can use /bandmtest and /warndmtest
 SUPPORT_SERVER_URL = "https://discord.gg/FZmjTSBpSZ"  # Used in ban/warn DMs
+DASHBOARD_BASE_URL = os.getenv("DASHBOARD_BASE_URL")  # e.g. https://your-app.onrender.com (no trailing slash) —
+                                                       # used to build the "Login with Roblox" button in /userinfo,
+                                                       # which points at "{DASHBOARD_BASE_URL}/dashboard/roblox/login"
+                                                       # (see dashboard.py). Leave unset to just hide the button.
 
 # --- TRYOUT QUOTA SYSTEM ---
 QUOTA_REPORT_CHANNEL_ID = 1538589352186355804  # Channel where the weekly quota-fail report is posted
@@ -184,6 +188,9 @@ tryout_quota_col = db["tryout_quota"]  # Per-tryouter EP earned in the current q
 quota_state_col = db["quota_state"]  # Single doc tracking the last processed weekly reset
 tryout_in_col = db["tryout_in"]  # Per-tryouter IN (excused) status + /in cooldown
 tryout_excluded_col = db["tryout_excluded"]  # Members manually excluded from /viewt: {_id: user_id}
+roblox_accounts_col = db["roblox_accounts"]  # Linked Roblox accounts, set by the dashboard's "Login with
+                                              # Roblox" OAuth flow: {_id: discord_user_id, roblox_id,
+                                              # username, avatar_url, groups: [{id, name}], linked_at}
 
 # Helpful indexes (no-ops if they already exist)
 economy_col = db["economy"]  # Per-user coins, inventory, and cooldowns for the economy system
@@ -294,6 +301,27 @@ def _record_tryout_host_sync(host_id: int):
 
 async def record_tryout_host(host_id: int):
     return await asyncio.to_thread(_record_tryout_host_sync, host_id)
+
+
+def _get_tryout_host_total_sync(user_id: int) -> int:
+    doc = tryout_host_stats_col.find_one({"_id": user_id}, {"total": 1})
+    return doc.get("total", 0) if doc else 0
+
+
+async def get_tryout_host_total(user_id: int) -> int:
+    """All-time count of tryouts a member has hosted (i.e. whether/how much they've
+    moderated tryouts) — used by /userinfo."""
+    return await asyncio.to_thread(_get_tryout_host_total_sync, user_id)
+
+
+# --- Linked Roblox accounts (set by the dashboard's "Login with Roblox" flow) ----------
+
+def _get_roblox_account_sync(user_id: int):
+    return roblox_accounts_col.find_one({"_id": user_id})
+
+
+async def get_roblox_account(user_id: int):
+    return await asyncio.to_thread(_get_roblox_account_sync, user_id)
 
 
 # --- Quota EP -------------------------------------------------------------------------
@@ -458,6 +486,14 @@ def _get_top_players_sync(limit: int) -> list:
 
 async def get_top_players(limit: int = 10) -> list:
     return await asyncio.to_thread(_get_top_players_sync, limit)
+
+
+async def get_top_ep(limit: int = 10) -> list:
+    """Top tryouters by EP earned in the CURRENT quota week (tryout_quota_col is wiped
+    on every weekly reset — see reset_all_quota_ep) — used by /eptop."""
+    return await asyncio.to_thread(
+        lambda: list(tryout_quota_col.find({"ep": {"$gt": 0}}).sort("ep", DESCENDING).limit(limit))
+    )
 
 
 def _adjust_elo_sync(user_id: int, delta: int) -> int:
@@ -1039,6 +1075,62 @@ def build_econ_leaderboard_card(entries: list) -> Editor:
 
         base.text((W - 60, y + row_h / 2 - 15), f"{e['balance']:,}", font=bal_font, color=ECON_LEADERBOARD_ACCENT, align="right", anchor="ra")
         base.text((W - 60, y + row_h / 2 + 10), "COINS", font=unit_font, color=(150, 150, 155), align="right", anchor="ra")
+
+        y += row_h
+
+    return base
+
+
+EP_LEADERBOARD_ACCENT = (46, 204, 113)  # green — keeps this leaderboard visually distinct from ELO (red) and coins (gold)
+
+
+def build_ep_leaderboard_card(entries: list) -> Editor:
+    """entries: list of dicts with rank, username, ep, avatar_img.
+    Same layout/style as build_leaderboard_card and build_econ_leaderboard_card, just
+    swapped to weekly tryout-quota EP and a green accent."""
+    row_h = 66
+    header_h = 90
+    W = 1000
+    H = header_h + row_h * len(entries) + 30
+
+    base = Editor(Canvas((W, H), color=(16, 17, 20, 255)))
+    base.rectangle((10, 10), width=W - 20, height=H - 20, fill=(26, 27, 31, 255), outline=EP_LEADERBOARD_ACCENT, stroke_width=4, radius=28)
+
+    glow = Editor(Canvas((420, 260), color=(0, 0, 0, 0)))
+    glow.ellipse((0, 0), 420, 260, fill=(*EP_LEADERBOARD_ACCENT, 90))
+    glow = glow.blur(50)
+    base.paste(glow, (W // 2 - 210, -120))
+    base.rectangle((10, 10), width=W - 20, height=H - 20, fill=None, outline=EP_LEADERBOARD_ACCENT, stroke_width=4, radius=28)
+
+    title_font = Font.poppins(variant="bold", size=32)
+    sub_font = Font.poppins(variant="regular", size=16)
+    base.text((W / 2, 28), "BLAZING LOCK — EP LEADERBOARD", font=title_font, color="white", align="center", anchor="ma")
+    base.text((W / 2, 66), "Top Tryouters This Week", font=sub_font, color=EP_LEADERBOARD_ACCENT, align="center", anchor="ma")
+
+    rank_font = Font.poppins(variant="bold", size=26)
+    name_font = Font.poppins(variant="bold", size=22)
+    ep_font = Font.poppins(variant="bold", size=24)
+    unit_font = Font.poppins(variant="regular", size=15)
+
+    y = header_h
+    for e in entries:
+        rank = e["rank"]
+        _overlay_rounded_rect(base, (30, y + 4), W - 60, row_h - 12, 16, (255, 255, 255, 20))
+
+        medal = LEADERBOARD_MEDAL_COLORS.get(rank)
+        rank_color = medal if medal else (190, 190, 195)
+        base.text((60, y + row_h / 2 - 16), f"#{rank}", font=rank_font, color=rank_color)
+
+        avatar_img = e.get("avatar_img") or _placeholder_avatar((90, 90, 100))
+        avatar = Editor(avatar_img).resize((48, 48)).circle_image()
+        avatar_y = int(y + (row_h - 48) / 2)
+        base.paste(avatar, (135, avatar_y))
+        base.ellipse((135, avatar_y), 48, 48, outline=(medal if medal else (255, 255, 255, 40)), stroke_width=3 if medal else 1)
+
+        base.text((200, y + row_h / 2 - 14), e["username"], font=name_font, color="white")
+
+        base.text((W - 60, y + row_h / 2 - 15), str(e["ep"]), font=ep_font, color=EP_LEADERBOARD_ACCENT, align="right", anchor="ra")
+        base.text((W - 60, y + row_h / 2 + 10), "EP", font=unit_font, color=(150, 150, 155), align="right", anchor="ra")
 
         y += row_h
 
@@ -2242,6 +2334,120 @@ async def ep_command(interaction: discord.Interaction, player: discord.Member = 
         f"Resets: <t:{int(reset_at.timestamp())}:F> (<t:{int(reset_at.timestamp())}:R>)",
     ]
     await interaction.followup.send("\n".join(lines), ephemeral=True)
+
+
+@client.tree.command(name="userinfo", description="View a member's IN/tryout status and linked Roblox account")
+@app_commands.describe(player="The member to check (leave empty to check yourself)")
+async def userinfo_command(interaction: discord.Interaction, player: discord.Member = None):
+    await interaction.response.defer()
+
+    target = player or interaction.user
+    is_self = target.id == interaction.user.id
+    now = datetime.now(timezone.utc)
+
+    # --- IN status: on IN now? if not, when are they next eligible for /in? -----------
+    in_doc = await get_in_doc(target.id)
+    in_until = _aware(in_doc["in_until"]) if in_doc and in_doc.get("in_until") else None
+    cooldown_until = _aware(in_doc["cooldown_until"]) if in_doc and in_doc.get("cooldown_until") else None
+
+    if in_until and in_until > now:
+        in_status = f"🟢 Currently on IN — ends <t:{int(in_until.timestamp())}:F> (<t:{int(in_until.timestamp())}:R>)"
+    elif cooldown_until and cooldown_until > now:
+        in_status = f"⏳ Not on IN — next eligible for /in <t:{int(cooldown_until.timestamp())}:F> (<t:{int(cooldown_until.timestamp())}:R>)"
+    else:
+        in_status = "⚪ Not on IN — eligible for /in right now"
+
+    # --- Tryout hosting ("have they moderated") ----------------------------------------
+    host_total = await get_tryout_host_total(target.id)
+    mod_status = (
+        f"✅ Has hosted **{host_total}** tryout{'s' if host_total != 1 else ''}"
+        if host_total > 0 else "❌ Has never hosted a tryout"
+    )
+
+    roblox_doc = await get_roblox_account(target.id)
+
+    embed = discord.Embed(title=f"👤 {target.display_name} — User Info", color=0xE63946)
+    thumbnail_url = roblox_doc["avatar_url"] if roblox_doc and roblox_doc.get("avatar_url") else target.display_avatar.url
+    embed.set_thumbnail(url=thumbnail_url)
+    embed.add_field(name="IN Status", value=in_status, inline=False)
+    embed.add_field(name="Tryout Hosting", value=mod_status, inline=False)
+
+    if roblox_doc:
+        groups = roblox_doc.get("groups") or []
+        group_text = ", ".join(g["name"] for g in groups[:5]) if groups else "None"
+        if len(groups) > 5:
+            group_text += f" (+{len(groups) - 5} more)"
+        embed.add_field(
+            name="Roblox Account",
+            value=(
+                f"**Username:** {roblox_doc.get('username')}\n"
+                f"**ID:** {roblox_doc.get('roblox_id')}\n"
+                f"**Groups:** {group_text}"
+            ),
+            inline=False,
+        )
+    elif is_self:
+        embed.add_field(
+            name="Roblox Account",
+            value="Not linked yet — use the button below to link your Roblox account.",
+            inline=False,
+        )
+
+    view = None
+    if is_self and DASHBOARD_BASE_URL:
+        view = discord.ui.View()
+        view.add_item(discord.ui.Button(
+            label="Update Roblox Link" if roblox_doc else "Login with Roblox",
+            style=discord.ButtonStyle.link,
+            url=f"{DASHBOARD_BASE_URL}/dashboard/roblox/login",
+            emoji="🔗",
+        ))
+
+    await interaction.followup.send(embed=embed, view=view)
+
+
+@client.tree.command(name="eptop", description="Show the tryouters with the most EP this week")
+async def eptop_command(interaction: discord.Interaction):
+    await interaction.response.defer()
+
+    top = await get_top_ep(10)
+    if not top:
+        await interaction.followup.send("No EP has been earned yet this week.")
+        return
+
+    guild = interaction.guild
+    entries = []
+    for i, doc in enumerate(top, start=1):
+        user_id = doc["_id"]
+        member = guild.get_member(user_id) if guild else None
+        display_name = member.display_name if member else f"User {user_id}"
+
+        try:
+            if member is not None:
+                avatar_url = str(member.display_avatar.replace(size=128, format="png"))
+                avatar_img = await load_image_async(avatar_url)
+            else:
+                avatar_img = _placeholder_avatar((90, 90, 100))
+        except Exception as e:
+            logger.error(f"!!! [EPTOP] Avatar download failed for {user_id}: {e}")
+            avatar_img = _placeholder_avatar((90, 90, 100))
+
+        entries.append({
+            "rank": i,
+            "username": display_name,
+            "ep": doc.get("ep", 0),
+            "avatar_img": avatar_img,
+        })
+
+    try:
+        editor = await asyncio.to_thread(build_ep_leaderboard_card, entries)
+        file = discord.File(fp=editor.image_bytes, filename="blazing_lock_ep_leaderboard.png")
+    except Exception as e:
+        logger.error(f"!!! [EPTOP] Render failed: {e}")
+        await interaction.followup.send("Couldn't generate the leaderboard right now. Try again in a moment.")
+        return
+
+    await interaction.followup.send(file=file)
 
 
 @client.tree.command(name="in", description="Put a tryouter on IN, excusing them from quota for its duration (staff only)")
