@@ -427,106 +427,97 @@ def staff_required(view):
 # =====================================================================================
 
 THEME_CSS = """
-  @import url('https://fonts.googleapis.com/css2?family=Big+Shoulders:wght@700;900&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
 
   :root {
-    color-scheme: dark; /* this theme is always dark, on purpose, everywhere */
-    --bg: #050a14; --surface: #0b1424; --surface-2: #10233b;
-    --line: #183654; --line-bright: #2b79aa;
-    --text: #e9f7ff; --text-dim: #7da1b8;
-    --accent: #16bfff; --accent-rgb: 22,191,255; --accent-dim: #082c49;
-    --danger: #ff5274; --warn: #ffd166; --info: #68e5ff;
-    --font-display: 'Big Shoulders', sans-serif;
-    --font-body: 'JetBrains Mono', monospace;
-    --font-sans: 'DM Sans', 'Segoe UI', sans-serif;
+    color-scheme: dark; /* a facility built for night sessions — the theme stays dark everywhere */
+    --bg: #0a0e17; --surface: #131b2b; --surface-2: #1b2740;
+    --line: #232f47; --line-bright: #34456b;
+    --text: #eef2fa; --text-dim: #8b96ac;
+    --accent: #3865ff; --accent-rgb: 56,101,255; --accent-dim: #16213a; --accent-strong: #7590ff;
+    --danger: #ff4d5e; --warn: #ffb43a; --info: #33d6ff;
+    --font-display: 'Oswald', sans-serif;
+    --font-body: 'IBM Plex Mono', monospace;
+    --font-sans: 'Inter', 'Segoe UI', sans-serif;
+    --radius: 10px; --radius-sm: 7px;
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
   body {
-    margin: 0; font-family: var(--font-sans); font-size: 15px; color: var(--text); min-height: 100vh;
-    background-color: var(--bg);
-    background-image: radial-gradient(circle at 85% 5%, rgba(var(--accent-rgb),.16), transparent 28%),
-                       linear-gradient(rgba(var(--accent-rgb),.045) 1px, transparent 1px),
-                       linear-gradient(90deg, rgba(var(--accent-rgb),.045) 1px, transparent 1px);
-    background-size: auto, 32px 32px, 32px 32px;
+    margin: 0; font-family: var(--font-sans); font-size: 15px; line-height: 1.55; color: var(--text); min-height: 100vh;
+    background: var(--bg);
   }
-  a { color: var(--accent); text-decoration: none; }
+  a { color: var(--accent-strong); text-decoration: none; }
   a:hover { text-decoration: underline; }
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-  code { font-family: var(--font-body); }
+  :focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 3px; border-radius: 2px; }
+  code { font-family: var(--font-body); font-size: .9em; }
   .muted { color: var(--text-dim); }
 
-  h1 { font-family: var(--font-display); font-weight: 900; font-size: clamp(30px,5vw,42px); line-height: 1.1; margin: 0 0 22px; color: var(--text); text-transform: uppercase; letter-spacing: .01em; text-shadow: 0 0 26px rgba(var(--accent-rgb),.24); }
-  h1::before { content: "// "; font-family: var(--font-body); color: var(--accent); }
-  h2 { font-family: var(--font-body); font-weight: 700; font-size: 12px; margin: 32px 0 14px; color: var(--accent); letter-spacing: .1em; text-transform: uppercase; border-top: 1px solid var(--accent); padding: 10px 0 0; }
+  h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(28px,4.6vw,40px); line-height: 1.15; margin: 0 0 16px; color: var(--text); letter-spacing: .01em; }
+  h2 { font-family: var(--font-display); font-weight: 600; font-size: 21px; margin: 44px 0 16px; color: var(--text); letter-spacing: .01em; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  h2:first-child { margin-top: 0; }
+  h3 { font-family: var(--font-sans); font-weight: 600; font-size: 15px; color: var(--text); margin: 0 0 10px; }
+  .subhead { font-family: var(--font-sans); font-weight: 600; font-size: 12.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .07em; margin: 32px 0 12px; }
 
   .btn {
-    display: inline-block; background: var(--accent); color: var(--bg); border: 1px solid var(--accent);
-    padding: 11px 20px; font-family: var(--font-body); font-size: 14px; cursor: pointer; font-weight: 700;
-    text-transform: uppercase; letter-spacing: .05em; box-shadow: 0 0 18px rgba(var(--accent-rgb),.25);
-    transition: opacity .1s, box-shadow .1s;
+    display: inline-flex; align-items: center; gap: 6px; background: var(--accent); color: #fff; border: 1px solid var(--accent);
+    border-radius: var(--radius-sm); padding: 10px 18px; font-family: var(--font-sans); font-size: 14px; cursor: pointer; font-weight: 600;
+    box-shadow: 0 1px 2px rgba(0,0,0,.35); transition: background .15s ease, border-color .15s ease, transform .1s ease;
   }
-  .btn:hover { text-decoration: none; opacity: 1; box-shadow: 0 0 28px rgba(var(--accent-rgb),.5); }
-  .btn:active { opacity: .65; }
+  .btn:hover { text-decoration: none; background: var(--accent-strong); border-color: var(--accent-strong); }
+  .btn:active { transform: translateY(1px); }
   .btn.secondary { background: transparent; color: var(--text); border-color: var(--line-bright); box-shadow: none; }
-  .btn.small { padding: 6px 11px; font-size: 12px; }
+  .btn.secondary:hover { background: var(--surface-2); border-color: var(--accent-strong); }
+  .btn.small { padding: 7px 13px; font-size: 13px; }
   .btn.danger { background: var(--danger); border-color: var(--danger); }
+  .btn.danger:hover { background: #ff6a79; border-color: #ff6a79; }
 
   .card, .stat {
-    background: linear-gradient(145deg, rgba(var(--accent-rgb),.1), rgba(11,20,36,.9));
-    border: 1px solid var(--line); padding: 20px; position: relative;
-    box-shadow: 0 0 0 1px rgba(var(--accent-rgb),.04), 0 12px 30px rgba(0,0,0,.24);
-    transition: transform .2s ease, border-color .2s, box-shadow .2s;
-    animation: pop-in .25s ease-out backwards;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; position: relative;
+    box-shadow: 0 1px 2px rgba(0,0,0,.3);
+    transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
   }
-  .card:hover, .stat:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 0 0 1px rgba(var(--accent-rgb),.18), 0 12px 30px rgba(0,0,0,.3); }
-  .card::before, .card::after, .stat::before, .stat::after { content: ""; position: absolute; width: 9px; height: 9px; border: 2px solid var(--accent); opacity: .7; pointer-events: none; }
-  .card::before, .stat::before { top: 0; left: 0; border-right: none; border-bottom: none; }
-  .card::after, .stat::after { bottom: 0; right: 0; border-left: none; border-top: none; }
-  @keyframes pop-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .card:hover, .stat:hover { transform: translateY(-2px); border-color: var(--line-bright); box-shadow: 0 10px 24px rgba(0,0,0,.35); }
+  .stat { border-top: 3px solid var(--accent); }
   a.card { display: block; color: var(--text); }
   a.card:hover { text-decoration: none; }
-  a.card:hover::before, a.card:hover::after { opacity: 1; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 20px; }
-  .grid > *:nth-child(1) { animation-delay: 0ms; } .grid > *:nth-child(2) { animation-delay: 40ms; }
-  .grid > *:nth-child(3) { animation-delay: 80ms; } .grid > *:nth-child(4) { animation-delay: 120ms; }
-  .grid > *:nth-child(5) { animation-delay: 160ms; } .grid > *:nth-child(6) { animation-delay: 200ms; }
-  .grid > *:nth-child(n+7) { animation-delay: 220ms; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 16px; }
 
-  .pill { display: inline-block; padding: 3px 10px 3px 8px; font-size: 12px; background: var(--surface-2); border-left: 3px solid var(--text-dim); text-transform: uppercase; letter-spacing: .04em; color: var(--text-dim); }
-  .pill.pending { border-left-color: var(--warn); color: var(--warn); }
-  .pill.approved { border-left-color: var(--accent); color: var(--accent); }
-  .pill.denied { border-left-color: var(--danger); color: var(--danger); }
-  .empty { color: var(--text-dim); padding: 18px 0; text-align: center; font-size: 14px; }
+  .pill { display: inline-flex; align-items: center; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--surface-2); color: var(--text-dim); }
+  .pill.pending { background: rgba(255,180,58,.15); color: var(--warn); }
+  .pill.approved { background: rgba(var(--accent-rgb),.16); color: var(--accent-strong); }
+  .pill.denied { background: rgba(255,77,94,.15); color: var(--danger); }
+  .empty { color: var(--text-dim); padding: 22px 0; text-align: center; font-size: 14px; }
 
   /* --- search widget: shared by the dashboard top bar and the public site's top bar --- */
   .search-shell {
     position: relative; display: flex; align-items: center; width: 38px; height: 38px;
-    flex: 0 0 auto; transition: width .25s cubic-bezier(.2,.8,.2,1);
+    flex: 0 0 auto; transition: width .2s ease;
   }
-  .search-shell::before { content: '\2315'; position: absolute; left: 12px; top: 6px; color: var(--accent); font-size: 22px; pointer-events: none; z-index: 1; }
+  .search-shell::before { content: '\2315'; position: absolute; left: 12px; top: 7px; color: var(--text-dim); font-size: 20px; pointer-events: none; z-index: 1; }
   .search-input {
-    width: 100% !important; height: 38px; margin: 0 !important; padding: 0 12px 0 38px !important;
-    background: var(--surface) !important; border: 1px solid var(--line-bright) !important; color: var(--text) !important;
-    font-family: var(--font-body); transition: box-shadow .25s;
+    width: 100% !important; height: 38px; margin: 0 !important; padding: 0 12px 0 36px !important;
+    background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-sm) !important; color: var(--text) !important;
+    font-family: var(--font-sans); font-size: 13.5px; transition: border-color .15s ease, box-shadow .15s ease;
   }
   /* The shell (not just the input) grows on focus, so it actually reserves the extra
      space in the surrounding flex row and pushes neighboring buttons/avatar aside
      instead of the expanded input rendering on top of them. */
   .search-shell:focus-within { width: clamp(190px,24vw,340px); }
-  .search-shell:focus-within .search-input { box-shadow: 4px 4px 0 var(--accent); }
-  .search-results { position: absolute; top: 44px; right: 0; width: 260px; background: var(--surface); border: 1px solid var(--line-bright); display: none; max-height: 280px; overflow: auto; box-shadow: 6px 6px 0 var(--accent); z-index: 60; }
+  .search-shell:focus-within .search-input { border-color: var(--accent-strong) !important; box-shadow: 0 0 0 3px rgba(var(--accent-rgb),.18); }
+  .search-results { position: absolute; top: 44px; right: 0; width: 260px; background: var(--surface); border: 1px solid var(--line-bright); border-radius: var(--radius-sm); display: none; max-height: 280px; overflow: auto; box-shadow: 0 14px 30px rgba(0,0,0,.5); z-index: 60; }
   .search-results.open { display: block; }
-  .search-results a { display: block; padding: 11px 13px; color: var(--text-dim); border-bottom: 1px solid var(--line); font-size: 12px; }
-  .search-results a:hover { background: var(--accent); color: var(--bg); text-decoration: none; }
+  .search-results a { display: block; padding: 10px 13px; color: var(--text-dim); border-bottom: 1px solid var(--line); font-size: 13px; }
+  .search-results a:last-child { border-bottom: none; }
+  .search-results a:hover { background: var(--accent-dim); color: var(--text); text-decoration: none; }
   @media (max-width: 760px) {
     .search-shell:focus-within { width: 100%; }
     .search-results { width: min(86vw,320px); }
   }
 
-  ::-webkit-scrollbar { width: 12px; height: 12px; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-track { background: var(--bg); }
-  ::-webkit-scrollbar-thumb { background: var(--line-bright); }
+  ::-webkit-scrollbar-thumb { background: var(--line-bright); border-radius: 999px; }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
   }
@@ -536,89 +527,90 @@ THEME_CSS = """
 # progress bars, tabs. (Everything already covered by THEME_CSS above is not repeated.)
 LAYOUT_EXTRA_CSS = """
   .appbar {
-    position: sticky; top: 0; z-index: 25; min-height: 64px; display: flex; align-items: center; gap: 22px;
-    padding: 12px clamp(16px,5vw,64px); background: rgba(5,10,20,.92); border-bottom: 1px solid var(--line-bright);
-    backdrop-filter: blur(10px); box-shadow: 0 0 28px rgba(var(--accent-rgb),.1);
+    position: sticky; top: 0; z-index: 25; min-height: 64px; display: flex; align-items: center; gap: 18px;
+    padding: 0 clamp(16px,5vw,48px); background: rgba(10,14,23,.94); border-bottom: 1px solid var(--line);
+    backdrop-filter: blur(10px);
   }
-  .appbrand { color: var(--text); font: 900 22px var(--font-display); letter-spacing: .04em; white-space: nowrap; }
-  .appbrand span { color: var(--accent); }
-  .appnav { display: flex; align-items: center; gap: 4px; flex: 1; overflow: auto; }
-  .appnav a { padding: 8px 10px; color: var(--text-dim); font-size: 11px; font-family: var(--font-body); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
-  .appnav a:hover { color: var(--accent); text-decoration: none; background: var(--accent-dim); }
-  .appnav a.active { color: var(--accent); background: var(--accent-dim); box-shadow: inset 0 -2px 0 var(--accent); }
+  .appbrand { display: flex; align-items: center; gap: 8px; color: var(--text); font: 600 18px var(--font-display); letter-spacing: .02em; text-transform: uppercase; white-space: nowrap; }
+  .appbrand span { color: var(--accent-strong); }
+  .appnav { display: flex; align-items: center; gap: 2px; flex: 1; overflow: auto; }
+  .appnav a { padding: 8px 12px; border-radius: 999px; color: var(--text-dim); font-size: 13px; font-family: var(--font-sans); font-weight: 500; white-space: nowrap; }
+  .appnav a:hover { color: var(--text); text-decoration: none; background: var(--surface-2); }
+  .appnav a.active { color: #fff; background: var(--accent); }
   .appactions { display: flex; align-items: center; gap: 10px; margin-left: auto; white-space: nowrap; }
-  .appactions img { width: 26px; height: 26px; border: 1px solid var(--line-bright); }
+  .appactions img { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line-bright); }
   @media (max-width: 760px) {
-    .appbar { flex-wrap: wrap; gap: 8px; padding: 9px 14px; }
-    .appnav { order: 3; flex-basis: 100%; margin: 0 -14px; padding: 0 14px 3px; }
+    .appbar { flex-wrap: wrap; gap: 8px; padding: 10px 14px; }
+    .appnav { order: 3; flex-basis: 100%; margin: 0 -14px; padding: 6px 14px 4px; border-top: 1px solid var(--line); }
   }
 
-  main { max-width: 1180px; margin: 0 auto; padding: 40px clamp(20px,6vw,64px) 90px; }
-  .linkrow { display: flex; flex-wrap: wrap; border: 1px solid var(--line); background: var(--surface); margin-top: 16px; }
-  .linkrow a { padding: 10px 16px; color: var(--text-dim); font-size: 13px; font-family: var(--font-body); text-transform: uppercase; letter-spacing: .04em; border-right: 1px solid var(--line); }
+  main { max-width: 1180px; margin: 0 auto; padding: 40px clamp(20px,6vw,48px) 90px; }
+  .linkrow { display: flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); margin-top: 16px; overflow: hidden; }
+  .linkrow a { padding: 10px 16px; color: var(--text-dim); font-size: 13px; font-weight: 500; border-right: 1px solid var(--line); }
   .linkrow a:last-child { border-right: none; }
-  .linkrow a:hover { color: var(--accent); background: var(--surface-2); text-decoration: none; }
+  .linkrow a:hover { color: var(--text); background: var(--surface-2); text-decoration: none; }
 
-  .flash { padding: 12px 16px; margin-bottom: 12px; font-size: 14px; position: relative; background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--text-dim); overflow-wrap: anywhere; }
+  .flash { padding: 12px 16px; margin-bottom: 14px; font-size: 14px; position: relative; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--text-dim); overflow-wrap: anywhere; }
   .flash.success { border-left-color: var(--accent); }
   .flash.error { border-left-color: var(--danger); }
   .flash.info { border-left-color: var(--info); }
 
   .card { margin-bottom: 16px; overflow-x: auto; }
-  .stat .label { color: var(--text-dim); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
-  .stat .value { font-family: var(--font-display); font-weight: 900; font-size: clamp(28px,4vw,38px); margin-top: 8px; display: block; color: var(--accent); }
+  .stat .label { color: var(--text-dim); font-size: 12.5px; font-weight: 500; }
+  .stat .value { font-family: var(--font-display); font-weight: 700; font-size: clamp(26px,3.6vw,34px); margin-top: 6px; display: block; color: var(--text); }
 
   table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; min-width: 560px; }
-  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); }
-  th { font-size: 11px; font-family: var(--font-body); text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim); border-bottom: 2px solid var(--line-bright); }
+  th, td { text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--line); }
+  th { font-size: 12px; font-family: var(--font-sans); font-weight: 600; color: var(--text-dim); border-bottom: 2px solid var(--line-bright); }
   tr:hover td { background: var(--surface-2); }
-  tr.hl td { background: rgba(var(--accent-rgb),.14); }
-  .avatar-sm { width: 22px; height: 22px; border: 1px solid var(--line-bright); vertical-align: middle; margin-right: 9px; }
+  tr.hl td { background: rgba(var(--accent-rgb),.12); }
+  .avatar-sm { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line-bright); vertical-align: middle; margin-right: 9px; }
 
-  .progress { background: var(--surface-2); border: 1px solid var(--line); height: 16px; overflow: hidden; padding: 2px; }
-  .progress > div { background: linear-gradient(90deg, var(--accent), var(--info)); height: 100%; box-shadow: 0 0 14px var(--accent); transition: width .8s ease; }
+  .progress { background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; height: 14px; overflow: hidden; padding: 2px; }
+  .progress > div { background: var(--accent); border-radius: 999px; height: 100%; transition: width .6s ease; }
 
   .btn.success { background: var(--accent); border-color: var(--accent); }
   input[type=text], input[type=number], input[type=password], textarea, select, input[type=file] {
-    width: 100%; background: var(--surface-2); border: 1px solid var(--line); padding: 9px 10px;
-    color: var(--text); font-size: 14px; margin-top: 5px; font-family: var(--font-body);
+    width: 100%; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px;
+    color: var(--text); font-size: 14px; margin-top: 6px; font-family: var(--font-sans);
   }
   input[type=file]::file-selector-button {
-    margin: -9px 10px -9px -10px; padding: 9px 12px; background: var(--accent); color: var(--bg);
-    border: 0; border-right: 1px solid var(--line); font: 700 12px var(--font-body); cursor: pointer;
+    margin: -10px 12px -10px -12px; padding: 10px 14px; background: var(--accent); color: #fff;
+    border: 0; border-right: 1px solid var(--line); border-radius: var(--radius-sm) 0 0 var(--radius-sm); font: 600 13px var(--font-sans); cursor: pointer;
   }
-  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(var(--accent-rgb),.12); }
-  label { font-size: 11px; color: var(--text-dim); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; font-family: var(--font-body); }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent-strong); box-shadow: 0 0 0 3px rgba(var(--accent-rgb),.16); }
+  label { font-size: 12px; color: var(--text-dim); font-weight: 600; font-family: var(--font-sans); }
   form.inline { display: inline-block; margin-right: 6px; }
-  .field { margin-bottom: 15px; }
+  .field { margin-bottom: 16px; }
   .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
   .row .field { flex: 1; min-width: 160px; }
 
   .coin-icon { height: 1em; width: 1em; vertical-align: -0.15em; }
   .center { text-align: center; }
-  .login-hero { text-align: center; padding: 90px 20px; }
-  .login-hero h1 { font-size: clamp(32px,6vw,48px); }
+  .login-hero { text-align: center; padding: 100px 20px; }
+  .login-hero h1 { font-size: clamp(30px,5.5vw,44px); }
 
-  .tabs { display: flex; gap: 4px; margin-bottom: 18px; flex-wrap: wrap; }
-  .tabs a { padding: 8px 14px; background: var(--surface); border: 1px solid var(--line); color: var(--text-dim); font-size: 12px; font-family: var(--font-body); text-transform: uppercase; letter-spacing: .05em; }
-  .tabs a.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .tabs { display: flex; gap: 3px; margin-bottom: 20px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px; width: fit-content; }
+  .tabs a { padding: 8px 16px; border-radius: 999px; color: var(--text-dim); font-size: 13px; font-weight: 500; }
+  .tabs a:hover { color: var(--text); text-decoration: none; }
+  .tabs a.active { background: var(--accent); color: #fff; }
 """
 
 # Public-landing-page-only additions: the top bar, hero, FAQ/level/role sections.
 PUBLIC_EXTRA_CSS = """
   .topbar {
-    position: sticky; top: 0; z-index: 50; background: rgba(5,10,20,.92); backdrop-filter: blur(8px);
-    border-bottom: 1px solid var(--line-bright); box-shadow: 0 0 28px rgba(var(--accent-rgb),.1);
+    position: sticky; top: 0; z-index: 50; background: rgba(10,14,23,.92); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
   }
-  .topbar-inner { max-width: 1180px; margin: 0 auto; padding: 16px 28px; display: flex; align-items: center; gap: 24px; }
-  .brand { font-family: var(--font-display); font-weight: 900; font-size: 22px; letter-spacing: .03em; color: var(--text); text-transform: uppercase; white-space: nowrap; }
-  .brand span { color: var(--accent) !important; }
-  .toplinks { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
-  .toplinks a { color: var(--text-dim); font-size: 12px; font-family: var(--font-body); text-transform: uppercase; letter-spacing: .06em; padding: 8px 12px; border: 1px solid transparent; }
-  .toplinks a:hover { color: var(--accent); border-color: var(--accent); text-decoration: none; }
-  .toplinks a.active { color: var(--accent); border-color: var(--accent); }
+  .topbar-inner { max-width: 1180px; margin: 0 auto; padding: 14px 28px; display: flex; align-items: center; gap: 24px; }
+  .brand { display: flex; align-items: center; gap: 9px; font-family: var(--font-display); font-weight: 700; font-size: 18px; letter-spacing: .02em; color: var(--text); text-transform: uppercase; white-space: nowrap; }
+  .brand span { color: var(--accent-strong) !important; }
+  .toplinks { display: flex; gap: 2px; flex-wrap: wrap; flex: 1; }
+  .toplinks a { color: var(--text-dim); font-size: 13px; font-weight: 500; padding: 9px 13px; border-radius: 999px; }
+  .toplinks a:hover { color: var(--text); background: var(--surface-2); text-decoration: none; }
+  .toplinks a.active { color: #fff; background: var(--accent); }
   .topuser { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
-  .topuser img { width: 24px; height: 24px; border: 1px solid var(--line-bright); }
+  .topuser img { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line-bright); }
   @media (max-width: 760px) {
     .toplinks { order: 3; width: 100%; overflow-x: auto; justify-content: flex-start; }
     .topbar-inner { flex-wrap: wrap; padding: 12px 16px; }
@@ -626,37 +618,33 @@ PUBLIC_EXTRA_CSS = """
   }
 
   main { max-width: 1180px; margin: 0 auto; padding: 0 28px 100px; }
-  .hero { min-height: 78vh; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 90px 20px 70px; position: relative; }
-  .hero::before { content: 'BLAZE / PLAY / COMMUNITY'; position: absolute; top: 18%; left: 2%; color: var(--accent); font-size: 10px; letter-spacing: .2em; writing-mode: vertical-rl; opacity: .5; }
-  .hero::after { content: 'SCROLL TO EXPLORE'; position: absolute; bottom: 22px; left: 50%; color: var(--accent); font-size: 10px; letter-spacing: .18em; transform: translateX(-50%); }
-  .hero h1 { font-size: clamp(48px,10vw,110px); line-height: .92; letter-spacing: -.02em; max-width: 1000px; margin-bottom: 24px; text-shadow: 0 0 30px rgba(var(--accent-rgb),.22); }
-  .hero h1::before { content: '\21b3 '; color: var(--accent); }
-  .hero p { max-width: 560px; margin: 0 auto 26px; }
-  .hero .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .hero { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 96px 20px 56px; }
+  .hero h1 { font-size: clamp(38px,6.6vw,64px); line-height: 1.05; letter-spacing: -.005em; max-width: 820px; margin-bottom: 18px; text-transform: uppercase; }
+  .hero p { max-width: 560px; margin: 0 auto 30px; color: var(--text-dim); font-size: 16px; }
+  .hero .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 46px; }
+  .hero .features { display: flex; gap: 30px; flex-wrap: wrap; justify-content: center; padding-top: 32px; border-top: 1px solid var(--line); width: 100%; max-width: 720px; }
+  .hero .features .feature { display: flex; align-items: center; gap: 9px; color: var(--text-dim); font-size: 13.5px; font-weight: 500; }
+  .hero .features .feature svg { color: var(--accent-strong); flex-shrink: 0; }
 
-  section { padding: 80px 0; border-top: 1px solid var(--line-bright); }
-  section > h2 { position: sticky; top: 82px; z-index: 4; background: linear-gradient(var(--bg) 72%, transparent); padding-bottom: 18px; max-width: 260px; }
-  .section-intro { margin: -6px 0 22px; }
+  section { padding: 64px 0; border-top: 1px solid var(--line); }
+  .section-intro { margin: 0 0 24px; max-width: 640px; }
 
-  .level-card { background: var(--surface); border: 1px solid var(--line); padding: 16px 18px; position: relative; transition: transform .2s, border-color .2s; }
-  .level-card:hover { transform: translateY(-3px); border-color: var(--accent); }
-  .level-card::before { content: ""; position: absolute; top: -1px; left: -1px; width: 9px; height: 9px; border: 2px solid var(--accent); border-right: none; border-bottom: none; opacity: .7; }
-  .level-card .lvl-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
-  .level-card .lvl-num { font-family: var(--font-display); font-weight: 900; font-size: 22px; color: var(--accent); }
-  .level-card .lvl-role { font-weight: 700; font-size: 14px; text-transform: uppercase; letter-spacing: .03em; }
+  .level-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; transition: transform .15s ease, border-color .15s ease; }
+  .level-card:hover { transform: translateY(-2px); border-color: var(--line-bright); }
+  .level-card .lvl-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+  .level-card .lvl-num { font-family: var(--font-display); font-weight: 700; font-size: 19px; color: var(--accent-strong); }
+  .level-card .lvl-role { font-weight: 600; font-size: 14px; }
   .level-card ul { margin: 0; padding-left: 18px; color: var(--text-dim); font-size: 13.5px; line-height: 1.7; }
-  .role-card h3 { margin: 0 0 8px; font-size: 15px; text-transform: uppercase; letter-spacing: .02em; }
+  .role-card h3 { margin: 0 0 8px; font-size: 15px; }
   .role-card p { margin: 0; color: var(--text-dim); font-size: 13.5px; line-height: 1.6; }
   ul.plain { margin: 0; padding-left: 18px; color: var(--text-dim); font-size: 14px; line-height: 1.85; }
-  .chip { display: inline-block; background: var(--accent); color: var(--bg); border: 1px solid var(--accent); font-size: 13px; padding: 2px 8px; font-weight: 700; }
-  footer { text-align: center; padding: 40px 20px 60px; color: var(--text-dim); font-size: 12.5px; }
+  .chip { display: inline-block; background: var(--accent-dim); color: var(--accent-strong); border-radius: 999px; font-size: 13px; padding: 3px 10px; font-weight: 600; }
+  footer { text-align: center; padding: 48px 20px 64px; color: var(--text-dim); font-size: 13px; border-top: 1px solid var(--line); }
 
   @media (max-width: 760px) {
     main { padding: 0 16px 80px; }
-    .hero { min-height: 70vh; padding-top: 60px; }
-    .hero h1 { font-size: clamp(44px,14vw,80px); }
-    section { padding: 56px 0; }
-    section > h2 { top: 116px; }
+    .hero { padding: 64px 16px 44px; }
+    section { padding: 48px 0; }
   }
 """
 
@@ -666,7 +654,7 @@ LAYOUT = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#05070d">
+<meta name="theme-color" content="#0a0e17">
 <title>{{ title }} · Blazing Lock</title>
 <style>
 """ + THEME_CSS + LAYOUT_EXTRA_CSS + """
@@ -674,7 +662,7 @@ LAYOUT = """<!doctype html>
 </head>
 <body>
 <header class="appbar">
-  <a class="appbrand" href="{{ url_for('dashboard.home') }}">BLZ<span>/</span>WEB</a>
+  <a class="appbrand" href="{{ url_for('dashboard.home') }}"><span><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 1L19 10L10 19L1 10L10 1Z" stroke="currentColor" stroke-width="1.6"/><path d="M10 7L13 10L10 13L7 10L10 7Z" fill="currentColor"/></svg></span> Blazing Lock</a>
   {% if status == "approved" %}
   {% set current_path = request.path %}
   {% set home_url = url_for('dashboard.home') %}
@@ -1613,7 +1601,7 @@ STAFF_FAQ_SECTIONS = [
 ]
 
 FAQ_STYLE = """
-<style>.faq-section{padding:0;border:0;margin:32px 0}.faq-item{border:1px solid var(--line);background:var(--surface);margin:8px 0;box-shadow:3px 3px 0 rgba(var(--accent-rgb),.12)}.faq-item summary{cursor:pointer;padding:16px 18px;font-weight:700;color:var(--text);list-style:'＋  '}.faq-item[open] summary{color:var(--accent);list-style:'－  '}.faq-answer{padding:0 18px 18px;color:var(--text-dim);line-height:1.7}.faq-answer code{color:var(--accent);background:var(--surface-2);padding:2px 5px}.faq-note{border-left:4px solid var(--accent)}</style>
+<style>.faq-section{padding:0;border:0;margin:32px 0}.faq-item{border:1px solid var(--line);background:var(--surface);border-radius:var(--radius);margin:8px 0;overflow:hidden}.faq-item summary{cursor:pointer;padding:16px 18px;font-weight:600;color:var(--text);list-style:none}.faq-item summary::-webkit-details-marker{display:none}.faq-item summary::before{content:'+';display:inline-block;width:1em;color:var(--accent-strong);font-weight:700}.faq-item[open] summary{color:var(--accent-strong);border-bottom:1px solid var(--line)}.faq-item[open] summary::before{content:'\\2212'}.faq-answer{padding:14px 18px 18px;color:var(--text-dim);line-height:1.7}.faq-answer code{color:var(--accent-strong);background:var(--surface-2);border-radius:4px;padding:2px 5px}.faq-note{border-left:3px solid var(--accent)}</style>
 """
 
 STAFF_GUIDE_TMPL = """
@@ -3125,7 +3113,7 @@ PUBLIC_LAYOUT = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#05070d">
+<meta name="theme-color" content="#0a0e17">
 <title>{{ title }} · """ + SERVER_NAME + """</title>
 <style>
 """ + THEME_CSS + PUBLIC_EXTRA_CSS + """
@@ -3134,12 +3122,12 @@ PUBLIC_LAYOUT = """<!doctype html>
 <body>
 <div class="topbar">
   <div class="topbar-inner">
-    <a class="brand" href="#top"><span style="color:var(--accent);vertical-align:-3px;display:inline-block;"><svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg></span> """ + SERVER_NAME.upper() + """</a>
+    <a class="brand" href="#top"><span><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 1L19 10L10 19L1 10L10 1Z" stroke="currentColor" stroke-width="1.6"/><path d="M10 7L13 10L10 13L7 10L10 7Z" fill="currentColor"/></svg></span> """ + SERVER_NAME.upper() + """</a>
     <nav class="toplinks">
-      <a href="#faq">FAQ</a>
-      <a href="#levels">XP &amp; Levels</a>
+      <a href="#levels">Ranks &amp; rewards</a>
       <a href="#roles">Roles</a>
       <a href="#community">Community</a>
+      <a href="#faq">FAQ</a>
     </nav>
     <div class="topuser">
       <div class="search-shell"><input class="search-input" type="search" placeholder="Search" aria-label="Search this page"><div class="search-results"></div></div>
@@ -3216,42 +3204,28 @@ def public_page(title, body_template, **ctx):
 
 LANDING_BODY = """
 <div class="hero" id="top">
-<h1><span style="color:var(--accent);display:inline-block;vertical-align:-0.08em;"><svg width="0.75em" height="0.75em" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg></span> """ + SERVER_NAME + """</h1>
+<h1><span style="color:var(--accent-strong);display:inline-block;vertical-align:-0.1em;"><svg width="0.8em" height="0.8em" viewBox="0 0 20 20" fill="none"><path d="M10 1L19 10L10 19L1 10L10 1Z" stroke="currentColor" stroke-width="1.4"/><path d="M10 7L13 10L10 13L7 10L10 7Z" fill="currentColor"/></svg></span> """ + SERVER_NAME + """</h1>
 <p class="muted">Ranked duels, tryouts, and a community built around competitive play. Log in with Discord to check your ELO, queue for a match, or manage your tryout status — right from the browser.</p>
 <div class="actions">
-<a class="btn" href='""" + botmod.SUPPORT_SERVER_URL + """'>Support Discord Server</a>
+<a class="btn" href='""" + botmod.SUPPORT_SERVER_URL + """'>Support Discord server</a>
 {% if user %}
-<a class="btn secondary" href="{{ url_for('dashboard.home') }}">Open Dashboard</a>
+<a class="btn secondary" href="{{ url_for('dashboard.home') }}">Open dashboard</a>
 {% else %}
 <a class="btn secondary" href="{{ url_for('dashboard.login') }}">Log in with Discord</a>
 {% endif %}
 </div>
+<div class="features">
+  <div class="feature"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 13.5L6 7L9 10L14 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg> Ranked ELO &amp; leaderboards</div>
+  <div class="feature"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1L9.8 5.5L14.5 6L11 9.2L12 14L8 11.5L4 14L5 9.2L1.5 6L6.2 5.5L8 1Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg> Tryouts &amp; evaluation</div>
+  <div class="feature"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.3" stroke="currentColor" stroke-width="1.4"/><path d="M8 4.5V8L10.5 9.7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg> Live 1v1 matchmaking</div>
 </div>
-
-<section id="faq">
-<h2>Server FAQ</h2>
-<p class="muted section-intro">You can find various information about the server itself here.</p>
-<div class="grid">
-  <div class="card">
-    <strong>Q: How do I become a Question Helper?</strong>
-    <p class="muted" style="margin-bottom:0;">The Question Helper team is primarily composed of individuals that actively partake in answering questions within the questions channel, and the requirements are similar to Banner Helpers, however with the added requirement of being knowledgeable about topics related to the game itself. They are likewise handpicked.</p>
-  </div>
-  <div class="card">
-    <strong>Q: How do I get the Artist / Community Showcase role?</strong>
-    <p class="muted" style="margin-bottom:0;">Please head to <span class="chip">#server-inquiries</span> to learn more about this.</p>
-  </div>
-  <div class="card">
-    <strong>Q: How do I become staff?</strong>
-    <p class="muted" style="margin-bottom:0;">Get handpicked by the Owner, or the best way is to apply in <span class="chip">#applications</span>.</p>
-  </div>
 </div>
-</section>
 
 <section id="levels">
-<h2>XP &amp; Levels</h2>
+<h2>Ranks &amp; rewards</h2>
 <p class="muted section-intro">These are the role rewards you unlock gradually by staying active and reaching certain levels. Type <span class="chip">/rank</span> in bot commands to view your rank. Every checkpoint stacks — you keep all previous perks along with the new ones.</p>
 
-<h3 style="font-family:var(--font-body);font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--text);margin:26px 0 12px;">XP Boosts</h3>
+<h3 class="subhead">XP boosts</h3>
 <div class="card">
 <ul class="plain">
   <li>Boosting the server gives you a global 5% XP multiplier.</li>
@@ -3264,7 +3238,7 @@ LANDING_BODY = """
 </ul>
 </div>
 
-<h3 style="font-family:var(--font-body);font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--text);margin:30px 0 12px;">Level Rewards</h3>
+<h3 class="subhead">Level rewards</h3>
 <div class="grid">
   <div class="level-card"><div class="lvl-head"><span class="lvl-num">05</span><span class="lvl-role">Demon Lord</span></div>
     <ul><li>External sticker permission</li><li>Access to <span class="chip">#media</span></li><li>Access to create suggestions</li></ul></div>
@@ -3292,7 +3266,7 @@ LANDING_BODY = """
 <section id="roles">
 <h2>Server Roles</h2>
 
-<h3 style="font-family:var(--font-body);font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--text);margin:0 0 12px;">Server Management</h3>
+<h3 class="subhead" style="margin-top:0;">Server management</h3>
 <div class="grid">
   <div class="role-card card"><h3>Owner</h3><p>The highest authority of the server — manages everything, makes final decisions, oversees all operations, and ensures the community runs smoothly.</p></div>
   <div class="role-card card"><h3>Co-owner</h3><p>Assists the owner in managing the entire server, oversees all staff operations, handles major decisions, and ensures everything runs smoothly.</p></div>
@@ -3305,7 +3279,7 @@ LANDING_BODY = """
   <div class="role-card card"><h3>Junior Moderator</h3><p>Individuals on trial to become full-fledged moderators.</p></div>
 </div>
 
-<h3 style="font-family:var(--font-body);font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--text);margin:30px 0 12px;">Helper Team</h3>
+<h3 class="subhead">Helper team</h3>
 <div class="grid">
   <div class="role-card card"><h3>Lead Helper</h3><p>Experienced members of the Question Helper team who assist and help newer helpers. They lead by example and keep things running smoothly within the helper group.</p></div>
   <div class="role-card card"><h3>Question Helper</h3><p>Question Helpers assist with server questions, game mechanics, and anything else members need help with — quickly and accurately.</p></div>
@@ -3321,6 +3295,25 @@ LANDING_BODY = """
   <div class="role-card card"><h3>Server Booster</h3><p>Supports the server by boosting it. Perks: nickname permissions, pic perms, external emote &amp; sticker permissions, a custom role, access to the exclusive booster chat, and 1.5x more XP from chatting.</p></div>
   <div class="role-card card"><h3>Content Creator</h3><p>Officially recognized for the content they make. Requirements: at least one video uploaded in the past month, and 500+ subscribers/followers.</p></div>
   <div class="role-card card"><h3>Artist</h3><p>Artists deemed talented by staff can showcase their artwork in the server. Contact a staff member for your art piece to be reviewed and approved.</p></div>
+</div>
+</section>
+
+<section id="faq">
+<h2>FAQ</h2>
+<p class="muted section-intro">You can find various information about the server itself here.</p>
+<div class="grid">
+  <div class="card">
+    <strong>How do I become a Question Helper?</strong>
+    <p class="muted" style="margin-bottom:0;">The Question Helper team is primarily composed of individuals that actively partake in answering questions within the questions channel, and the requirements are similar to Banner Helpers, however with the added requirement of being knowledgeable about topics related to the game itself. They are likewise handpicked.</p>
+  </div>
+  <div class="card">
+    <strong>How do I get the Artist / Community Showcase role?</strong>
+    <p class="muted" style="margin-bottom:0;">Please head to <span class="chip">#server-inquiries</span> to learn more about this.</p>
+  </div>
+  <div class="card">
+    <strong>How do I become staff?</strong>
+    <p class="muted" style="margin-bottom:0;">Get handpicked by the Owner, or the best way is to apply in <span class="chip">#applications</span>.</p>
+  </div>
 </div>
 </section>
 
