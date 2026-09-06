@@ -184,7 +184,10 @@ players_col = db["players"]
 duel_history_col = db["duel_history"]
 tryout_host_stats_col = db["tryout_host_stats"]  # Per-host tryout tallies (today + all-time)
 elo_banner_col = db["elo_banner"]  # Custom /elo card background image (single doc, persists across restarts)
-tryout_quota_col = db["tryout_quota"]  # Per-tryouter EP earned in the current quota week: {_id: user_id, ep: int}
+tryout_quota_col = db["tryout_quota"]  # Per-tryouter EP: {_id: user_id,
+                                        #   ep: int          — current quota week, reset to 0 every week
+                                        #   lifetime_ep: int — all-time total, NEVER reset; used by /eptop
+                                        # }
 quota_state_col = db["quota_state"]  # Single doc tracking the last processed weekly reset
 tryout_in_col = db["tryout_in"]  # Per-tryouter IN (excused) status + /in cooldown
 tryout_excluded_col = db["tryout_excluded"]  # Members manually excluded from /viewt: {_id: user_id}
@@ -329,7 +332,11 @@ async def get_roblox_account(user_id: int):
 def _increment_quota_ep_sync(user_id: int) -> int:
     doc = tryout_quota_col.find_one({"_id": user_id})
     new_ep = (doc.get("ep", 0) if doc else 0) + 1
-    tryout_quota_col.update_one({"_id": user_id}, {"$set": {"ep": new_ep}}, upsert=True)
+    tryout_quota_col.update_one(
+        {"_id": user_id},
+        {"$set": {"ep": new_ep}, "$inc": {"lifetime_ep": 1}},
+        upsert=True,
+    )
     return new_ep
 
 
@@ -348,7 +355,11 @@ async def get_quota_ep(user_id: int) -> int:
 
 
 def _reset_all_quota_ep_sync():
-    tryout_quota_col.delete_many({})
+    """Zeroes everyone's CURRENT-WEEK ep for the new quota period. Used to delete every
+    document outright with delete_many({}) — which also erased lifetime_ep (the
+    all-time total /eptop reads) on every weekly reset. Updating in place instead
+    keeps lifetime_ep intact across resets."""
+    tryout_quota_col.update_many({}, {"$set": {"ep": 0}})
 
 
 async def reset_all_quota_ep():
@@ -489,10 +500,10 @@ async def get_top_players(limit: int = 10) -> list:
 
 
 async def get_top_ep(limit: int = 10) -> list:
-    """Top tryouters by EP earned in the CURRENT quota week (tryout_quota_col is wiped
-    on every weekly reset — see reset_all_quota_ep) — used by /eptop."""
+    """Top tryouters by ALL-TIME EP (lifetime_ep — never reset by the weekly quota
+    reset, unlike ep) — used by /eptop."""
     return await asyncio.to_thread(
-        lambda: list(tryout_quota_col.find({"ep": {"$gt": 0}}).sort("ep", DESCENDING).limit(limit))
+        lambda: list(tryout_quota_col.find({"lifetime_ep": {"$gt": 0}}).sort("lifetime_ep", DESCENDING).limit(limit))
     )
 
 
@@ -1105,7 +1116,7 @@ def build_ep_leaderboard_card(entries: list) -> Editor:
     title_font = Font.poppins(variant="bold", size=32)
     sub_font = Font.poppins(variant="regular", size=16)
     base.text((W / 2, 28), "BLAZING LOCK — EP LEADERBOARD", font=title_font, color="white", align="center", anchor="ma")
-    base.text((W / 2, 66), "Top Tryouters This Week", font=sub_font, color=EP_LEADERBOARD_ACCENT, align="center", anchor="ma")
+    base.text((W / 2, 66), "All-Time Top Tryouters", font=sub_font, color=EP_LEADERBOARD_ACCENT, align="center", anchor="ma")
 
     rank_font = Font.poppins(variant="bold", size=26)
     name_font = Font.poppins(variant="bold", size=22)
@@ -2403,16 +2414,19 @@ async def userinfo_command(interaction: discord.Interaction, player: discord.Mem
             emoji="🔗",
         ))
 
-    await interaction.followup.send(embed=embed, view=view)
+    if view is not None:
+        await interaction.followup.send(embed=embed, view=view)
+    else:
+        await interaction.followup.send(embed=embed)
 
 
-@client.tree.command(name="eptop", description="Show the tryouters with the most EP this week")
+@client.tree.command(name="eptop", description="Show the tryouters with the most EP overall (all-time)")
 async def eptop_command(interaction: discord.Interaction):
     await interaction.response.defer()
 
     top = await get_top_ep(10)
     if not top:
-        await interaction.followup.send("No EP has been earned yet this week.")
+        await interaction.followup.send("No EP has been earned yet.")
         return
 
     guild = interaction.guild
@@ -2435,7 +2449,7 @@ async def eptop_command(interaction: discord.Interaction):
         entries.append({
             "rank": i,
             "username": display_name,
-            "ep": doc.get("ep", 0),
+            "ep": doc.get("lifetime_ep", 0),
             "avatar_img": avatar_img,
         })
 
