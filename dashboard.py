@@ -431,63 +431,91 @@ THEME_CSS = """
 
   :root {
     color-scheme: dark; /* a facility built for night sessions — the theme stays dark everywhere */
-    --bg: #170a10; --surface: #23111a; --surface-2: #331825;
-    --line: #3f1f2f; --line-bright: #5c2c44;
-    --text: #f7eef1; --text-dim: #b98a9c;
-    --accent: #22d9e6; --accent-rgb: 34,217,230; --accent-dim: #123236; --accent-strong: #7cf0fa;
-    --danger: #ff3b57; --warn: #ffb43a; --info: #7c9cff;
+    /* Cool, composed "genius-striker" palette — ink-navy ground, a single icy-cyan
+       signal color, and a quiet cold-gold reserved for rank/prestige moments only. */
+    --bg: #070c14; --surface: #10182a; --surface-2: #182541;
+    --line: #22314e; --line-bright: #33507c;
+    --text: #eef2fb; --text-dim: #8ca0c4;
+    --accent: #35c6f2; --accent-rgb: 53,198,242; --accent-dim: #0f2a3a; --accent-strong: #8fe6ff;
+    --gold: #d8b876; --gold-rgb: 216,184,118; --gold-dim: #2a2313;
+    --danger: #ff5470; --warn: #ffb454; --info: #7c9cff;
     --font-display: 'Oswald', sans-serif;
     --font-body: 'IBM Plex Mono', monospace;
     --font-sans: 'Inter', 'Segoe UI', sans-serif;
-    --radius: 10px; --radius-sm: 7px;
+    --radius: 12px; --radius-sm: 8px;
+    --ease: cubic-bezier(.22,.9,.32,1);
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
   body {
     margin: 0; font-family: var(--font-sans); font-size: 15px; line-height: 1.55; color: var(--text); min-height: 100vh;
-    background: var(--bg);
+    background:
+      radial-gradient(900px 480px at 12% -8%, rgba(var(--accent-rgb),.10), transparent 60%),
+      radial-gradient(700px 420px at 108% 10%, rgba(var(--gold-rgb),.05), transparent 55%),
+      var(--bg);
+    opacity: 0; animation: page-in .5s var(--ease) forwards;
   }
+  @keyframes page-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   a { color: var(--accent-strong); text-decoration: none; }
   a:hover { text-decoration: underline; }
-  :focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 3px; border-radius: 2px; }
+  :focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 2px; }
   code { font-family: var(--font-body); font-size: .9em; }
   .muted { color: var(--text-dim); }
 
   h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(28px,4.6vw,40px); line-height: 1.15; margin: 0 0 16px; color: var(--text); letter-spacing: .01em; }
-  h2 { font-family: var(--font-display); font-weight: 600; font-size: 21px; margin: 44px 0 16px; color: var(--text); letter-spacing: .01em; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  h2 { font-family: var(--font-display); font-weight: 600; font-size: 21px; margin: 44px 0 16px; color: var(--text); letter-spacing: .01em; padding-bottom: 12px; border-bottom: 1px solid var(--line); position: relative; }
+  h2::after { content: ''; position: absolute; left: 0; bottom: -1px; width: 46px; height: 2px; background: linear-gradient(90deg, var(--accent), transparent); }
   h2:first-child { margin-top: 0; }
   h3 { font-family: var(--font-sans); font-weight: 600; font-size: 15px; color: var(--text); margin: 0 0 10px; }
   .subhead { font-family: var(--font-sans); font-weight: 600; font-size: 12.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .07em; margin: 32px 0 12px; }
 
   .btn {
-    display: inline-flex; align-items: center; gap: 6px; background: var(--accent); color: #fff; border: 1px solid var(--accent);
+    display: inline-flex; align-items: center; gap: 6px; background: var(--accent); color: #04141c; border: 1px solid var(--accent);
     border-radius: var(--radius-sm); padding: 10px 18px; font-family: var(--font-sans); font-size: 14px; cursor: pointer; font-weight: 600;
-    box-shadow: 0 1px 2px rgba(0,0,0,.35); transition: background .15s ease, border-color .15s ease, transform .1s ease;
+    box-shadow: 0 1px 2px rgba(0,0,0,.35); transition: background .18s var(--ease), border-color .18s var(--ease), transform .12s var(--ease), box-shadow .18s var(--ease);
+    position: relative; overflow: hidden; isolation: isolate;
   }
-  .btn:hover { text-decoration: none; background: var(--accent-strong); border-color: var(--accent-strong); }
-  .btn:active { transform: translateY(1px); }
+  .btn:hover { text-decoration: none; background: var(--accent-strong); border-color: var(--accent-strong); transform: translateY(-1px); box-shadow: 0 6px 18px rgba(var(--accent-rgb),.28); }
+  .btn:active { transform: translateY(1px) scale(.98); box-shadow: 0 1px 2px rgba(0,0,0,.35); }
   .btn.secondary { background: transparent; color: var(--text); border-color: var(--line-bright); box-shadow: none; }
-  .btn.secondary:hover { background: var(--surface-2); border-color: var(--accent-strong); }
+  .btn.secondary:hover { background: var(--surface-2); border-color: var(--accent-strong); box-shadow: none; }
   .btn.small { padding: 7px 13px; font-size: 13px; }
-  .btn.danger { background: var(--danger); border-color: var(--danger); }
+  .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
   .btn.danger:hover { background: #ff6a79; border-color: #ff6a79; }
+  .btn .ripple { position: absolute; border-radius: 50%; transform: scale(0); background: rgba(255,255,255,.5); pointer-events: none; animation: ripple .55s ease-out forwards; z-index: -1; }
+  .btn.secondary .ripple, .btn.danger .ripple { background: rgba(255,255,255,.28); }
+  @keyframes ripple { to { transform: scale(2.6); opacity: 0; } }
 
   .card, .stat {
     background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; position: relative;
     box-shadow: 0 1px 2px rgba(0,0,0,.3);
-    transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+    transition: transform .2s var(--ease), border-color .2s var(--ease), box-shadow .2s var(--ease);
   }
-  .card:hover, .stat:hover { transform: translateY(-2px); border-color: var(--line-bright); box-shadow: 0 10px 24px rgba(0,0,0,.35); }
-  .stat { border-top: 3px solid var(--accent); }
+  .card:hover, .stat:hover { transform: translateY(-3px); border-color: var(--line-bright); box-shadow: 0 14px 30px rgba(2,6,14,.45); }
+  .stat { border-top: 2px solid transparent; background-image: linear-gradient(var(--surface),var(--surface)), linear-gradient(90deg, var(--accent), var(--gold)); background-origin: border-box; background-clip: padding-box, border-box; }
   a.card { display: block; color: var(--text); }
   a.card:hover { text-decoration: none; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 16px; }
 
   .pill { display: inline-flex; align-items: center; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--surface-2); color: var(--text-dim); }
-  .pill.pending { background: rgba(255,180,58,.15); color: var(--warn); }
+  .pill.pending { background: rgba(255,180,84,.15); color: var(--warn); }
   .pill.approved { background: rgba(var(--accent-rgb),.16); color: var(--accent-strong); }
-  .pill.denied { background: rgba(255,77,94,.15); color: var(--danger); }
+  .pill.denied { background: rgba(255,84,112,.15); color: var(--danger); }
   .empty { color: var(--text-dim); padding: 22px 0; text-align: center; font-size: 14px; }
+
+  /* --- shared interaction chrome: scroll progress, reveal-on-scroll, back-to-top --- */
+  #scroll-progress { position: fixed; top: 0; left: 0; height: 2.5px; width: 0%; background: linear-gradient(90deg, var(--accent), var(--gold)); z-index: 200; transition: width .1s linear; box-shadow: 0 0 8px rgba(var(--accent-rgb),.6); }
+  .reveal { opacity: 0; transform: translateY(16px); transition: opacity .6s var(--ease), transform .6s var(--ease); }
+  .reveal.in-view { opacity: 1; transform: none; }
+  #back-to-top {
+    position: fixed; right: 22px; bottom: 22px; width: 42px; height: 42px; border-radius: 50%; z-index: 90;
+    background: var(--surface); border: 1px solid var(--line-bright); color: var(--accent-strong); display: flex; align-items: center; justify-content: center;
+    cursor: pointer; opacity: 0; visibility: hidden; transform: translateY(8px); transition: opacity .25s ease, transform .25s ease, visibility .25s;
+    box-shadow: 0 8px 20px rgba(2,6,14,.5);
+  }
+  #back-to-top.show { opacity: 1; visibility: visible; transform: none; }
+  #back-to-top:hover { border-color: var(--accent-strong); }
+  .nav-indicator { position: absolute; bottom: 4px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, var(--accent), var(--accent-strong)); transition: left .28s var(--ease), width .28s var(--ease), opacity .2s; opacity: 0; pointer-events: none; }
 
   /* --- search widget: shared by the dashboard top bar and the public site's top bar --- */
   .search-shell {
@@ -528,17 +556,22 @@ THEME_CSS = """
 LAYOUT_EXTRA_CSS = """
   .appbar {
     position: sticky; top: 0; z-index: 25; min-height: 64px; display: flex; align-items: center; gap: 18px;
-    padding: 0 clamp(16px,5vw,48px); background: rgba(10,14,23,.94); border-bottom: 1px solid var(--line);
-    backdrop-filter: blur(10px);
+    padding: 0 clamp(16px,5vw,48px); background: rgba(7,12,20,.86); border-bottom: 1px solid var(--line);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    transition: box-shadow .25s ease, border-color .25s ease;
   }
-  .appbrand { display: flex; align-items: center; gap: 8px; color: var(--text); font: 600 18px var(--font-display); letter-spacing: .02em; text-transform: uppercase; white-space: nowrap; }
-  .appbrand span { color: var(--accent-strong); }
-  .appnav { display: flex; align-items: center; gap: 2px; flex: 1; overflow: auto; }
-  .appnav a { padding: 8px 12px; border-radius: 999px; color: var(--text-dim); font-size: 13px; font-family: var(--font-sans); font-weight: 500; white-space: nowrap; }
+  .appbar.scrolled { box-shadow: 0 12px 24px -16px rgba(0,0,0,.6); }
+  .appbrand { display: flex; align-items: center; gap: 8px; color: var(--text); font: 600 18px var(--font-display); letter-spacing: .02em; text-transform: uppercase; white-space: nowrap; transition: color .15s ease; }
+  .appbrand span { color: var(--accent-strong); display: inline-flex; animation: brand-float 5s ease-in-out infinite; }
+  .appbrand:hover span { color: var(--gold); }
+  @keyframes brand-float { 0%,100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-2px) rotate(6deg); } }
+  .appnav { display: flex; align-items: center; gap: 2px; flex: 1; overflow: auto; position: relative; }
+  .appnav a { padding: 8px 12px; border-radius: 999px; color: var(--text-dim); font-size: 13px; font-family: var(--font-sans); font-weight: 500; white-space: nowrap; transition: color .15s ease, background .15s ease; }
   .appnav a:hover { color: var(--text); text-decoration: none; background: var(--surface-2); }
-  .appnav a.active { color: #fff; background: var(--accent); }
+  .appnav a.active { color: #04141c; background: var(--accent); font-weight: 600; }
   .appactions { display: flex; align-items: center; gap: 10px; margin-left: auto; white-space: nowrap; }
-  .appactions img { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line-bright); }
+  .appactions img { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line-bright); transition: border-color .15s ease, transform .15s ease; }
+  .appactions img:hover { border-color: var(--accent-strong); transform: scale(1.08); }
   @media (max-width: 760px) {
     .appbar { flex-wrap: wrap; gap: 8px; padding: 10px 14px; }
     .appnav { order: 3; flex-basis: 100%; margin: 0 -14px; padding: 6px 14px 4px; border-top: 1px solid var(--line); }
@@ -562,12 +595,16 @@ LAYOUT_EXTRA_CSS = """
   table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; min-width: 560px; }
   th, td { text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--line); }
   th { font-size: 12px; font-family: var(--font-sans); font-weight: 600; color: var(--text-dim); border-bottom: 2px solid var(--line-bright); }
+  tr td:first-child { border-left: 2px solid transparent; transition: border-color .15s ease; }
   tr:hover td { background: var(--surface-2); }
+  tr:hover td:first-child { border-left-color: var(--accent); }
   tr.hl td { background: rgba(var(--accent-rgb),.12); }
   .avatar-sm { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line-bright); vertical-align: middle; margin-right: 9px; }
 
   .progress { background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; height: 14px; overflow: hidden; padding: 2px; }
-  .progress > div { background: var(--accent); border-radius: 999px; height: 100%; transition: width .6s ease; }
+  .progress > div { background: linear-gradient(90deg, var(--accent), var(--accent-strong)); border-radius: 999px; height: 100%; transition: width .8s var(--ease); position: relative; overflow: hidden; }
+  .progress > div::after { content: ''; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.35) 48%, transparent 66%); background-size: 220% 100%; animation: shine 2.6s ease-in-out infinite; }
+  @keyframes shine { 0% { background-position: 140% 0; } 100% { background-position: -60% 0; } }
 
   .btn.success { background: var(--accent); border-color: var(--accent); }
   input[type=text], input[type=number], input[type=password], textarea, select, input[type=file] {
@@ -575,7 +612,7 @@ LAYOUT_EXTRA_CSS = """
     color: var(--text); font-size: 14px; margin-top: 6px; font-family: var(--font-sans);
   }
   input[type=file]::file-selector-button {
-    margin: -10px 12px -10px -12px; padding: 10px 14px; background: var(--accent); color: #fff;
+    margin: -10px 12px -10px -12px; padding: 10px 14px; background: var(--accent); color: #04141c;
     border: 0; border-right: 1px solid var(--line); border-radius: var(--radius-sm) 0 0 var(--radius-sm); font: 600 13px var(--font-sans); cursor: pointer;
   }
   input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent-strong); box-shadow: 0 0 0 3px rgba(var(--accent-rgb),.16); }
@@ -590,27 +627,30 @@ LAYOUT_EXTRA_CSS = """
   .login-hero { text-align: center; padding: 100px 20px; }
   .login-hero h1 { font-size: clamp(30px,5.5vw,44px); }
 
-  .tabs { display: flex; gap: 3px; margin-bottom: 20px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px; width: fit-content; }
-  .tabs a { padding: 8px 16px; border-radius: 999px; color: var(--text-dim); font-size: 13px; font-weight: 500; }
+  .tabs { display: flex; gap: 3px; margin-bottom: 20px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px; width: fit-content; position: relative; }
+  .tabs a { padding: 8px 16px; border-radius: 999px; color: var(--text-dim); font-size: 13px; font-weight: 500; position: relative; z-index: 1; transition: color .2s ease; }
   .tabs a:hover { color: var(--text); text-decoration: none; }
-  .tabs a.active { background: var(--accent); color: #fff; }
+  .tabs a.active { background: var(--accent); color: #04141c; }
 """
 
 # Public-landing-page-only additions: the top bar, hero, FAQ/level/role sections.
 PUBLIC_EXTRA_CSS = """
   .topbar {
-    position: sticky; top: 0; z-index: 50; background: rgba(10,14,23,.92); backdrop-filter: blur(10px);
-    border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; z-index: 50; background: rgba(7,12,20,.86); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--line); transition: box-shadow .25s ease;
   }
+  .topbar.scrolled { box-shadow: 0 12px 24px -16px rgba(0,0,0,.6); }
   .topbar-inner { max-width: 1180px; margin: 0 auto; padding: 14px 28px; display: flex; align-items: center; gap: 24px; }
   .brand { display: flex; align-items: center; gap: 9px; font-family: var(--font-display); font-weight: 700; font-size: 18px; letter-spacing: .02em; color: var(--text); text-transform: uppercase; white-space: nowrap; }
-  .brand span { color: var(--accent-strong) !important; }
-  .toplinks { display: flex; gap: 2px; flex-wrap: wrap; flex: 1; }
-  .toplinks a { color: var(--text-dim); font-size: 13px; font-weight: 500; padding: 9px 13px; border-radius: 999px; }
+  .brand span { color: var(--accent-strong) !important; display: inline-flex; animation: brand-float 5s ease-in-out infinite; }
+  .brand:hover span { color: var(--gold) !important; }
+  .toplinks { display: flex; gap: 2px; flex-wrap: wrap; flex: 1; position: relative; }
+  .toplinks a { color: var(--text-dim); font-size: 13px; font-weight: 500; padding: 9px 13px; border-radius: 999px; position: relative; z-index: 1; transition: color .15s ease, background .15s ease; }
   .toplinks a:hover { color: var(--text); background: var(--surface-2); text-decoration: none; }
-  .toplinks a.active { color: #fff; background: var(--accent); }
+  .toplinks a.active { color: #04141c; background: var(--accent); font-weight: 600; }
   .topuser { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
-  .topuser img { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line-bright); }
+  .topuser img { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line-bright); transition: border-color .15s ease, transform .15s ease; }
+  .topuser img:hover { border-color: var(--accent-strong); transform: scale(1.08); }
   @media (max-width: 760px) {
     .toplinks { order: 3; width: 100%; overflow-x: auto; justify-content: flex-start; }
     .topbar-inner { flex-wrap: wrap; padding: 12px 16px; }
@@ -618,23 +658,58 @@ PUBLIC_EXTRA_CSS = """
   }
 
   main { max-width: 1180px; margin: 0 auto; padding: 0 28px 100px; }
-  .hero { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 96px 20px 56px; }
-  .hero h1 { font-size: clamp(38px,6.6vw,64px); line-height: 1.05; letter-spacing: -.005em; max-width: 820px; margin-bottom: 18px; text-transform: uppercase; }
+
+  /* --- hero: a quiet ice-blue field goal net / pitch-line grid drifting behind the
+     title, nudged by the cursor. This is the one deliberately showy moment on the
+     page — everything else on the site stays calm by comparison. --- */
+  .hero {
+    display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;
+    padding: 108px 20px 56px; position: relative; overflow: hidden;
+  }
+  .hero::before {
+    content: ''; position: absolute; inset: -10%; z-index: 0; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(var(--accent-rgb),.09) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(var(--accent-rgb),.09) 1px, transparent 1px);
+    background-size: 46px 46px;
+    -webkit-mask-image: radial-gradient(58% 55% at 50% 32%, #000 0%, transparent 72%);
+    mask-image: radial-gradient(58% 55% at 50% 32%, #000 0%, transparent 72%);
+    transform: translate3d(calc(var(--mx, 0) * 1px), calc(var(--my, 0) * 1px), 0);
+    transition: transform .3s ease-out;
+  }
+  .hero::after {
+    content: ''; position: absolute; top: 6%; left: 50%; z-index: 0; pointer-events: none;
+    width: 640px; height: 640px; margin-left: -320px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(var(--accent-rgb),.16), transparent 62%);
+    transform: translate3d(calc(var(--mx, 0) * -1.6px), calc(var(--my, 0) * -1.6px), 0);
+    transition: transform .3s ease-out;
+  }
+  .hero > * { position: relative; z-index: 1; }
+  .hero .hero-icon { display: inline-flex; color: var(--accent-strong); margin-bottom: 18px; animation: hero-icon-float 4.5s ease-in-out infinite; filter: drop-shadow(0 0 18px rgba(var(--accent-rgb),.45)); }
+  @keyframes hero-icon-float { 0%,100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-8px) rotate(8deg); } }
+  .hero h1 {
+    font-size: clamp(38px,6.6vw,64px); line-height: 1.05; letter-spacing: -.005em; max-width: 820px; margin-bottom: 18px; text-transform: uppercase;
+    background: linear-gradient(100deg, var(--text) 30%, var(--accent-strong) 58%, var(--gold) 92%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
   .hero p { max-width: 560px; margin: 0 auto 30px; color: var(--text-dim); font-size: 16px; }
   .hero .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 46px; }
   .hero .features { display: flex; gap: 30px; flex-wrap: wrap; justify-content: center; padding-top: 32px; border-top: 1px solid var(--line); width: 100%; max-width: 720px; }
-  .hero .features .feature { display: flex; align-items: center; gap: 9px; color: var(--text-dim); font-size: 13.5px; font-weight: 500; }
+  .hero .features .feature { display: flex; align-items: center; gap: 9px; color: var(--text-dim); font-size: 13.5px; font-weight: 500; transition: color .15s ease; }
+  .hero .features .feature:hover { color: var(--text); }
   .hero .features .feature svg { color: var(--accent-strong); flex-shrink: 0; }
+  @keyframes brand-float { 0%,100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-2px) rotate(6deg); } }
 
   section { padding: 64px 0; border-top: 1px solid var(--line); }
   .section-intro { margin: 0 0 24px; max-width: 640px; }
 
-  .level-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; transition: transform .15s ease, border-color .15s ease; }
-  .level-card:hover { transform: translateY(-2px); border-color: var(--line-bright); }
+  .level-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; transition: transform .2s var(--ease), border-color .2s var(--ease), box-shadow .2s var(--ease); }
+  .level-card:hover { transform: translateY(-3px); border-color: var(--line-bright); box-shadow: 0 14px 26px rgba(2,6,14,.4); }
   .level-card .lvl-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
-  .level-card .lvl-num { font-family: var(--font-display); font-weight: 700; font-size: 19px; color: var(--accent-strong); }
+  .level-card .lvl-num { font-family: var(--font-display); font-weight: 700; font-size: 19px; color: var(--gold); }
   .level-card .lvl-role { font-weight: 600; font-size: 14px; }
   .level-card ul { margin: 0; padding-left: 18px; color: var(--text-dim); font-size: 13.5px; line-height: 1.7; }
+  .role-card { transition: transform .2s var(--ease), border-color .2s var(--ease); }
   .role-card h3 { margin: 0 0 8px; font-size: 15px; }
   .role-card p { margin: 0; color: var(--text-dim); font-size: 13.5px; line-height: 1.6; }
   ul.plain { margin: 0; padding-left: 18px; color: var(--text-dim); font-size: 14px; line-height: 1.85; }
@@ -642,6 +717,7 @@ PUBLIC_EXTRA_CSS = """
   footer { text-align: center; padding: 48px 20px 64px; color: var(--text-dim); font-size: 13px; border-top: 1px solid var(--line); }
 
   @media (max-width: 760px) {
+    .hero::before, .hero::after { display: none; }
     main { padding: 0 16px 80px; }
     .hero { padding: 64px 16px 44px; }
     section { padding: 48px 0; }
@@ -654,13 +730,14 @@ LAYOUT = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#170a10">
+<meta name="theme-color" content="#070c14">
 <title>{{ title }} · Blazing Lock</title>
 <style>
 """ + THEME_CSS + LAYOUT_EXTRA_CSS + """
 </style>
 </head>
 <body>
+<div id="scroll-progress"></div>
 <header class="appbar">
   <a class="appbrand" href="{{ url_for('dashboard.home') }}"><span><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 1L19 10L10 19L1 10L10 1Z" stroke="currentColor" stroke-width="1.6"/><path d="M10 7L13 10L10 13L7 10L10 7Z" fill="currentColor"/></svg></span> Blazing Lock</a>
   {% if status == "approved" %}
@@ -677,6 +754,7 @@ LAYOUT = """<!doctype html>
   <nav class="appnav">
     <a href="{{ home_url }}"{% if current_path == home_url %} class="active" aria-current="page"{% endif %}>Home</a><a href="{{ elo_url }}"{% if current_path.startswith(elo_url) %} class="active" aria-current="page"{% endif %}>ELO</a><a href="{{ economy_url }}"{% if current_path.startswith(economy_url) %} class="active" aria-current="page"{% endif %}>Economy</a><a href="{{ tryouts_url }}"{% if current_path.startswith(tryouts_url) %} class="active" aria-current="page"{% endif %}>Tryouts</a><a href="{{ mm_url }}"{% if current_path.startswith(mm_url) %} class="active" aria-current="page"{% endif %}>Matchmaking</a>
     {% if show_staff %}<a href="{{ staff_url }}"{% if current_path.startswith(staff_url) %} class="active" aria-current="page"{% endif %}>Staff</a>{% endif %}{% if show_moderation %}<a href="{{ mod_url }}"{% if current_path.startswith(mod_url) %} class="active" aria-current="page"{% endif %}>Moderation</a>{% endif %}{% if is_admin %}<a href="{{ admin_url }}"{% if current_path.startswith(admin_base) %} class="active" aria-current="page"{% endif %}>Admin</a>{% endif %}
+    <span class="nav-indicator"></span>
   </nav>{% endif %}
   <div class="appactions">
     <div class="search-shell"><input class="search-input" type="search" placeholder="Search" aria-label="Search this page"><div class="search-results"></div></div>
@@ -690,9 +768,78 @@ LAYOUT = """<!doctype html>
   {% endfor %}
   {{ content|safe }}
 </main>
+<button id="back-to-top" aria-label="Back to top" title="Back to top">
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13V3M8 3L3.5 7.5M8 3L12.5 7.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</button>
 <script>
 (function () {
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Scroll progress bar + a soft shadow under the appbar once the page moves.
+  var progressBar = document.getElementById('scroll-progress');
+  var appbar = document.querySelector('.appbar');
+  var backToTop = document.getElementById('back-to-top');
+  function onScroll() {
+    var doc = document.documentElement;
+    var scrolled = doc.scrollTop || document.body.scrollTop;
+    var height = (doc.scrollHeight - doc.clientHeight) || 1;
+    if (progressBar) progressBar.style.width = Math.min(100, (scrolled / height) * 100) + '%';
+    if (appbar) appbar.classList.toggle('scrolled', scrolled > 4);
+    if (backToTop) backToTop.classList.toggle('show', scrolled > 480);
+  }
+  document.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+  if (backToTop) {
+    backToTop.addEventListener('click', function () {
+      window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
+    });
+  }
+
+  // A small sliding indicator under whichever link/tab is active, so moving between
+  // sections of the dashboard feels like one continuous strip rather than a page swap.
+  // Works on the top .appnav (indicator already in the markup) and on every .tabs
+  // strip used across the settings/admin pages (indicator injected here instead,
+  // since there can be several .tabs bars per page).
+  function wireIndicator(container) {
+    if (!container) return;
+    var indicator = container.querySelector('.nav-indicator');
+    if (!indicator) {
+      indicator = document.createElement('span');
+      indicator.className = 'nav-indicator';
+      container.appendChild(indicator);
+    }
+    var place = function (link) {
+      if (!link) { indicator.style.opacity = '0'; return; }
+      indicator.style.left = link.offsetLeft + 'px';
+      indicator.style.width = link.offsetWidth + 'px';
+      indicator.style.opacity = '1';
+    };
+    var activeLink = container.querySelector('a.active');
+    if (activeLink) requestAnimationFrame(function () { place(activeLink); });
+    container.querySelectorAll('a').forEach(function (link) {
+      link.addEventListener('mouseenter', function () { place(link); });
+    });
+    container.addEventListener('mouseleave', function () { place(activeLink); });
+    window.addEventListener('resize', function () { place(container.querySelector('a:hover') || activeLink); });
+  }
+  wireIndicator(document.querySelector('.appnav'));
+  document.querySelectorAll('.tabs').forEach(wireIndicator);
+
+  // A quick ink-ripple from the click point on every button, so pressing something
+  // gives an immediate, tactile confirmation before the page actually navigates.
+  document.addEventListener('click', function (event) {
+    var btn = event.target.closest && event.target.closest('.btn');
+    if (!btn || reduceMotion) return;
+    var rect = btn.getBoundingClientRect();
+    var size = Math.max(rect.width, rect.height) * 1.4;
+    var ripple = document.createElement('span');
+    ripple.className = 'ripple';
+    ripple.style.width = ripple.style.height = size + 'px';
+    ripple.style.left = (event.clientX - rect.left - size / 2) + 'px';
+    ripple.style.top = (event.clientY - rect.top - size / 2) + 'px';
+    btn.appendChild(ripple);
+    ripple.addEventListener('animationend', function () { ripple.remove(); });
+  });
 
   // Tally numbers up from zero like an arcade high-score counting into place,
   // leaving any surrounding text (units, slashes, emoji) exactly where it was.
@@ -3113,13 +3260,14 @@ PUBLIC_LAYOUT = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#170a10">
+<meta name="theme-color" content="#070c14">
 <title>{{ title }} · """ + SERVER_NAME + """</title>
 <style>
 """ + THEME_CSS + PUBLIC_EXTRA_CSS + """
 </style>
 </head>
 <body>
+<div id="scroll-progress"></div>
 <div class="topbar">
   <div class="topbar-inner">
     <a class="brand" href="#top"><span><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 1L19 10L10 19L1 10L10 1Z" stroke="currentColor" stroke-width="1.6"/><path d="M10 7L13 10L10 13L7 10L10 7Z" fill="currentColor"/></svg></span> """ + SERVER_NAME.upper() + """</a>
@@ -3144,9 +3292,13 @@ PUBLIC_LAYOUT = """<!doctype html>
 <main>
 {{ content|safe }}
 </main>
+<button id="back-to-top" aria-label="Back to top" title="Back to top">
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13V3M8 3L3.5 7.5M8 3L12.5 7.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</button>
 <script>
 (function () {
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
   document.querySelectorAll('.search-shell').forEach(function (shell) {
     var input = shell.querySelector('input'), results = shell.querySelector('.search-results');
     if (!input || !results) return;
@@ -3166,6 +3318,94 @@ PUBLIC_LAYOUT = """<!doctype html>
     document.addEventListener('click', function (event) { if (!shell.contains(event.target)) results.classList.remove('open'); });
   });
 
+  // Scroll progress bar, a soft shadow under the topbar once the page moves, and
+  // the back-to-top button — this page is long and scroll-heavy, so all three
+  // earn their keep as orientation aids rather than decoration.
+  var progressBar = document.getElementById('scroll-progress');
+  var topbar = document.querySelector('.topbar');
+  var backToTop = document.getElementById('back-to-top');
+  function onScroll() {
+    var doc = document.documentElement;
+    var scrolled = doc.scrollTop || document.body.scrollTop;
+    var height = (doc.scrollHeight - doc.clientHeight) || 1;
+    if (progressBar) progressBar.style.width = Math.min(100, (scrolled / height) * 100) + '%';
+    if (topbar) topbar.classList.toggle('scrolled', scrolled > 4);
+    if (backToTop) backToTop.classList.toggle('show', scrolled > 480);
+  }
+  document.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+  if (backToTop) {
+    backToTop.addEventListener('click', function () {
+      window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
+    });
+  }
+
+  // The nav-link sliding indicator, shared with the dashboard chrome, hooked up
+  // here to also move whenever scrollspy (below) changes which link is active.
+  var navContainer = document.querySelector('.toplinks');
+  var indicator = null, placeIndicator = function () {};
+  if (navContainer) {
+    indicator = document.createElement('span');
+    indicator.className = 'nav-indicator';
+    navContainer.appendChild(indicator);
+    placeIndicator = function (link) {
+      if (!link) { indicator.style.opacity = '0'; return; }
+      indicator.style.left = link.offsetLeft + 'px';
+      indicator.style.width = link.offsetWidth + 'px';
+      indicator.style.opacity = '1';
+    };
+    navContainer.querySelectorAll('a').forEach(function (link) {
+      link.addEventListener('mouseenter', function () { placeIndicator(link); });
+    });
+    navContainer.addEventListener('mouseleave', function () { placeIndicator(navContainer.querySelector('a.active')); });
+  }
+
+  // A quick ink-ripple from the click point on every button, mirroring the dashboard.
+  document.addEventListener('click', function (event) {
+    var btn = event.target.closest && event.target.closest('.btn');
+    if (!btn || reduceMotion) return;
+    var rect = btn.getBoundingClientRect();
+    var size = Math.max(rect.width, rect.height) * 1.4;
+    var ripple = document.createElement('span');
+    ripple.className = 'ripple';
+    ripple.style.width = ripple.style.height = size + 'px';
+    ripple.style.left = (event.clientX - rect.left - size / 2) + 'px';
+    ripple.style.top = (event.clientY - rect.top - size / 2) + 'px';
+    btn.appendChild(ripple);
+    ripple.addEventListener('animationend', function () { ripple.remove(); });
+  });
+
+  // The hero's background grid drifts a few pixels opposite the cursor — a single,
+  // deliberate "hello" moment rather than motion sprinkled across the whole page.
+  var hero = document.querySelector('.hero');
+  if (hero && !reduceMotion && window.matchMedia('(hover: hover)').matches) {
+    hero.addEventListener('mousemove', function (event) {
+      var rect = hero.getBoundingClientRect();
+      var x = ((event.clientX - rect.left) / rect.width - 0.5) * 2;
+      var y = ((event.clientY - rect.top) / rect.height - 0.5) * 2;
+      hero.style.setProperty('--mx', (x * 14).toFixed(1));
+      hero.style.setProperty('--my', (y * 14).toFixed(1));
+    });
+    hero.addEventListener('mouseleave', function () {
+      hero.style.setProperty('--mx', 0);
+      hero.style.setProperty('--my', 0);
+    });
+  }
+
+  // Each top-level section fades and lifts into place the first time it crosses
+  // into view — one orchestrated reveal per section, not per card, so scrolling
+  // this long page still feels calm rather than busy.
+  var revealTargets = Array.prototype.slice.call(document.querySelectorAll('main > section'));
+  if (revealTargets.length && 'IntersectionObserver' in window && !reduceMotion) {
+    revealTargets.forEach(function (el) { el.classList.add('reveal'); });
+    var revealObserver = new IntersectionObserver(function (entries, obs) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) { entry.target.classList.add('in-view'); obs.unobserve(entry.target); }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+    revealTargets.forEach(function (el) { revealObserver.observe(el); });
+  }
+
   // Scrollspy: highlight whichever section is currently on screen in the top nav,
   // so there's some indication of where you are on this long, scroll-heavy page.
   var navLinks = Array.prototype.slice.call(document.querySelectorAll('.toplinks a'));
@@ -3175,7 +3415,9 @@ PUBLIC_LAYOUT = """<!doctype html>
   if (sections.length && 'IntersectionObserver' in window) {
     var setActive = function (id) {
       navLinks.forEach(function (link) {
-        link.classList.toggle('active', link.getAttribute('href') === '#' + id);
+        var isActive = link.getAttribute('href') === '#' + id;
+        link.classList.toggle('active', isActive);
+        if (isActive) placeIndicator(link);
       });
     };
     var observer = new IntersectionObserver(function (entries) {
@@ -3204,7 +3446,8 @@ def public_page(title, body_template, **ctx):
 
 LANDING_BODY = """
 <div class="hero" id="top">
-<h1><span style="color:var(--accent-strong);display:inline-block;vertical-align:-0.1em;"><svg width="0.8em" height="0.8em" viewBox="0 0 20 20" fill="none"><path d="M10 1L19 10L10 19L1 10L10 1Z" stroke="currentColor" stroke-width="1.4"/><path d="M10 7L13 10L10 13L7 10L10 7Z" fill="currentColor"/></svg></span> """ + SERVER_NAME + """</h1>
+<div class="hero-icon"><svg width="34" height="34" viewBox="0 0 20 20" fill="none"><path d="M10 1L19 10L10 19L1 10L10 1Z" stroke="currentColor" stroke-width="1.4"/><path d="M10 7L13 10L10 13L7 10L10 7Z" fill="currentColor"/></svg></div>
+<h1>""" + SERVER_NAME + """</h1>
 <p class="muted">Ranked duels, tryouts, and a community built around competitive play. Log in with Discord to check your ELO, queue for a match, or manage your tryout status — right from the browser.</p>
 <div class="actions">
 <a class="btn" href='""" + botmod.SUPPORT_SERVER_URL + """'>Support Discord server</a>
