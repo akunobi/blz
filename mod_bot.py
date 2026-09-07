@@ -1,5 +1,6 @@
-# mod_bot.py — BARC Moderation Bot: /bban, /bkick, /bmute, /bunmute, /bunban, /bwarn
+# mod_bot.py — BARC Moderation Bot: /bban, /bkick, /bmute, /bunmute, /bunban, /bwarn, /bstats
 # + context menus: Quick Mute (on a member), Warn Message (on a message)
+# + quick text commands (prefix "-"): -a (avatar), -s (stats leaderboard)
 #
 # A SEPARATE Discord bot (its own application/token) that runs alongside bot.py.
 # It reuses bot.py's Mongo connection and the exact ban/warn DM text (build_ban_dm /
@@ -41,6 +42,7 @@ MOD_ROLE_IDS = {
 }  # Members with either role can use all /b... commands and both context menus
 
 SUPPORT_SERVER_URL = "https://discord.gg/FZmjTSBpSZ"  # Used in ban/warn DMs
+MODLOG_CHANNEL_ID = 1546607743174049922  # Every mod action gets posted here
 
 
 def build_ban_dm(reason: str) -> str:
@@ -90,12 +92,64 @@ async def _get_warnings(user_id: int):
     return await asyncio.to_thread(_get_warnings_sync, user_id)
 
 
+# --- MOD ACTIONS LOG (one doc per ban/kick/mute/unmute/unban/warn, powers modlogs + /bstats) ---
+actions_col = db["mod_actions"]  # {action, moderator_id, target_id, reason, created_at}
+actions_col.create_index([("moderator_id", ASCENDING)])
+
+
+def _log_action_sync(action: str, moderator_id: int, target_id: int, reason: str = ""):
+    actions_col.insert_one({
+        "action": action,
+        "moderator_id": moderator_id,
+        "target_id": target_id,
+        "reason": reason,
+        "created_at": datetime.now(timezone.utc),
+    })
+
+
+async def _log_action(action: str, moderator_id: int, target_id: int, reason: str = ""):
+    await asyncio.to_thread(_log_action_sync, action, moderator_id, target_id, reason)
+
+
+def _get_leaderboard_sync(limit: int = 10):
+    pipeline = [
+        {"$group": {"_id": "$moderator_id", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": limit},
+    ]
+    return list(actions_col.aggregate(pipeline))
+
+
+async def _get_leaderboard(limit: int = 10):
+    return await asyncio.to_thread(_get_leaderboard_sync, limit)
+
+
+def _build_leaderboard_embed(rows) -> discord.Embed:
+    if not rows:
+        return discord.Embed(
+            title="📊 Moderation Leaderboard",
+            description="No moderation actions logged yet.",
+            color=discord.Color.blurple(),
+        )
+    medals = ["🥇", "🥈", "🥉"]
+    lines = []
+    for i, row in enumerate(rows):
+        prefix = medals[i] if i < 3 else f"`{i + 1}.`"
+        lines.append(f"{prefix} <@{row['_id']}> — **{row['count']}** action(s)")
+    return discord.Embed(
+        title="📊 Moderation Leaderboard",
+        description="\n".join(lines),
+        color=discord.Color.blurple(),
+    )
+
+
 # --- DISCORD BOT SETUP ---
 intents = discord.Intents.default()
 intents.guilds = True
 intents.members = True  # needed to ban/kick/timeout by member and DM them
+intents.message_content = True  # needed to read "-a" / "-s" quick text commands
 
-client = commands.Bot(command_prefix="!mod!", intents=intents)  # prefix unused, slash-only bot
+client = commands.Bot(command_prefix="-", intents=intents)  # "-" prefix powers the quick text commands
 
 
 def _is_mod(interaction: discord.Interaction) -> bool:
@@ -109,6 +163,32 @@ async def _try_dm(member: discord.Member, content: str) -> bool:
         return True
     except Exception:
         return False
+
+
+async def _send_modlog(
+    title: str,
+    color: discord.Color,
+    moderator: discord.abc.User,
+    target_id: int,
+    reason: str = "",
+    extra: str = "",
+):
+    """Posts an embed to the modlog channel. Called after every ban/kick/mute/unmute/unban/warn."""
+    channel = client.get_channel(MODLOG_CHANNEL_ID)
+    if channel is None:
+        logger.error(f"!!! [MODLOG] Channel {MODLOG_CHANNEL_ID} not found/cached.")
+        return
+    embed = discord.Embed(title=title, color=color, timestamp=datetime.now(timezone.utc))
+    embed.add_field(name="Member", value=f"<@{target_id}> (`{target_id}`)", inline=False)
+    embed.add_field(name="Moderator", value=moderator.mention, inline=False)
+    if reason:
+        embed.add_field(name="Reason", value=reason, inline=False)
+    if extra:
+        embed.add_field(name="Details", value=extra, inline=False)
+    try:
+        await channel.send(embed=embed)
+    except Exception as e:
+        logger.error(f"!!! [MODLOG SEND ERROR]: {e}")
 
 
 def _target_check_error(interaction: discord.Interaction, target: discord.Member) -> str | None:
@@ -147,6 +227,8 @@ class WarnReasonModal(discord.ui.Modal, title="Warn this message"):
 
         dm_sent = await _try_dm(member, build_warn_dm("Verbal warning", reason))
         await _log_warning(member.id, interaction.user.id, "Verbal warning", reason)
+        await _log_action("warn", interaction.user.id, member.id, reason)
+        await _send_modlog("🟨 Warn", discord.Color.yellow(), interaction.user, member.id, reason, f"Message: \"{preview}\"")
 
         note = "" if dm_sent else " (couldn't DM them — DMs may be disabled)"
         await interaction.response.send_message(
@@ -205,6 +287,8 @@ class QuickMuteModal(discord.ui.Modal, title="Quick mute"):
         punishment = f"{minutes} minute mute"
         dm_sent = await _try_dm(member, build_warn_dm(punishment, reason))
         await _log_warning(member.id, interaction.user.id, punishment, reason)
+        await _log_action("mute", interaction.user.id, member.id, reason)
+        await _send_modlog("🟨 Mute (Quick Mute)", discord.Color.yellow(), interaction.user, member.id, reason, punishment)
 
         note = "" if dm_sent else " (couldn't DM them — DMs may be disabled)"
         await interaction.followup.send(
@@ -251,6 +335,10 @@ async def bban_command(
         await interaction.followup.send("⚠️ Something went wrong banning that member.", ephemeral=True)
         return
 
+    await _log_action("ban", interaction.user.id, member.id, reason)
+    extra = f"Deleted messages from the last {delete_days} day(s)." if delete_days else ""
+    await _send_modlog("🟥 Ban", discord.Color.red(), interaction.user, member.id, reason, extra)
+
     note = "" if dm_sent else " (couldn't DM them — DMs may be disabled)"
     await interaction.followup.send(f"✅ {member.mention} has been banned.{note}", ephemeral=True)
     if delete_days:
@@ -282,6 +370,9 @@ async def bkick_command(interaction: discord.Interaction, member: discord.Member
         logger.error(f"!!! [BKICK ERROR]: {e}")
         await interaction.followup.send("⚠️ Something went wrong kicking that member.", ephemeral=True)
         return
+
+    await _log_action("kick", interaction.user.id, member.id, reason)
+    await _send_modlog("🟧 Kick", discord.Color.orange(), interaction.user, member.id, reason)
 
     await interaction.followup.send(f"✅ {member.mention} has been kicked.", ephemeral=True)
 
@@ -324,6 +415,8 @@ async def bmute_command(
     punishment = f"{minutes} minute mute"
     dm_sent = await _try_dm(member, build_warn_dm(punishment, reason))
     await _log_warning(member.id, interaction.user.id, punishment, reason)
+    await _log_action("mute", interaction.user.id, member.id, reason)
+    await _send_modlog("🟨 Mute", discord.Color.yellow(), interaction.user, member.id, reason, punishment)
 
     note = "" if dm_sent else " (couldn't DM them — DMs may be disabled)"
     await interaction.followup.send(f"✅ {member.mention} has been muted for {minutes} minute(s).{note}", ephemeral=True)
@@ -354,6 +447,9 @@ async def bunmute_command(interaction: discord.Interaction, member: discord.Memb
         logger.error(f"!!! [BUNMUTE ERROR]: {e}")
         await interaction.followup.send("⚠️ Something went wrong unmuting that member.", ephemeral=True)
         return
+
+    await _log_action("unmute", interaction.user.id, member.id)
+    await _send_modlog("🟩 Unmute", discord.Color.green(), interaction.user, member.id)
 
     await interaction.followup.send(f"✅ {member.mention} has been unmuted.", ephemeral=True)
 
@@ -395,6 +491,9 @@ async def bunban_command(interaction: discord.Interaction, user_id: str, reason:
         logger.error(f"!!! [BUNBAN ERROR]: {e}")
         await interaction.followup.send("⚠️ Something went wrong unbanning that user.", ephemeral=True)
         return
+
+    await _log_action("unban", interaction.user.id, uid, reason)
+    await _send_modlog("🟩 Unban", discord.Color.green(), interaction.user, uid, reason)
 
     await interaction.followup.send(f"✅ <@{uid}> has been unbanned.", ephemeral=True)
 
@@ -463,6 +562,37 @@ async def bwarn_command(interaction: discord.Interaction, member: discord.Member
         color=discord.Color.yellow(),
     )
     await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+# =====================================================================================
+# /bstats — moderation leaderboard (also available as the quick "-s" text command)
+# =====================================================================================
+
+@client.tree.command(name="bstats", description="View the moderation leaderboard")
+async def bstats_command(interaction: discord.Interaction):
+    await interaction.response.defer()
+    rows = await _get_leaderboard()
+    await interaction.followup.send(embed=_build_leaderboard_embed(rows))
+
+
+# =====================================================================================
+# Quick text commands (prefix "-") — plain messages, not slash commands
+# =====================================================================================
+
+@client.command(name="a")
+async def quick_avatar(ctx: commands.Context, member: discord.Member = None):
+    """-a [@member] — shows a member's avatar (defaults to yourself)."""
+    member = member or ctx.author
+    embed = discord.Embed(title=f"{member.display_name}'s avatar", color=discord.Color.blurple())
+    embed.set_image(url=member.display_avatar.url)
+    await ctx.reply(embed=embed, mention_author=False)
+
+
+@client.command(name="s")
+async def quick_stats(ctx: commands.Context):
+    """-s — shows the moderation leaderboard."""
+    rows = await _get_leaderboard()
+    await ctx.reply(embed=_build_leaderboard_embed(rows), mention_author=False)
 
 
 # =====================================================================================
