@@ -57,9 +57,11 @@ VIEWT_EXCLUDE_PANEL_ROLE_IDS = {         # Only members with one of these roles 
     1538589345991360527,
 }
 ECONOMY_CHANNEL_ID = 1543393700539801671  # Only channel where economy/game commands can be used
-# NOTE: ban/warn DM commands (/bandm, /warndm, /bandmtest, /warndmtest) and their role IDs
-# / SUPPORT_SERVER_URL used to live here — moderation is now entirely owned by mod_bot.py,
-# so that logic (including the DM text builders) lives there instead.
+SUPPORT_SERVER_URL = "https://discord.gg/FZmjTSBpSZ"  # Used by dashboard.py's public "Support
+                                                       # Discord server" link. (Ban/warn DM
+                                                       # commands that used to also read this
+                                                       # constant now live entirely in mod_bot.py,
+                                                       # with their own copy of the string.)
 DASHBOARD_BASE_URL = os.getenv("DASHBOARD_BASE_URL")  # e.g. https://your-app.onrender.com (no trailing slash) —
                                                        # used to build the "Login with Roblox" button in /userinfo,
                                                        # which points at "{DASHBOARD_BASE_URL}/dashboard/roblox/login"
