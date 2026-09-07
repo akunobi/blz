@@ -18,8 +18,9 @@ from pymongo import ASCENDING, DESCENDING
 from dotenv import load_dotenv
 
 import bot as main_bot  # importing this reuses bot.py's already-open Mongo connection
-                         # instead of opening a second one, and gives us the same
-                         # GUILD_ID / staff role / DM text as the main bot
+                         # instead of opening a second one, and gives us the same GUILD_ID
+                         # as the main bot. All moderation logic (roles, DM text, commands)
+                         # lives here now — bot.py no longer has any of it.
 
 load_dotenv()
 
@@ -30,10 +31,35 @@ if not TOKEN:
     raise RuntimeError("MOD_BOT_TOKEN environment variable is not set.")
 
 GUILD_ID = main_bot.GUILD_ID
-MOD_ROLE_ID = main_bot.BANDM_ROLE_ID  # same staff role that can already use /bandm and /warndm
 db = main_bot.db
-build_ban_dm = main_bot.build_ban_dm
-build_warn_dm = main_bot.build_warn_dm
+
+MOD_ROLE_IDS = {
+    1538589345991360527,
+    1539303279195062313,
+}  # Members with either role can use /bban, /bkick, /bmute, /bwarn
+
+SUPPORT_SERVER_URL = "https://discord.gg/FZmjTSBpSZ"  # Used in ban/warn DMs
+
+
+def build_ban_dm(reason: str) -> str:
+    return (
+        "🟥 **RED CARD!** 🟥\n\n"
+        "You've been locked off the field of Blazing Lock. A true egoist knows the rules of the game.\n\n"
+        f"`Reason:` {reason}\n\n"
+        "For further assistance, head to the support locker room.\n"
+        f"`Support Server:` {SUPPORT_SERVER_URL}"
+    )
+
+
+def build_warn_dm(punishment: str, reason: str) -> str:
+    return (
+        "🟨 **YELLOW CARD!** 🟨\n\n"
+        "You've been cautioned on the field of Blazing Lock. A true egoist knows the rules of the game.\n\n"
+        f"`Punishment:` {punishment}\n"
+        f"`Reason:` {reason}\n\n"
+        "For further assistance, head to the support locker room.\n"
+        f"`Support Server:` {SUPPORT_SERVER_URL}"
+    )
 
 # --- WARNINGS STORAGE (one doc per /bmute, shown back by /bwarn) ---
 warnings_col = db["warnings"]  # {user_id, moderator_id, punishment, reason, created_at}
@@ -72,7 +98,7 @@ client = commands.Bot(command_prefix="!mod!", intents=intents)  # prefix unused,
 
 def _is_mod(interaction: discord.Interaction) -> bool:
     roles = getattr(interaction.user, "roles", [])
-    return any(r.id == MOD_ROLE_ID for r in roles)
+    return any(r.id in MOD_ROLE_IDS for r in roles)
 
 
 async def _try_dm(member: discord.Member, content: str) -> bool:
