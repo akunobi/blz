@@ -1,6 +1,9 @@
-# mod_bot.py — BARC Moderation Bot: /bban, /bkick, /bmute, /bunmute, /bunban, /bwarn, /bstats
+# mod_bot.py — BARC Moderation Bot: /bban, /bkick, /bmute, /bunmute, /bunban, /bwarn, /bstats, /modstats
 # + context menus: Quick Mute (on a member), Warn Message (on a message)
-# + quick text commands (prefix "-"): -a (avatar), -s (stats leaderboard)
+# + every one of the commands above ALSO works as a text command with the "-" prefix
+#   (e.g. "-bban @user spamming" works exactly like "/bban"), plus the original
+#   quick text commands -a (avatar) and -s (stats leaderboard, alias for -bstats).
+#   Text versions skip the ban's optional delete_days — use /bban for that.
 #
 # A SEPARATE Discord bot (its own application/token) that runs alongside bot.py.
 # It reuses bot.py's Mongo connection and the exact ban/warn DM text (build_ban_dm /
@@ -124,6 +127,46 @@ async def _get_leaderboard(limit: int = 10):
     return await asyncio.to_thread(_get_leaderboard_sync, limit)
 
 
+def _get_modstats_sync(moderator_id: int):
+    pipeline = [
+        {"$match": {"moderator_id": moderator_id}},
+        {"$group": {"_id": "$action", "count": {"$sum": 1}}},
+    ]
+    counts = {row["_id"]: row["count"] for row in actions_col.aggregate(pipeline)}
+    return counts, sum(counts.values())
+
+
+async def _get_modstats(moderator_id: int):
+    return await asyncio.to_thread(_get_modstats_sync, moderator_id)
+
+
+ACTION_LABELS = [
+    ("ban", "🟥 Bans"),
+    ("kick", "🟧 Kicks"),
+    ("mute", "🟨 Mutes"),
+    ("unmute", "🟩 Unmutes"),
+    ("unban", "🟩 Unbans"),
+    ("warn", "🟨 Warns"),
+]
+
+
+def _build_modstats_embed(member: discord.abc.User, counts: dict, total: int) -> discord.Embed:
+    if total == 0:
+        return discord.Embed(
+            title=f"📊 Mod Stats — {member.display_name}",
+            description="No moderation actions logged yet.",
+            color=discord.Color.blurple(),
+        )
+    lines = [f"{label}: **{counts[key]}**" for key, label in ACTION_LABELS if counts.get(key)]
+    embed = discord.Embed(
+        title=f"📊 Mod Stats — {member.display_name}",
+        description="\n".join(lines),
+        color=discord.Color.blurple(),
+    )
+    embed.set_footer(text=f"Total actions: {total}")
+    return embed
+
+
 def _build_leaderboard_embed(rows) -> discord.Embed:
     if not rows:
         return discord.Embed(
@@ -152,8 +195,11 @@ intents.message_content = True  # needed to read "-a" / "-s" quick text commands
 client = commands.Bot(command_prefix="-", intents=intents)  # "-" prefix powers the quick text commands
 
 
-def _is_mod(interaction: discord.Interaction) -> bool:
-    roles = getattr(interaction.user, "roles", [])
+NO_PERM = "❌ You don't have permission to use this command."
+
+
+def _has_mod_role(user: discord.abc.User) -> bool:
+    roles = getattr(user, "roles", [])
     return any(r.id in MOD_ROLE_IDS for r in roles)
 
 
@@ -191,16 +237,18 @@ async def _send_modlog(
         logger.error(f"!!! [MODLOG SEND ERROR]: {e}")
 
 
-def _target_check_error(interaction: discord.Interaction, target: discord.Member) -> str | None:
+def _target_check_error(guild_me: discord.Member, moderator: discord.abc.User, target: discord.Member) -> str | None:
     """Same target safety checks as CircleUtilityBot's target_check: returns an error
-    message if `target` isn't a valid moderation target, or None if it's fine to proceed."""
+    message if `target` isn't a valid moderation target, or None if it's fine to proceed.
+    guild_me/moderator are passed in (rather than an interaction) so this works from both
+    slash commands and the "-" text commands."""
     if target.id == client.user.id:
         return "❌ You can't target the bot itself."
-    if target.id == interaction.user.id:
+    if target.id == moderator.id:
         return "❌ You can't target yourself."
     if target.guild_permissions.administrator or any(r.id in MOD_ROLE_IDS for r in target.roles):
         return "❌ You can't target another moderator/admin."
-    if interaction.guild.me.top_role.position <= target.top_role.position:
+    if guild_me.top_role.position <= target.top_role.position:
         return "❌ I need a higher role than that member to do this."
     return None
 
@@ -297,6 +345,137 @@ class QuickMuteModal(discord.ui.Modal, title="Quick mute"):
 
 
 # =====================================================================================
+# Core moderation actions — shared by the /slash commands AND the "-" text commands
+# below, so the logic (checks, DMs, logging, modlog post) only lives in one place.
+# Each returns (ok: bool, message: str).
+# =====================================================================================
+
+async def _core_ban(guild: discord.Guild, moderator: discord.abc.User, member: discord.Member, reason: str, delete_days: int = 0):
+    err = _target_check_error(guild.me, moderator, member)
+    if err:
+        return False, err
+
+    # DM before banning — once they're banned there's a good chance the bot can no
+    # longer reach their DMs (no shared server left), so this order matters.
+    dm_sent = await _try_dm(member, build_ban_dm(reason))
+
+    try:
+        await member.ban(reason=f"{reason} (by {moderator})", delete_message_seconds=delete_days * 86400)
+    except discord.Forbidden:
+        return False, "❌ I don't have permission to ban that member."
+    except Exception as e:
+        logger.error(f"!!! [BBAN ERROR]: {e}")
+        return False, "⚠️ Something went wrong banning that member."
+
+    await _log_action("ban", moderator.id, member.id, reason)
+    extra = f"Deleted messages from the last {delete_days} day(s)." if delete_days else ""
+    await _send_modlog("🟥 Ban", discord.Color.red(), moderator, member.id, reason, extra)
+
+    note = "" if dm_sent else " (couldn't DM them — DMs may be disabled)"
+    msg = f"✅ {member.mention} has been banned.{note}"
+    if delete_days:
+        msg += f"\n🗑️ Also deleted their messages from the last {delete_days} day(s)."
+    return True, msg
+
+
+async def _core_kick(guild: discord.Guild, moderator: discord.abc.User, member: discord.Member, reason: str):
+    err = _target_check_error(guild.me, moderator, member)
+    if err:
+        return False, err
+    try:
+        await member.kick(reason=f"{reason} (by {moderator})")
+    except discord.Forbidden:
+        return False, "❌ I don't have permission to kick that member."
+    except Exception as e:
+        logger.error(f"!!! [BKICK ERROR]: {e}")
+        return False, "⚠️ Something went wrong kicking that member."
+
+    await _log_action("kick", moderator.id, member.id, reason)
+    await _send_modlog("🟧 Kick", discord.Color.orange(), moderator, member.id, reason)
+    return True, f"✅ {member.mention} has been kicked."
+
+
+async def _core_mute(guild: discord.Guild, moderator: discord.abc.User, member: discord.Member, minutes: int, reason: str):
+    err = _target_check_error(guild.me, moderator, member)
+    if err:
+        return False, err
+    try:
+        await member.timeout(timedelta(minutes=minutes), reason=f"{reason} (by {moderator})")
+    except discord.Forbidden:
+        return False, "❌ I don't have permission to mute that member."
+    except Exception as e:
+        logger.error(f"!!! [BMUTE ERROR]: {e}")
+        return False, "⚠️ Something went wrong muting that member."
+
+    punishment = f"{minutes} minute mute"
+    dm_sent = await _try_dm(member, build_warn_dm(punishment, reason))
+    await _log_warning(member.id, moderator.id, punishment, reason)
+    await _log_action("mute", moderator.id, member.id, reason)
+    await _send_modlog("🟨 Mute", discord.Color.yellow(), moderator, member.id, reason, punishment)
+
+    note = "" if dm_sent else " (couldn't DM them — DMs may be disabled)"
+    return True, f"✅ {member.mention} has been muted for {minutes} minute(s).{note}"
+
+
+async def _core_unmute(moderator: discord.abc.User, member: discord.Member):
+    if member.current_timeout is None:
+        return False, f"{member.mention} is not currently muted."
+    try:
+        await member.timeout(None, reason=f"Unmuted (by {moderator})")
+    except discord.Forbidden:
+        return False, "❌ I don't have permission to unmute that member."
+    except Exception as e:
+        logger.error(f"!!! [BUNMUTE ERROR]: {e}")
+        return False, "⚠️ Something went wrong unmuting that member."
+
+    await _log_action("unmute", moderator.id, member.id)
+    await _send_modlog("🟩 Unmute", discord.Color.green(), moderator, member.id)
+    return True, f"✅ {member.mention} has been unmuted."
+
+
+async def _core_unban(guild: discord.Guild, moderator: discord.abc.User, user_id_str: str, reason: str):
+    try:
+        uid = int(user_id_str)
+    except ValueError:
+        return False, "❌ That doesn't look like a valid user ID."
+
+    try:
+        await guild.fetch_ban(discord.Object(id=uid))
+    except discord.NotFound:
+        return False, "That user isn't banned from this server."
+    except Exception as e:
+        logger.error(f"!!! [BUNBAN LOOKUP ERROR]: {e}")
+        return False, "⚠️ Something went wrong checking the ban list."
+
+    try:
+        await guild.unban(discord.Object(id=uid), reason=f"{reason} (by {moderator})")
+    except discord.Forbidden:
+        return False, "❌ I don't have permission to unban that user."
+    except Exception as e:
+        logger.error(f"!!! [BUNBAN ERROR]: {e}")
+        return False, "⚠️ Something went wrong unbanning that user."
+
+    await _log_action("unban", moderator.id, uid, reason)
+    await _send_modlog("🟩 Unban", discord.Color.green(), moderator, uid, reason)
+    return True, f"✅ <@{uid}> has been unbanned."
+
+
+def _build_warn_embed(member: discord.abc.User, history):
+    """Returns a discord.Embed if there's history, or a plain string if there isn't."""
+    if not history:
+        return f"{member.mention} has no warnings on record."
+    lines = []
+    for i, w in enumerate(history, start=1):
+        ts = w["created_at"].strftime("%Y-%m-%d %H:%M UTC")
+        lines.append(f"**{i}.** `{ts}` — {w['punishment']} — {w['reason']} (by <@{w['moderator_id']}>)")
+    return discord.Embed(
+        title=f"Warnings — {member.display_name}",
+        description="\n".join(lines)[:4000],
+        color=discord.Color.yellow(),
+    )
+
+
+# =====================================================================================
 # /bban
 # =====================================================================================
 
@@ -312,37 +491,12 @@ async def bban_command(
     reason: str,
     delete_days: typing.Literal[0, 1, 3, 7] = 0,
 ):
-    if not _is_mod(interaction):
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
-        return
-    err = _target_check_error(interaction, member)
-    if err:
-        await interaction.response.send_message(err, ephemeral=True)
+    if not _has_mod_role(interaction.user):
+        await interaction.response.send_message(NO_PERM, ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True)
-
-    # DM before banning — once they're banned there's a good chance the bot can no
-    # longer reach their DMs (no shared server left), so this order matters.
-    dm_sent = await _try_dm(member, build_ban_dm(reason))
-
-    try:
-        await member.ban(reason=f"{reason} (by {interaction.user})", delete_message_seconds=delete_days * 86400)
-    except discord.Forbidden:
-        await interaction.followup.send("❌ I don't have permission to ban that member.", ephemeral=True)
-        return
-    except Exception as e:
-        logger.error(f"!!! [BBAN ERROR]: {e}")
-        await interaction.followup.send("⚠️ Something went wrong banning that member.", ephemeral=True)
-        return
-
-    await _log_action("ban", interaction.user.id, member.id, reason)
-    extra = f"Deleted messages from the last {delete_days} day(s)." if delete_days else ""
-    await _send_modlog("🟥 Ban", discord.Color.red(), interaction.user, member.id, reason, extra)
-
-    note = "" if dm_sent else " (couldn't DM them — DMs may be disabled)"
-    await interaction.followup.send(f"✅ {member.mention} has been banned.{note}", ephemeral=True)
-    if delete_days:
-        await interaction.followup.send(f"🗑️ Also deleted their messages from the last {delete_days} day(s).", ephemeral=True)
+    ok, msg = await _core_ban(interaction.guild, interaction.user, member, reason, delete_days)
+    await interaction.followup.send(msg, ephemeral=True)
 
 
 # =====================================================================================
@@ -352,29 +506,12 @@ async def bban_command(
 @client.tree.command(name="bkick", description="Kick a member")
 @app_commands.describe(member="The member to kick", reason="The reason for the kick")
 async def bkick_command(interaction: discord.Interaction, member: discord.Member, reason: str):
-    if not _is_mod(interaction):
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
-        return
-    err = _target_check_error(interaction, member)
-    if err:
-        await interaction.response.send_message(err, ephemeral=True)
+    if not _has_mod_role(interaction.user):
+        await interaction.response.send_message(NO_PERM, ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True)
-
-    try:
-        await member.kick(reason=f"{reason} (by {interaction.user})")
-    except discord.Forbidden:
-        await interaction.followup.send("❌ I don't have permission to kick that member.", ephemeral=True)
-        return
-    except Exception as e:
-        logger.error(f"!!! [BKICK ERROR]: {e}")
-        await interaction.followup.send("⚠️ Something went wrong kicking that member.", ephemeral=True)
-        return
-
-    await _log_action("kick", interaction.user.id, member.id, reason)
-    await _send_modlog("🟧 Kick", discord.Color.orange(), interaction.user, member.id, reason)
-
-    await interaction.followup.send(f"✅ {member.mention} has been kicked.", ephemeral=True)
+    ok, msg = await _core_kick(interaction.guild, interaction.user, member, reason)
+    await interaction.followup.send(msg, ephemeral=True)
 
 
 # =====================================================================================
@@ -393,33 +530,12 @@ async def bmute_command(
     minutes: app_commands.Range[int, 1, 40320],
     reason: str,
 ):
-    if not _is_mod(interaction):
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
-        return
-    err = _target_check_error(interaction, member)
-    if err:
-        await interaction.response.send_message(err, ephemeral=True)
+    if not _has_mod_role(interaction.user):
+        await interaction.response.send_message(NO_PERM, ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True)
-
-    try:
-        await member.timeout(timedelta(minutes=minutes), reason=f"{reason} (by {interaction.user})")
-    except discord.Forbidden:
-        await interaction.followup.send("❌ I don't have permission to mute that member.", ephemeral=True)
-        return
-    except Exception as e:
-        logger.error(f"!!! [BMUTE ERROR]: {e}")
-        await interaction.followup.send("⚠️ Something went wrong muting that member.", ephemeral=True)
-        return
-
-    punishment = f"{minutes} minute mute"
-    dm_sent = await _try_dm(member, build_warn_dm(punishment, reason))
-    await _log_warning(member.id, interaction.user.id, punishment, reason)
-    await _log_action("mute", interaction.user.id, member.id, reason)
-    await _send_modlog("🟨 Mute", discord.Color.yellow(), interaction.user, member.id, reason, punishment)
-
-    note = "" if dm_sent else " (couldn't DM them — DMs may be disabled)"
-    await interaction.followup.send(f"✅ {member.mention} has been muted for {minutes} minute(s).{note}", ephemeral=True)
+    ok, msg = await _core_mute(interaction.guild, interaction.user, member, minutes, reason)
+    await interaction.followup.send(msg, ephemeral=True)
 
 
 # =====================================================================================
@@ -429,29 +545,12 @@ async def bmute_command(
 @client.tree.command(name="bunmute", description="Remove an active timeout from a member")
 @app_commands.describe(member="The member to unmute")
 async def bunmute_command(interaction: discord.Interaction, member: discord.Member):
-    if not _is_mod(interaction):
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+    if not _has_mod_role(interaction.user):
+        await interaction.response.send_message(NO_PERM, ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True)
-
-    if member.current_timeout is None:
-        await interaction.followup.send(f"{member.mention} is not currently muted.", ephemeral=True)
-        return
-
-    try:
-        await member.timeout(None, reason=f"Unmuted (by {interaction.user})")
-    except discord.Forbidden:
-        await interaction.followup.send("❌ I don't have permission to unmute that member.", ephemeral=True)
-        return
-    except Exception as e:
-        logger.error(f"!!! [BUNMUTE ERROR]: {e}")
-        await interaction.followup.send("⚠️ Something went wrong unmuting that member.", ephemeral=True)
-        return
-
-    await _log_action("unmute", interaction.user.id, member.id)
-    await _send_modlog("🟩 Unmute", discord.Color.green(), interaction.user, member.id)
-
-    await interaction.followup.send(f"✅ {member.mention} has been unmuted.", ephemeral=True)
+    ok, msg = await _core_unmute(interaction.user, member)
+    await interaction.followup.send(msg, ephemeral=True)
 
 
 # =====================================================================================
@@ -461,41 +560,12 @@ async def bunmute_command(interaction: discord.Interaction, member: discord.Memb
 @client.tree.command(name="bunban", description="Unban a user by their ID")
 @app_commands.describe(user_id="The ID of the user to unban", reason="The reason for the unban")
 async def bunban_command(interaction: discord.Interaction, user_id: str, reason: str = "No reason provided."):
-    if not _is_mod(interaction):
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+    if not _has_mod_role(interaction.user):
+        await interaction.response.send_message(NO_PERM, ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True)
-
-    try:
-        uid = int(user_id)
-    except ValueError:
-        await interaction.followup.send("❌ That doesn't look like a valid user ID.", ephemeral=True)
-        return
-
-    try:
-        await interaction.guild.fetch_ban(discord.Object(id=uid))
-    except discord.NotFound:
-        await interaction.followup.send("That user isn't banned from this server.", ephemeral=True)
-        return
-    except Exception as e:
-        logger.error(f"!!! [BUNBAN LOOKUP ERROR]: {e}")
-        await interaction.followup.send("⚠️ Something went wrong checking the ban list.", ephemeral=True)
-        return
-
-    try:
-        await interaction.guild.unban(discord.Object(id=uid), reason=f"{reason} (by {interaction.user})")
-    except discord.Forbidden:
-        await interaction.followup.send("❌ I don't have permission to unban that user.", ephemeral=True)
-        return
-    except Exception as e:
-        logger.error(f"!!! [BUNBAN ERROR]: {e}")
-        await interaction.followup.send("⚠️ Something went wrong unbanning that user.", ephemeral=True)
-        return
-
-    await _log_action("unban", interaction.user.id, uid, reason)
-    await _send_modlog("🟩 Unban", discord.Color.green(), interaction.user, uid, reason)
-
-    await interaction.followup.send(f"✅ <@{uid}> has been unbanned.", ephemeral=True)
+    ok, msg = await _core_unban(interaction.guild, interaction.user, user_id, reason)
+    await interaction.followup.send(msg, ephemeral=True)
 
 
 # =====================================================================================
@@ -504,11 +574,11 @@ async def bunban_command(interaction: discord.Interaction, user_id: str, reason:
 
 @client.tree.context_menu(name="Quick Mute")
 async def quick_mute_command(interaction: discord.Interaction, member: discord.Member):
-    if not _is_mod(interaction):
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+    if not _has_mod_role(interaction.user):
+        await interaction.response.send_message(NO_PERM, ephemeral=True)
         return
 
-    err = _target_check_error(interaction, member)
+    err = _target_check_error(interaction.guild.me, interaction.user, member)
     if err:
         await interaction.response.send_message(err, ephemeral=True)
         return
@@ -522,11 +592,11 @@ async def quick_mute_command(interaction: discord.Interaction, member: discord.M
 
 @client.tree.context_menu(name="Warn Message")
 async def warn_message_command(interaction: discord.Interaction, message: discord.Message):
-    if not _is_mod(interaction):
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+    if not _has_mod_role(interaction.user):
+        await interaction.response.send_message(NO_PERM, ephemeral=True)
         return
 
-    err = _target_check_error(interaction, message.author)
+    err = _target_check_error(interaction.guild.me, interaction.user, message.author)
     if err:
         await interaction.response.send_message(err, ephemeral=True)
         return
@@ -541,27 +611,17 @@ async def warn_message_command(interaction: discord.Interaction, message: discor
 @client.tree.command(name="bwarn", description="View a member's warning history")
 @app_commands.describe(member="The member to check")
 async def bwarn_command(interaction: discord.Interaction, member: discord.Member):
-    if not _is_mod(interaction):
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+    if not _has_mod_role(interaction.user):
+        await interaction.response.send_message(NO_PERM, ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True)
 
     history = await _get_warnings(member.id)
-    if not history:
-        await interaction.followup.send(f"{member.mention} has no warnings on record.", ephemeral=True)
-        return
-
-    lines = []
-    for i, w in enumerate(history, start=1):
-        ts = w["created_at"].strftime("%Y-%m-%d %H:%M UTC")
-        lines.append(f"**{i}.** `{ts}` — {w['punishment']} — {w['reason']} (by <@{w['moderator_id']}>)")
-
-    embed = discord.Embed(
-        title=f"Warnings — {member.display_name}",
-        description="\n".join(lines)[:4000],
-        color=discord.Color.yellow(),
-    )
-    await interaction.followup.send(embed=embed, ephemeral=True)
+    result = _build_warn_embed(member, history)
+    if isinstance(result, discord.Embed):
+        await interaction.followup.send(embed=result, ephemeral=True)
+    else:
+        await interaction.followup.send(result, ephemeral=True)
 
 
 # =====================================================================================
@@ -576,7 +636,22 @@ async def bstats_command(interaction: discord.Interaction):
 
 
 # =====================================================================================
-# Quick text commands (prefix "-") — plain messages, not slash commands
+# /modstats — one moderator's action breakdown (ban/kick/mute/etc. counts + total)
+# =====================================================================================
+
+@client.tree.command(name="modstats", description="View a moderator's action breakdown")
+@app_commands.describe(member="The moderator to check (defaults to yourself)")
+async def modstats_command(interaction: discord.Interaction, member: discord.Member = None):
+    await interaction.response.defer()
+    target = member or interaction.user
+    counts, total = await _get_modstats(target.id)
+    await interaction.followup.send(embed=_build_modstats_embed(target, counts, total))
+
+
+# =====================================================================================
+# Text commands (prefix "-") — every slash command above also works this way, e.g.
+# "-bban @user spamming" does the same thing as "/bban". Plus the original quick
+# commands -a (avatar) and -s (stats leaderboard, same as -bstats).
 # =====================================================================================
 
 @client.command(name="a")
@@ -590,9 +665,105 @@ async def quick_avatar(ctx: commands.Context, member: discord.Member = None):
 
 @client.command(name="s")
 async def quick_stats(ctx: commands.Context):
-    """-s — shows the moderation leaderboard."""
+    """-s — shows the moderation leaderboard (same as -bstats)."""
     rows = await _get_leaderboard()
     await ctx.reply(embed=_build_leaderboard_embed(rows), mention_author=False)
+
+
+@client.command(name="bstats")
+async def bstats_text(ctx: commands.Context):
+    """-bstats — shows the moderation leaderboard (same as -s)."""
+    rows = await _get_leaderboard()
+    await ctx.reply(embed=_build_leaderboard_embed(rows), mention_author=False)
+
+
+@client.command(name="modstats")
+async def modstats_text(ctx: commands.Context, member: discord.Member = None):
+    """-modstats [@moderator] — view a moderator's action breakdown (defaults to yourself)."""
+    target = member or ctx.author
+    counts, total = await _get_modstats(target.id)
+    await ctx.reply(embed=_build_modstats_embed(target, counts, total), mention_author=False)
+
+
+@client.command(name="bban")
+async def bban_text(ctx: commands.Context, member: discord.Member, *, reason: str = "No reason provided."):
+    """-bban @member [reason] — bans a member. (Delete-days option isn't available here — use /bban.)"""
+    if not _has_mod_role(ctx.author):
+        await ctx.reply(NO_PERM, mention_author=False)
+        return
+    ok, msg = await _core_ban(ctx.guild, ctx.author, member, reason)
+    await ctx.reply(msg, mention_author=False)
+
+
+@client.command(name="bkick")
+async def bkick_text(ctx: commands.Context, member: discord.Member, *, reason: str):
+    """-bkick @member reason — kicks a member."""
+    if not _has_mod_role(ctx.author):
+        await ctx.reply(NO_PERM, mention_author=False)
+        return
+    ok, msg = await _core_kick(ctx.guild, ctx.author, member, reason)
+    await ctx.reply(msg, mention_author=False)
+
+
+@client.command(name="bmute")
+async def bmute_text(ctx: commands.Context, member: discord.Member, minutes: int, *, reason: str):
+    """-bmute @member minutes reason — times out a member."""
+    if not _has_mod_role(ctx.author):
+        await ctx.reply(NO_PERM, mention_author=False)
+        return
+    minutes = max(1, min(minutes, 40320))
+    ok, msg = await _core_mute(ctx.guild, ctx.author, member, minutes, reason)
+    await ctx.reply(msg, mention_author=False)
+
+
+@client.command(name="bunmute")
+async def bunmute_text(ctx: commands.Context, member: discord.Member):
+    """-bunmute @member — removes an active timeout."""
+    if not _has_mod_role(ctx.author):
+        await ctx.reply(NO_PERM, mention_author=False)
+        return
+    ok, msg = await _core_unmute(ctx.author, member)
+    await ctx.reply(msg, mention_author=False)
+
+
+@client.command(name="bunban")
+async def bunban_text(ctx: commands.Context, user_id: str, *, reason: str = "No reason provided."):
+    """-bunban user_id [reason] — unbans a user by their ID."""
+    if not _has_mod_role(ctx.author):
+        await ctx.reply(NO_PERM, mention_author=False)
+        return
+    ok, msg = await _core_unban(ctx.guild, ctx.author, user_id, reason)
+    await ctx.reply(msg, mention_author=False)
+
+
+@client.command(name="bwarn")
+async def bwarn_text(ctx: commands.Context, member: discord.Member):
+    """-bwarn @member — view a member's warning history."""
+    if not _has_mod_role(ctx.author):
+        await ctx.reply(NO_PERM, mention_author=False)
+        return
+    history = await _get_warnings(member.id)
+    result = _build_warn_embed(member, history)
+    if isinstance(result, discord.Embed):
+        await ctx.reply(embed=result, mention_author=False)
+    else:
+        await ctx.reply(result, mention_author=False)
+
+
+@client.event
+async def on_command_error(ctx: commands.Context, error: commands.CommandError):
+    """Keeps a bad '-something' text command from throwing a raw traceback — every
+    message in the server passes through here since the bot reads message content."""
+    if isinstance(error, commands.CommandNotFound):
+        return
+    if isinstance(error, commands.MissingRequiredArgument):
+        await ctx.reply(f"❌ Missing argument: `{error.param.name}`.", mention_author=False)
+        return
+    if isinstance(error, (commands.MemberNotFound, commands.BadArgument)):
+        await ctx.reply("❌ Couldn't find that member or ID — check it and try again.", mention_author=False)
+        return
+    logger.error(f"!!! [MOD BOT TEXT COMMAND ERROR] -{ctx.command}: {error!r}")
+    await ctx.reply("⚠️ Something went wrong running that command.", mention_author=False)
 
 
 # =====================================================================================
