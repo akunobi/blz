@@ -105,6 +105,13 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 from urllib.parse import urlencode
 import bot as botmod
+import mod_bot as modbot  # role IDs + DM text for moderation now live here (see mod_bot.py's
+                           # own header comment) — dashboard.py used to read BANDM_ROLE_ID /
+                           # BANDM_TEST_ROLE_ID / build_ban_dm / build_warn_dm off of `bot`
+                           # itself, which is why every logged-in page 500'd: bot.py doesn't
+                           # define those anymore, page() (called on EVERY page render) hit an
+                           # AttributeError computing show_moderation, and even the custom 500
+                           # handler crashed the same way trying to re-render the layout.
 
 import discord
 import requests
@@ -226,6 +233,40 @@ access_col.create_index("is_admin")
 audit_log_col = botmod.db["admin_audit_log"]
 audit_log_col.create_index([("type", 1), ("at", -1)])
 ADMIN_LOG_LIMIT = 300  # how many entries the log viewer pages show at once
+
+# Same collections mod_bot.py's /bban /bkick /bmute /bunmute /bunban /bwarn commands (and
+# the Quick Mute / Warn Message context menus) already write to — reused here read-only
+# (plus one write path, for the admin "Unmute" button below) so the dashboard's Moderation
+# Panel always reflects exactly what those commands have done, with nothing duplicated.
+mod_actions_col = botmod.db["mod_actions"]  # {action, moderator_id, target_id, reason, created_at}
+mod_warnings_col = botmod.db["warnings"]    # {user_id, moderator_id, punishment, reason, created_at}
+
+MOD_ACTION_LABELS = {  # action -> (display label, .pill CSS class)
+    "ban": ("🟥 Ban", "denied"),
+    "kick": ("🟧 Kick", "pending"),
+    "mute": ("🟨 Mute", "pending"),
+    "unmute": ("🟩 Unmute", "approved"),
+    "unban": ("🟩 Unban", "approved"),
+    "warn": ("🟨 Warn", "pending"),
+}
+
+
+def _get_active_mutes():
+    """Live snapshot of who's currently timed out, read straight from Discord — this stays
+    accurate even for a timeout applied by hand in the Discord UI (not just via /bmute or
+    the Quick Mute context menu), unlike trying to derive "currently muted" from the
+    mod_actions log alone. Returns None if the bot isn't connected/cached yet."""
+    guild = botmod.client.get_guild(botmod.GUILD_ID)
+    if guild is None:
+        return None
+    now = datetime.now(timezone.utc)
+    active = []
+    for m in guild.members:
+        until = getattr(m, "timed_out_until", None) or getattr(m, "communication_disabled_until", None)
+        if until and until > now:
+            active.append({"id": m.id, "name": m.display_name, "until": until})
+    active.sort(key=lambda r: r["until"])
+    return active
 
 
 def _log_admin_change(change_type, target_id, target_name, old_value, new_value, reason, actor):
@@ -905,7 +946,7 @@ def page(title, body_template, **ctx):
         status = _access_status(uid)
         is_admin = is_admin_user(uid)
         show_staff = is_staff_user(uid)
-        show_moderation = has_role(uid, botmod.BANDM_ROLE_ID) or has_role(uid, botmod.BANDM_TEST_ROLE_ID)
+        show_moderation = has_role(uid, modbot.MOD_ROLE_IDS)
         pending_count = 0
     else:
         status, is_admin, show_staff, show_moderation, pending_count = None, False, False, False, 0
@@ -1012,11 +1053,12 @@ def home():
   {% if is_admin %}<a class="card" href="{{ url_for('dashboard.admin_ep_manager') }}"><strong>📋 EP Manager</strong><br><span class="muted">Admin-only: edit tryouters' EP, with a permanent log</span></a>{% endif %}
   {% if is_admin %}<a class="card" href="{{ url_for('dashboard.admin_elo_manager') }}"><strong>🏆 ELO Manager</strong><br><span class="muted">Admin-only: edit any player's ELO, with a permanent log</span></a>{% endif %}
   {% if is_admin %}<a class="card" href="{{ url_for('dashboard.admin_access') }}"><strong>🛡️ Manage Admins</strong><br><span class="muted">Escalate or revoke admin/staff access</span></a>{% endif %}
+  {% if is_admin %}<a class="card" href="{{ url_for('dashboard.admin_moderation') }}"><strong>🚨 Moderation Panel</strong><br><span class="muted">Admin-only: action logs, who's muted right now, and per-user history</span></a>{% endif %}
 </div>""",
                 elo=row.elo, rank_name=rank_name, rank_emoji=rank_emoji, pct=pct, progress_label=progress_label,
                 balance=econ_doc["balance"], is_tryouter=is_tryouter, ep=ep, quota_ep_target=botmod.TRYOUT_QUOTA_EP,
                 queued_modes=queued_modes, is_staff_addelo=has_role(uid, botmod.ADDELO_ROLE_ID),
-                is_moderator=has_role(uid, botmod.BANDM_ROLE_ID) or has_role(uid, botmod.BANDM_TEST_ROLE_ID),
+                is_moderator=has_role(uid, modbot.MOD_ROLE_IDS),
                 show_staff=is_staff_user(uid), is_admin=is_admin_user(uid))
 
 
@@ -1316,7 +1358,7 @@ ADMIN_ACCESS_TMPL = """
 <h1>Manage Admins</h1>
 <p class="muted">Anyone who has ever logged in to the dashboard shows up below. Root admins (the 3 built-in accounts) are always admins and can't be changed here. Everyone else can be escalated to admin, or individually granted the Staff section, with one click.</p>
 
-<div class="linkrow"><a href="{{ url_for('dashboard.admin_ep_manager') }}">📋 EP Manager</a><a href="{{ url_for('dashboard.admin_elo_manager') }}">🏆 ELO Manager</a></div>
+<div class="linkrow"><a href="{{ url_for('dashboard.admin_ep_manager') }}">📋 EP Manager</a><a href="{{ url_for('dashboard.admin_elo_manager') }}">🏆 ELO Manager</a><a href="{{ url_for('dashboard.admin_moderation') }}">🚨 Moderation Panel</a></div>
 
 <div class="card">
 <h2 style="margin-top:0;">Root Admins</h2>
@@ -1669,6 +1711,236 @@ ADMIN_LOG_TMPL = """
 {% else %}<p class="empty">No changes have been logged yet.</p>{% endif %}
 </div>
 <div class="linkrow"><a href="{{ back_url }}">← Back</a></div>"""
+
+
+# =====================================================================================
+# ADMIN — Moderation Panel (admin-only: everything mod_bot.py's /bban /bkick /bmute
+# /bunmute /bunban /bwarn commands (+ Quick Mute / Warn Message context menus) have ever
+# done, plus who's muted right now). Read-only except for one action — lifting a mute
+# early — since that's a low-risk "undo", unlike duplicating ban/kick/mute's target-safety
+# checks (role hierarchy, "can't target another mod", etc.) a second time here.
+# =====================================================================================
+
+ADMIN_MODERATION_TMPL = """
+<h1>🚨 Moderation Panel</h1>
+<p class="muted">Admin-only. Everything logged by the moderation bot's /bban, /bkick, /bmute, /bunmute, /bunban and /bwarn commands (and the Quick Mute / Warn Message context menus), plus who's muted right now.</p>
+<div class="linkrow"><a href="{{ url_for('dashboard.admin_access') }}">🛡️ Manage Admins</a><a href="{{ url_for('dashboard.admin_ep_manager') }}">📋 EP Manager</a><a href="{{ url_for('dashboard.admin_elo_manager') }}">🏆 ELO Manager</a></div>
+
+<h2>Look up a member</h2>
+<div class="card">
+<form method="get" action="{{ url_for('dashboard.admin_moderation') }}">
+  <div class="row">
+    <div class="field"><label>Discord ID</label><input type="text" name="uid" placeholder="e.g. 123456789012345678" value="{{ highlight_id or '' }}"></div>
+  </div>
+  <button class="btn secondary">View history</button>
+</form>
+</div>
+
+<h2>Currently Muted ({{ active_mutes|length }})</h2>
+<div class="card">
+{% if not bot_connected %}
+<p class="empty">The Discord bot isn't connected right now, so live mute status isn't available. The action log below is unaffected.</p>
+{% elif active_mutes %}
+<table><thead><tr><th>Member</th><th>Muted until (UTC)</th><th></th></tr></thead><tbody>
+{% for m in active_mutes %}
+<tr>
+  <td><a href="{{ url_for('dashboard.admin_moderation_user', uid=m.id) }}">{{ m.name }}</a> <span class="muted">({{ m.id }})</span></td>
+  <td class="muted">{{ m.until.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+  <td>
+    <form class="inline" method="post" action="{{ url_for('dashboard.admin_moderation_unmute', uid=m.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small danger">Unmute</button>
+    </form>
+  </td>
+</tr>
+{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">Nobody is currently muted.</p>{% endif %}
+</div>
+
+<h2>Top Moderators (all time)</h2>
+<div class="card">
+{% if leaderboard_rows %}
+<table><thead><tr><th>Moderator</th><th>Actions logged</th></tr></thead><tbody>
+{% for r in leaderboard_rows %}
+<tr><td>{{ r.name }} <span class="muted">({{ r._id }})</span></td><td>{{ r.count }}</td></tr>
+{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">No moderation actions logged yet.</p>{% endif %}
+</div>
+
+<h2>Action Log</h2>
+<div class="tabs">
+<a href="{{ url_for('dashboard.admin_moderation') }}"{% if not action_filter %} class="active"{% endif %}>All</a>
+{% for key, val in action_types.items() %}<a href="{{ url_for('dashboard.admin_moderation', type=key) }}"{% if action_filter == key %} class="active"{% endif %}>{{ val[0] }}</a>{% endfor %}
+</div>
+<div class="card">
+<p class="muted" style="margin-top:-6px;">The last {{ actions|length }} action(s) (max {{ limit }}), newest first — permanent, and can't be edited or cleared from the dashboard.</p>
+{% if actions %}
+<table><thead><tr><th>When (UTC)</th><th>Action</th><th>Target</th><th>Moderator</th><th>Reason</th></tr></thead><tbody>
+{% for a in actions %}
+<tr{% if a.target_id == highlight_id %} class="hl"{% endif %}>
+  <td class="muted">{{ a.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+  <td><span class="pill {{ a.pill_cls }}">{{ a.label }}</span></td>
+  <td><a href="{{ url_for('dashboard.admin_moderation_user', uid=a.target_id) }}">{{ a.target_name }}</a> <span class="muted">({{ a.target_id }})</span></td>
+  <td>{{ a.moderator_name }} <span class="muted">({{ a.moderator_id }})</span></td>
+  <td class="muted">{{ a.reason or "—" }}</td>
+</tr>
+{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">No moderation actions logged yet.</p>{% endif %}
+</div>"""
+
+
+@dash_bp.route("/admin/moderation")
+@admin_required
+def admin_moderation():
+    highlight_id = None
+    search_uid = request.args.get("uid", "").strip()
+    if search_uid:
+        try:
+            highlight_id = int(search_uid)
+        except ValueError:
+            flash("That doesn't look like a valid Discord ID.", "error")
+        else:
+            return redirect(url_for("dashboard.admin_moderation_user", uid=highlight_id))
+
+    active_mutes_raw = _get_active_mutes()
+    bot_connected = active_mutes_raw is not None
+    active_mutes = [
+        {**m, "name": display_name_for(m["id"], fallback=m["name"])}
+        for m in (active_mutes_raw or [])
+    ]
+
+    action_filter = request.args.get("type", "").strip()
+    query = {"action": action_filter} if action_filter in MOD_ACTION_LABELS else {}
+    actions = list(mod_actions_col.find(query).sort("created_at", -1).limit(ADMIN_LOG_LIMIT))
+    for a in actions:
+        a["target_name"] = display_name_for(a["target_id"])
+        a["moderator_name"] = display_name_for(a["moderator_id"])
+        a["label"], a["pill_cls"] = MOD_ACTION_LABELS.get(a["action"], (a["action"].title(), ""))
+
+    leaderboard_rows = list(mod_actions_col.aggregate([
+        {"$group": {"_id": "$moderator_id", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 10},
+    ]))
+    for r in leaderboard_rows:
+        r["name"] = display_name_for(r["_id"])
+
+    return page("Moderation Panel", ADMIN_MODERATION_TMPL,
+                active_mutes=active_mutes, bot_connected=bot_connected,
+                actions=actions, action_filter=action_filter, action_types=MOD_ACTION_LABELS,
+                leaderboard_rows=leaderboard_rows, highlight_id=highlight_id, limit=ADMIN_LOG_LIMIT)
+
+
+@dash_bp.route("/admin/moderation/unmute/<int:uid>", methods=["POST"])
+@admin_required
+def admin_moderation_unmute(uid):
+    _check_csrf()
+    guild = botmod.client.get_guild(botmod.GUILD_ID)
+    if guild is None:
+        flash("The bot isn't connected right now.", "error")
+        return redirect(url_for("dashboard.admin_moderation"))
+
+    actor = _discord_user()
+
+    async def _do_unmute():
+        member = guild.get_member(uid)
+        if member is None:
+            try:
+                member = await guild.fetch_member(uid)
+            except Exception:
+                return False, "Couldn't find that member in the server."
+        until = getattr(member, "timed_out_until", None) or getattr(member, "communication_disabled_until", None)
+        if not until or until <= datetime.now(timezone.utc):
+            return False, f"{member.display_name} isn't currently muted."
+        try:
+            await member.timeout(None, reason=f"Unmuted from admin dashboard (by {actor['username']})")
+        except discord.Forbidden:
+            return False, "I don't have permission to unmute that member."
+        except Exception as e:
+            logger.error(f"!!! [ADMIN UNMUTE ERROR]: {e}")
+            return False, "Something went wrong unmuting that member."
+        return True, f"{member.display_name} has been unmuted."
+
+    try:
+        ok, msg = run_coro(_do_unmute())
+    except Exception as e:
+        ok, msg = False, str(e)
+
+    if ok:
+        mod_actions_col.insert_one({
+            "action": "unmute", "moderator_id": actor["id"], "target_id": uid,
+            "reason": "Unmuted from admin dashboard", "created_at": datetime.now(timezone.utc),
+        })
+    flash(msg, "success" if ok else "error")
+    return redirect(url_for("dashboard.admin_moderation"))
+
+
+ADMIN_MODERATION_USER_TMPL = """
+<div class="linkrow"><a href="{{ url_for('dashboard.admin_moderation') }}">← Moderation Panel</a></div>
+<h1><img src="{{ target_avatar }}" alt="" style="width:32px;height:32px;border-radius:50%;vertical-align:middle;margin-right:10px;">{{ target_name }} <span class="muted" style="font-size:16px;">({{ target_id }})</span></h1>
+
+{% if currently_muted %}
+<div class="card">
+<p style="margin:0;"><span class="pill pending">🟨 Currently muted</span> until {{ currently_muted.until.strftime('%Y-%m-%d %H:%M:%S') }} UTC</p>
+<form class="inline" method="post" action="{{ url_for('dashboard.admin_moderation_unmute', uid=target_id) }}" style="margin-top:12px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small danger">Unmute now</button>
+</form>
+</div>
+{% endif %}
+
+<h2>Moderation Actions ({{ actions|length }})</h2>
+<div class="card">
+{% if actions %}
+<table><thead><tr><th>When (UTC)</th><th>Action</th><th>Moderator</th><th>Reason</th></tr></thead><tbody>
+{% for a in actions %}
+<tr>
+  <td class="muted">{{ a.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+  <td><span class="pill {{ a.pill_cls }}">{{ a.label }}</span></td>
+  <td>{{ a.moderator_name }} <span class="muted">({{ a.moderator_id }})</span></td>
+  <td class="muted">{{ a.reason or "—" }}</td>
+</tr>
+{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">No moderation actions on record for this member.</p>{% endif %}
+</div>
+
+<h2>Warning / Punishment History ({{ warnings|length }})</h2>
+<div class="card">
+{% if warnings %}
+<table><thead><tr><th>When (UTC)</th><th>Punishment</th><th>Reason</th><th>Moderator</th></tr></thead><tbody>
+{% for w in warnings %}
+<tr>
+  <td class="muted">{{ w.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+  <td>{{ w.punishment }}</td>
+  <td class="muted">{{ w.reason or "—" }}</td>
+  <td>{{ w.moderator_name }} <span class="muted">({{ w.moderator_id }})</span></td>
+</tr>
+{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">No warnings on record for this member.</p>{% endif %}
+</div>"""
+
+
+@dash_bp.route("/admin/moderation/user/<int:uid>")
+@admin_required
+def admin_moderation_user(uid):
+    actions = list(mod_actions_col.find({"target_id": uid}).sort("created_at", -1).limit(ADMIN_LOG_LIMIT))
+    for a in actions:
+        a["moderator_name"] = display_name_for(a["moderator_id"])
+        a["label"], a["pill_cls"] = MOD_ACTION_LABELS.get(a["action"], (a["action"].title(), ""))
+
+    warnings = list(mod_warnings_col.find({"user_id": uid}).sort("created_at", -1).limit(ADMIN_LOG_LIMIT))
+    for w in warnings:
+        w["moderator_name"] = display_name_for(w["moderator_id"])
+
+    active_mutes = _get_active_mutes() or []
+    currently_muted = next((m for m in active_mutes if m["id"] == uid), None)
+
+    return page(f"Moderation — {display_name_for(uid)}", ADMIN_MODERATION_USER_TMPL,
+                target_id=uid, target_name=display_name_for(uid), target_avatar=member_avatar_url(uid),
+                actions=actions, warnings=warnings, currently_muted=currently_muted, limit=ADMIN_LOG_LIMIT)
 
 
 # =====================================================================================
@@ -3176,9 +3448,9 @@ async def _send_dm_async(guild, member_id, text):
 @approved_required
 def moderation():
     uid = _discord_user()["id"]
-    can_live = has_role(uid, botmod.BANDM_ROLE_ID)
-    can_test = has_role(uid, botmod.BANDM_TEST_ROLE_ID)
-    if not (can_live or can_test):
+    can_live = has_role(uid, modbot.MOD_ROLE_IDS)
+    can_test = False  # no separate "test role" tier exists anymore — see MOD_ROLE_IDS in mod_bot.py
+    if not can_live:
         abort(403)
     return page("Moderation DMs", MODERATION_TMPL, can_live=can_live, can_test=can_test)
 
@@ -3188,7 +3460,7 @@ def moderation():
 def moderation_ban():
     _check_csrf()
     uid = _discord_user()["id"]
-    if not (has_role(uid, botmod.BANDM_ROLE_ID) or has_role(uid, botmod.BANDM_TEST_ROLE_ID)):
+    if not has_role(uid, modbot.MOD_ROLE_IDS):
         abort(403)
     try:
         member_id = int(request.form.get("member_id", "0"))
@@ -3204,7 +3476,7 @@ def moderation_ban():
         flash("The bot isn't connected right now.", "error")
         return redirect(url_for("dashboard.moderation"))
     try:
-        ok, msg = run_coro(_send_dm_async(guild, member_id, botmod.build_ban_dm(reason)))
+        ok, msg = run_coro(_send_dm_async(guild, member_id, modbot.build_ban_dm(reason)))
     except Exception as e:
         ok, msg = False, str(e)
     flash(msg, "success" if ok else "error")
@@ -3216,7 +3488,7 @@ def moderation_ban():
 def moderation_warn():
     _check_csrf()
     uid = _discord_user()["id"]
-    if not (has_role(uid, botmod.BANDM_ROLE_ID) or has_role(uid, botmod.BANDM_TEST_ROLE_ID)):
+    if not has_role(uid, modbot.MOD_ROLE_IDS):
         abort(403)
     try:
         member_id = int(request.form.get("member_id", "0"))
@@ -3233,7 +3505,7 @@ def moderation_warn():
         flash("The bot isn't connected right now.", "error")
         return redirect(url_for("dashboard.moderation"))
     try:
-        ok, msg = run_coro(_send_dm_async(guild, member_id, botmod.build_warn_dm(punishment, reason)))
+        ok, msg = run_coro(_send_dm_async(guild, member_id, modbot.build_warn_dm(punishment, reason)))
     except Exception as e:
         ok, msg = False, str(e)
     flash(msg, "success" if ok else "error")
