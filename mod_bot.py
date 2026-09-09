@@ -485,8 +485,12 @@ async def _core_ban(guild: discord.Guild, moderator: discord.abc.User, member: d
 
     # Grab the case number BEFORE banning/DMing, so it's already known in time to
     # include it in the ban DM itself for the member's own reference.
-    case_number = await _log_action("ban", moderator.id, member.id, reason,
-                                     detail=f"Deleted messages from the last {delete_days} day(s)." if delete_days else "")
+    try:
+        case_number = await _log_action("ban", moderator.id, member.id, reason,
+                                         detail=f"Deleted messages from the last {delete_days} day(s)." if delete_days else "")
+    except Exception as e:
+        logger.error(f"!!! [BBAN LOG ERROR]: {e}")
+        return False, "⚠️ Couldn't log that case (DB issue) — no ban was performed."
 
     # DM before banning — once they're banned there's a good chance the bot can no
     # longer reach their DMs (no shared server left), so this order matters.
