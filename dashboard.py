@@ -238,7 +238,9 @@ ADMIN_LOG_LIMIT = 300  # how many entries the log viewer pages show at once
 # the Quick Mute / Warn Message context menus) already write to — reused here read-only
 # (plus one write path, for the admin "Unmute" button below) so the dashboard's Moderation
 # Panel always reflects exactly what those commands have done, with nothing duplicated.
-mod_actions_col = botmod.db["mod_actions"]  # {action, moderator_id, target_id, reason, created_at}
+mod_actions_col = botmod.db["mod_actions"]  # {case_number, action, moderator_id, target_id, reason, detail, created_at}
+                                             # case_number/detail are new — entries logged before this update
+                                             # won't have them, so every read below treats both as optional.
 mod_warnings_col = botmod.db["warnings"]    # {user_id, moderator_id, punishment, reason, created_at}
 
 MOD_ACTION_LABELS = {  # action -> (display label, .pill CSS class)
@@ -1723,17 +1725,24 @@ ADMIN_LOG_TMPL = """
 
 ADMIN_MODERATION_TMPL = """
 <h1>🚨 Moderation Panel</h1>
-<p class="muted">Admin-only. Everything logged by the moderation bot's /bban, /bkick, /bmute, /bunmute, /bunban and /bwarn commands (and the Quick Mute / Warn Message context menus), plus who's muted right now.</p>
-<div class="linkrow"><a href="{{ url_for('dashboard.admin_access') }}">🛡️ Manage Admins</a><a href="{{ url_for('dashboard.admin_ep_manager') }}">📋 EP Manager</a><a href="{{ url_for('dashboard.admin_elo_manager') }}">🏆 ELO Manager</a></div>
+<p class="muted">Admin-only. Everything logged by the moderation bot's /bban, /bkick, /bmute, /bunmute, /bunban, /bwarn, /cases, /case and /modlogs commands (and the Quick Mute / Warn Message context menus), plus who's muted right now.</p>
+<div class="linkrow"><a href="{{ url_for('dashboard.admin_access') }}">🛡️ Manage Admins</a><a href="{{ url_for('dashboard.admin_ep_manager') }}">📋 EP Manager</a><a href="{{ url_for('dashboard.admin_elo_manager') }}">🏆 ELO Manager</a><a href="{{ url_for('dashboard.admin_moderation_docs') }}">📖 Command Docs</a></div>
 
-<h2>Look up a member</h2>
+<div class="grid">
 <div class="card">
+<h2 style="margin-top:0;">Look up a member</h2>
 <form method="get" action="{{ url_for('dashboard.admin_moderation') }}">
-  <div class="row">
-    <div class="field"><label>Discord ID</label><input type="text" name="uid" placeholder="e.g. 123456789012345678" value="{{ highlight_id or '' }}"></div>
-  </div>
+  <div class="field"><label>Discord ID</label><input type="text" name="uid" placeholder="e.g. 123456789012345678" value="{{ highlight_id or '' }}"></div>
   <button class="btn secondary">View history</button>
 </form>
+</div>
+<div class="card">
+<h2 style="margin-top:0;">Look up a case</h2>
+<form method="get" action="{{ url_for('dashboard.admin_moderation') }}">
+  <div class="field"><label>Case Number</label><input type="text" name="case" placeholder="e.g. 42"></div>
+  <button class="btn secondary">View case</button>
+</form>
+</div>
 </div>
 
 <h2>Currently Muted ({{ active_mutes|length }})</h2>
@@ -1776,9 +1785,10 @@ ADMIN_MODERATION_TMPL = """
 <div class="card">
 <p class="muted" style="margin-top:-6px;">The last {{ actions|length }} action(s) (max {{ limit }}), newest first — permanent, and can't be edited or cleared from the dashboard.</p>
 {% if actions %}
-<table><thead><tr><th>When (UTC)</th><th>Action</th><th>Target</th><th>Moderator</th><th>Reason</th></tr></thead><tbody>
+<table><thead><tr><th>Case</th><th>When (UTC)</th><th>Action</th><th>Target</th><th>Moderator</th><th>Reason</th></tr></thead><tbody>
 {% for a in actions %}
 <tr{% if a.target_id == highlight_id %} class="hl"{% endif %}>
+  <td>{% if a.case_number %}<a href="{{ url_for('dashboard.admin_moderation_case', case_number=a.case_number) }}">#{{ a.case_number }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
   <td class="muted">{{ a.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
   <td><span class="pill {{ a.pill_cls }}">{{ a.label }}</span></td>
   <td><a href="{{ url_for('dashboard.admin_moderation_user', uid=a.target_id) }}">{{ a.target_name }}</a> <span class="muted">({{ a.target_id }})</span></td>
@@ -1803,6 +1813,15 @@ def admin_moderation():
             flash("That doesn't look like a valid Discord ID.", "error")
         else:
             return redirect(url_for("dashboard.admin_moderation_user", uid=highlight_id))
+
+    search_case = request.args.get("case", "").strip()
+    if search_case:
+        try:
+            case_number = int(search_case)
+        except ValueError:
+            flash("That doesn't look like a valid case number.", "error")
+        else:
+            return redirect(url_for("dashboard.admin_moderation_case", case_number=case_number))
 
     active_mutes_raw = _get_active_mutes()
     bot_connected = active_mutes_raw is not None
@@ -1893,13 +1912,15 @@ ADMIN_MODERATION_USER_TMPL = """
 <h2>Moderation Actions ({{ actions|length }})</h2>
 <div class="card">
 {% if actions %}
-<table><thead><tr><th>When (UTC)</th><th>Action</th><th>Moderator</th><th>Reason</th></tr></thead><tbody>
+<table><thead><tr><th>Case</th><th>When (UTC)</th><th>Action</th><th>Moderator</th><th>Reason</th><th>Detail</th></tr></thead><tbody>
 {% for a in actions %}
 <tr>
+  <td>{% if a.case_number %}<a href="{{ url_for('dashboard.admin_moderation_case', case_number=a.case_number) }}">#{{ a.case_number }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
   <td class="muted">{{ a.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
   <td><span class="pill {{ a.pill_cls }}">{{ a.label }}</span></td>
   <td>{{ a.moderator_name }} <span class="muted">({{ a.moderator_id }})</span></td>
   <td class="muted">{{ a.reason or "—" }}</td>
+  <td class="muted">{{ a.detail or "—" }}</td>
 </tr>
 {% endfor %}
 </tbody></table>
@@ -1941,6 +1962,125 @@ def admin_moderation_user(uid):
     return page(f"Moderation — {display_name_for(uid)}", ADMIN_MODERATION_USER_TMPL,
                 target_id=uid, target_name=display_name_for(uid), target_avatar=member_avatar_url(uid),
                 actions=actions, warnings=warnings, currently_muted=currently_muted, limit=ADMIN_LOG_LIMIT)
+
+
+ADMIN_MODERATION_CASE_TMPL = """
+<div class="linkrow"><a href="{{ url_for('dashboard.admin_moderation') }}">← Moderation Panel</a></div>
+<h1><span class="pill {{ case.pill_cls }}">{{ case.label }}</span> Case #{{ case.case_number }}</h1>
+<div class="card">
+<table>
+<tr><td class="muted" style="width:140px;">Member</td><td><a href="{{ url_for('dashboard.admin_moderation_user', uid=case.target_id) }}">{{ case.target_name }}</a> <span class="muted">({{ case.target_id }})</span></td></tr>
+<tr><td class="muted">Moderator</td><td>{{ case.moderator_name }} <span class="muted">({{ case.moderator_id }})</span></td></tr>
+<tr><td class="muted">Action</td><td><span class="pill {{ case.pill_cls }}">{{ case.label }}</span></td></tr>
+<tr><td class="muted">When (UTC)</td><td>{{ case.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td></tr>
+<tr><td class="muted">Reason</td><td>{{ case.reason or "—" }}</td></tr>
+<tr><td class="muted">Detail</td><td>{{ case.detail or "—" }}</td></tr>
+</table>
+</div>"""
+
+
+@dash_bp.route("/admin/moderation/case/<int:case_number>")
+@admin_required
+def admin_moderation_case(case_number):
+    case = mod_actions_col.find_one({"case_number": case_number})
+    if case is None:
+        flash(f"No case #{case_number} found.", "error")
+        return redirect(url_for("dashboard.admin_moderation"))
+    case["target_name"] = display_name_for(case["target_id"])
+    case["moderator_name"] = display_name_for(case["moderator_id"])
+    case["label"], case["pill_cls"] = MOD_ACTION_LABELS.get(case["action"], (case["action"].title(), ""))
+    return page(f"Case #{case_number}", ADMIN_MODERATION_CASE_TMPL, case=case)
+
+
+# =====================================================================================
+# ADMIN — Moderation Command Docs (admin-only reference for every command mod_bot.py
+# registers: what it does, its syntax, and its "-" text-command equivalent if it has
+# one). Static content maintained by hand below — kept in one place so it's simple to
+# update whenever a command is added/changed in mod_bot.py.
+# =====================================================================================
+
+MOD_COMMAND_DOCS = [
+    ("Punishment Commands", "Require the Moderator role.", [
+        ("/bban", "-bban @member [reason]",
+         "Bans a member and sends them the ban DM automatically. The slash version also lets you pick "
+         "an optional <code>delete_days</code> (0/1/3/7) to delete their recent messages — the text "
+         "version doesn't have that option."),
+        ("/bkick", "-bkick @member reason",
+         "Kicks a member from the server."),
+        ("/bmute", "-bmute @member minutes reason",
+         "Times out (mutes) a member for the given number of minutes (max 40320 = 28 days, Discord's own "
+         "timeout limit) and sends them the warn DM automatically."),
+        ("/bunmute", "-bunmute @member",
+         "Removes an active timeout from a member early."),
+        ("/bunban", "-bunban user_id [reason]",
+         "Unbans a user by their Discord ID — they don't need to be in the server for this."),
+        ("/bwarn", "-bwarn @member",
+         "Shows a member's warning / punishment history (the notices sent via /bmute, Quick Mute, and "
+         "Warn Message) — for full detail on every logged action, use /modlogs instead."),
+    ]),
+    ("Case &amp; History Commands", "Require the Moderator role. Every ban/kick/mute/unmute/unban/warn gets a "
+                                     "permanent, sequential case number the moment it's logged.", [
+        ("/cases", "-cases [@member]",
+         "Lists moderation cases — a compact one-line-per-case feed. Pass a member to see only their "
+         "cases, or leave it empty for the most recent cases server-wide. Paginated with Prev/Next "
+         "buttons when there's more than one page."),
+        ("/case", "-case case_number",
+         "Looks up one specific case number and shows its full detail: member, moderator, action, "
+         "reason, timestamp, and any extra detail (mute duration, deleted-message range, etc.)."),
+        ("/modlogs", "-modlogs @member",
+         "Shows a member's <b>entire</b> moderation history in full detail — every ban, kick, mute, "
+         "unmute, unban and warn on record for them, each with its case number, reason, moderator, "
+         "timestamp and extra detail. Paginated with Prev/Next buttons. This is the most complete view "
+         "of a member's history available anywhere — the same data also shows up under a member's page "
+         "in this dashboard's Moderation Panel."),
+    ]),
+    ("Stats Commands", "Open to anyone — not gated behind the Moderator role.", [
+        ("/bstats", "-bstats or -s",
+         "Shows the moderation leaderboard: the top moderators ranked by how many actions they've "
+         "logged, all time."),
+        ("/modstats", "-modstats [@member]",
+         "Shows one moderator's action breakdown (bans/kicks/mutes/etc. counts and a total). Defaults "
+         "to whoever ran the command if no member is given."),
+    ]),
+    ("Context Menu Commands", "Right-click a member or a message → Apps → (command name). Both require the "
+                               "Moderator role and have no text-command equivalent.", [
+        ("Quick Mute", "Right-click a <b>member</b>",
+         "Opens a popup asking for a duration (minutes, default 60) and a reason, then mutes that member "
+         "immediately — a faster path than /bmute when you're already looking at their profile or a "
+         "message from them."),
+        ("Warn Message", "Right-click a <b>message</b>",
+         "Opens a popup asking for a reason, then logs a verbal warning against that message's author "
+         "referencing the message itself — no mute/kick/ban, just a warning on record."),
+    ]),
+    ("Other", "", [
+        ("-a", "-a [@member]",
+         "Shows a member's avatar (defaults to yourself). The only text command here that <b>isn't</b> "
+         "gated behind the Moderator role — anyone can use it."),
+    ]),
+]
+
+ADMIN_MOD_DOCS_TMPL = """
+<div class="linkrow"><a href="{{ url_for('dashboard.admin_moderation') }}">← Moderation Panel</a></div>
+<h1>📖 Moderation Command Docs</h1>
+<p class="muted section-intro">Every command the moderation bot registers — what it does, its syntax, and its "-" text-command equivalent where it has one.</p>
+{% for title, note, commands in docs %}
+<section class="faq-section">
+<h2>{{ title|safe }}</h2>
+{% if note %}<p class="muted" style="margin-top:-8px;">{{ note|safe }}</p>{% endif %}
+{% for name, syntax, desc in commands %}
+<details class="faq-item">
+<summary><code>{{ name }}</code> <span class="muted" style="font-weight:400;">— {{ syntax }}</span></summary>
+<div class="faq-answer">{{ desc|safe }}</div>
+</details>
+{% endfor %}
+</section>
+{% endfor %}"""
+
+
+@dash_bp.route("/admin/moderation/docs")
+@admin_required
+def admin_moderation_docs():
+    return page("Moderation Command Docs", FAQ_STYLE + ADMIN_MOD_DOCS_TMPL, docs=MOD_COMMAND_DOCS)
 
 
 # =====================================================================================
