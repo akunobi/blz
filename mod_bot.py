@@ -1,9 +1,16 @@
-# mod_bot.py — BARC Moderation Bot: /bban, /bkick, /bmute, /bunmute, /bunban, /bwarn, /bstats, /modstats
+# mod_bot.py — BARC Moderation Bot: /bban, /bkick, /bmute, /bunmute, /bunban, /bwarn,
+# /cases, /case, /modlogs, /bstats, /modstats
 # + context menus: Quick Mute (on a member), Warn Message (on a message)
 # + every one of the commands above ALSO works as a text command with the "-" prefix
 #   (e.g. "-bban @user spamming" works exactly like "/bban"), plus the original
 #   quick text commands -a (avatar) and -s (stats leaderboard, alias for -bstats).
 #   Text versions skip the ban's optional delete_days — use /bban for that.
+#
+# Every logged action (ban/kick/mute/unmute/unban/warn) gets a permanent, sequential
+# "case number" now (see _next_case_number / actions_col below). /cases lists cases
+# (optionally filtered to one member), /case looks up a single case in full detail,
+# and /modlogs shows one member's entire moderation history in full detail — all
+# three are paginated with buttons when there's more than one page of results.
 #
 # A SEPARATE Discord bot (its own application/token) that runs alongside bot.py.
 # It reuses bot.py's Mongo connection and the exact ban/warn DM text (build_ban_dm /
@@ -20,7 +27,7 @@ from datetime import timedelta, datetime, timezone
 import discord
 from discord import app_commands
 from discord.ext import commands
-from pymongo import ASCENDING, DESCENDING
+from pymongo import ASCENDING, DESCENDING, ReturnDocument
 from dotenv import load_dotenv
 
 import bot as main_bot  # importing this reuses bot.py's already-open Mongo connection
@@ -48,22 +55,26 @@ SUPPORT_SERVER_URL = "https://discord.gg/FZmjTSBpSZ"  # Used in ban/warn DMs
 MODLOG_CHANNEL_ID = 1546607743174049922  # Every mod action gets posted here
 
 
-def build_ban_dm(reason: str) -> str:
+def build_ban_dm(reason: str, case_number: int = None) -> str:
+    case_line = f"`Case:` #{case_number}\n" if case_number else ""
     return (
         "🟥 **RED CARD!** 🟥\n\n"
         "You've been locked off the field of Blazing Lock. A true egoist knows the rules of the game.\n\n"
-        f"`Reason:` {reason}\n\n"
+        f"`Reason:` {reason}\n"
+        f"{case_line}\n"
         "For further assistance, head to the support locker room.\n"
         f"`Support Server:` {SUPPORT_SERVER_URL}"
     )
 
 
-def build_warn_dm(punishment: str, reason: str) -> str:
+def build_warn_dm(punishment: str, reason: str, case_number: int = None) -> str:
+    case_line = f"`Case:` #{case_number}\n" if case_number else ""
     return (
         "🟨 **YELLOW CARD!** 🟨\n\n"
         "You've been cautioned on the field of Blazing Lock. A true egoist knows the rules of the game.\n\n"
         f"`Punishment:` {punishment}\n"
-        f"`Reason:` {reason}\n\n"
+        f"`Reason:` {reason}\n"
+        f"{case_line}\n"
         "For further assistance, head to the support locker room.\n"
         f"`Support Server:` {SUPPORT_SERVER_URL}"
     )
@@ -95,23 +106,78 @@ async def _get_warnings(user_id: int):
     return await asyncio.to_thread(_get_warnings_sync, user_id)
 
 
-# --- MOD ACTIONS LOG (one doc per ban/kick/mute/unmute/unban/warn, powers modlogs + /bstats) ---
-actions_col = db["mod_actions"]  # {action, moderator_id, target_id, reason, created_at}
+# --- MOD ACTIONS LOG (one doc per ban/kick/mute/unmute/unban/warn, powers /cases,
+# /case, /modlogs, the admin dashboard's Moderation Panel, and /bstats) ---
+actions_col = db["mod_actions"]  # {case_number, action, moderator_id, target_id, reason, detail, created_at}
 actions_col.create_index([("moderator_id", ASCENDING)])
+actions_col.create_index([("target_id", ASCENDING), ("created_at", DESCENDING)])
+actions_col.create_index([("case_number", ASCENDING)], unique=True, sparse=True)  # sparse: actions
+                          # logged before cases existed have no case_number and are skipped by it
+
+# --- CASE NUMBERS — one permanent, ever-increasing counter shared by every mod action.
+# Stored in its own tiny collection (a single doc) so the increment is atomic even if
+# two moderators act at the exact same moment; find_one_and_update with $inc can't
+# double-hand out the same number the way "read max(case_number), add 1" could.
+counters_col = db["mod_counters"]
 
 
-def _log_action_sync(action: str, moderator_id: int, target_id: int, reason: str = ""):
+def _next_case_number_sync() -> int:
+    doc = counters_col.find_one_and_update(
+        {"_id": "case_number"},
+        {"$inc": {"seq": 1}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    return doc["seq"]
+
+
+def _log_action_sync(action: str, moderator_id: int, target_id: int, reason: str = "", detail: str = "") -> int:
+    """Logs one mod action and returns its new case number."""
+    case_number = _next_case_number_sync()
     actions_col.insert_one({
+        "case_number": case_number,
         "action": action,
         "moderator_id": moderator_id,
         "target_id": target_id,
         "reason": reason,
+        "detail": detail,  # extra context: mute duration, ban delete_days, warned message preview, etc.
         "created_at": datetime.now(timezone.utc),
     })
+    return case_number
 
 
-async def _log_action(action: str, moderator_id: int, target_id: int, reason: str = ""):
-    await asyncio.to_thread(_log_action_sync, action, moderator_id, target_id, reason)
+async def _log_action(action: str, moderator_id: int, target_id: int, reason: str = "", detail: str = "") -> int:
+    return await asyncio.to_thread(_log_action_sync, action, moderator_id, target_id, reason, detail)
+
+
+def _get_case_sync(case_number: int):
+    return actions_col.find_one({"case_number": case_number})
+
+
+async def _get_case(case_number: int):
+    return await asyncio.to_thread(_get_case_sync, case_number)
+
+
+def _get_cases_sync(target_id: int = None, limit: int = 200):
+    query = {"case_number": {"$exists": True}}
+    if target_id is not None:
+        query["target_id"] = target_id
+    return list(actions_col.find(query).sort("created_at", DESCENDING).limit(limit))
+
+
+async def _get_cases(target_id: int = None, limit: int = 200):
+    return await asyncio.to_thread(_get_cases_sync, target_id, limit)
+
+
+def _get_all_actions_sync(target_id: int, limit: int = 200):
+    """Every logged action for a member (used by /modlogs), including any logged
+    before case numbers existed — unlike /cases and /case, this isn't limited to
+    numbered cases."""
+    return list(actions_col.find({"target_id": target_id}).sort("created_at", DESCENDING).limit(limit))
+
+
+async def _get_all_actions(target_id: int, limit: int = 200):
+    return await asyncio.to_thread(_get_all_actions_sync, target_id, limit)
 
 
 def _get_leaderboard_sync(limit: int = 10):
@@ -140,50 +206,52 @@ async def _get_modstats(moderator_id: int):
     return await asyncio.to_thread(_get_modstats_sync, moderator_id)
 
 
-ACTION_LABELS = [
-    ("ban", "🟥 Bans"),
-    ("kick", "🟧 Kicks"),
-    ("mute", "🟨 Mutes"),
-    ("unmute", "🟩 Unmutes"),
-    ("unban", "🟩 Unbans"),
-    ("warn", "🟨 Warns"),
-]
+# Single source of truth for how each action type is displayed — emoji, label, embed
+# color — reused everywhere: modlog posts, confirmation embeds, /cases, /case, /modlogs.
+ACTION_META = {
+    "ban":    {"emoji": "🟥", "label": "Ban",    "color": discord.Color.red()},
+    "kick":   {"emoji": "🟧", "label": "Kick",   "color": discord.Color.orange()},
+    "mute":   {"emoji": "🟨", "label": "Mute",   "color": discord.Color.gold()},
+    "unmute": {"emoji": "🟩", "label": "Unmute", "color": discord.Color.green()},
+    "unban":  {"emoji": "🟩", "label": "Unban",  "color": discord.Color.green()},
+    "warn":   {"emoji": "🟨", "label": "Warn",   "color": discord.Color.gold()},
+}
+
+
+def _action_meta(action: str) -> dict:
+    return ACTION_META.get(action, {"emoji": "⬜", "label": action.title(), "color": discord.Color.greyple()})
 
 
 def _build_modstats_embed(member: discord.abc.User, counts: dict, total: int) -> discord.Embed:
-    if total == 0:
-        return discord.Embed(
-            title=f"📊 Mod Stats — {member.display_name}",
-            description="No moderation actions logged yet.",
-            color=discord.Color.blurple(),
-        )
-    lines = [f"{label}: **{counts[key]}**" for key, label in ACTION_LABELS if counts.get(key)]
     embed = discord.Embed(
         title=f"📊 Mod Stats — {member.display_name}",
-        description="\n".join(lines),
         color=discord.Color.blurple(),
+        timestamp=datetime.now(timezone.utc),
     )
+    embed.set_thumbnail(url=member.display_avatar.url)
+    if total == 0:
+        embed.description = "No moderation actions logged yet."
+        return embed
+    for key, meta in ACTION_META.items():
+        if counts.get(key):
+            embed.add_field(name=f"{meta['emoji']} {meta['label']}s", value=f"**{counts[key]}**", inline=True)
     embed.set_footer(text=f"Total actions: {total}")
     return embed
 
 
 def _build_leaderboard_embed(rows) -> discord.Embed:
+    embed = discord.Embed(title="📊 Moderation Leaderboard", color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
     if not rows:
-        return discord.Embed(
-            title="📊 Moderation Leaderboard",
-            description="No moderation actions logged yet.",
-            color=discord.Color.blurple(),
-        )
+        embed.description = "No moderation actions logged yet."
+        return embed
     medals = ["🥇", "🥈", "🥉"]
     lines = []
     for i, row in enumerate(rows):
         prefix = medals[i] if i < 3 else f"`{i + 1}.`"
         lines.append(f"{prefix} <@{row['_id']}> — **{row['count']}** action(s)")
-    return discord.Embed(
-        title="📊 Moderation Leaderboard",
-        description="\n".join(lines),
-        color=discord.Color.blurple(),
-    )
+    embed.description = "\n".join(lines)
+    embed.set_footer(text=f"Top {len(rows)} moderator(s)")
+    return embed
 
 
 # --- DISCORD BOT SETUP ---
@@ -218,6 +286,8 @@ async def _send_modlog(
     target_id: int,
     reason: str = "",
     extra: str = "",
+    case_number: int = None,
+    target: discord.abc.User = None,
 ):
     """Posts an embed to the modlog channel. Called after every ban/kick/mute/unmute/unban/warn."""
     channel = client.get_channel(MODLOG_CHANNEL_ID)
@@ -225,12 +295,17 @@ async def _send_modlog(
         logger.error(f"!!! [MODLOG] Channel {MODLOG_CHANNEL_ID} not found/cached.")
         return
     embed = discord.Embed(title=title, color=color, timestamp=datetime.now(timezone.utc))
-    embed.add_field(name="Member", value=f"<@{target_id}> (`{target_id}`)", inline=False)
-    embed.add_field(name="Moderator", value=moderator.mention, inline=False)
+    if target is not None:
+        embed.set_thumbnail(url=target.display_avatar.url)
+    embed.add_field(name="Member", value=f"<@{target_id}> (`{target_id}`)", inline=True)
+    embed.add_field(name="Moderator", value=moderator.mention, inline=True)
+    if case_number:
+        embed.add_field(name="Case", value=f"#{case_number}", inline=True)
     if reason:
         embed.add_field(name="Reason", value=reason, inline=False)
     if extra:
         embed.add_field(name="Details", value=extra, inline=False)
+    embed.set_footer(text=f"Case #{case_number}" if case_number else "BARC Moderation")
     try:
         await channel.send(embed=embed)
     except Exception as e:
@@ -273,16 +348,15 @@ class WarnReasonModal(discord.ui.Modal, title="Warn this message"):
         if len(preview) > 300:
             preview = preview[:300] + "…"
 
-        dm_sent = await _try_dm(member, build_warn_dm("Verbal warning", reason))
+        case_number = await _log_action("warn", interaction.user.id, member.id, reason, detail=f"Message: \"{preview}\"")
+        dm_sent = await _try_dm(member, build_warn_dm("Verbal warning", reason, case_number))
         await _log_warning(member.id, interaction.user.id, "Verbal warning", reason)
-        await _log_action("warn", interaction.user.id, member.id, reason)
-        await _send_modlog("🟨 Warn", discord.Color.yellow(), interaction.user, member.id, reason, f"Message: \"{preview}\"")
+        await _send_modlog("Warn (Warn Message)", discord.Color.gold(), interaction.user, member.id, reason,
+                            f"Message: \"{preview}\"", case_number=case_number, target=member)
 
-        note = "" if dm_sent else " (couldn't DM them — DMs may be disabled)"
-        await interaction.response.send_message(
-            f"✅ Warned {member.mention} for: \"{preview}\"{note}",
-            ephemeral=True,
-        )
+        embed = _build_result_embed("warn", member, interaction.user, reason, case_number, dm_sent,
+                                     extra_fields=[("Warned Message", preview)])
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 class QuickMuteModal(discord.ui.Modal, title="Quick mute"):
@@ -333,21 +407,75 @@ class QuickMuteModal(discord.ui.Modal, title="Quick mute"):
             return
 
         punishment = f"{minutes} minute mute"
-        dm_sent = await _try_dm(member, build_warn_dm(punishment, reason))
+        case_number = await _log_action("mute", interaction.user.id, member.id, reason, detail=punishment)
+        dm_sent = await _try_dm(member, build_warn_dm(punishment, reason, case_number))
         await _log_warning(member.id, interaction.user.id, punishment, reason)
-        await _log_action("mute", interaction.user.id, member.id, reason)
-        await _send_modlog("🟨 Mute (Quick Mute)", discord.Color.yellow(), interaction.user, member.id, reason, punishment)
+        await _send_modlog("Mute (Quick Mute)", discord.Color.gold(), interaction.user, member.id, reason,
+                            punishment, case_number=case_number, target=member)
 
-        note = "" if dm_sent else " (couldn't DM them — DMs may be disabled)"
-        await interaction.followup.send(
-            f"✅ {member.mention} has been muted for {minutes} minute(s).{note}", ephemeral=True
+        expires = discord.utils.format_dt(datetime.now(timezone.utc) + timedelta(minutes=minutes), style="R")
+        embed = _build_result_embed("mute", member, interaction.user, reason, case_number, dm_sent,
+                                     extra_fields=[("Duration", punishment), ("Expires", expires)])
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+def _build_result_embed(
+    action: str,
+    member: discord.abc.User,
+    moderator: discord.abc.User,
+    reason: str,
+    case_number: int,
+    dm_sent: bool = None,
+    extra_fields: list = None,
+) -> discord.Embed:
+    """The moderator-facing confirmation embed sent after ban/kick/mute/unmute/unban/warn
+    — shown to the acting moderator (ephemeral for slash commands, a normal reply for
+    text commands). Every field a moderator would want at a glance: who, who-by, why,
+    which case number to reference later, and whether the DM notice actually landed."""
+    meta = _action_meta(action)
+    embed = discord.Embed(
+        title=f"{meta['emoji']} {meta['label']} — Case #{case_number}",
+        color=meta["color"],
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.set_thumbnail(url=member.display_avatar.url)
+    embed.add_field(name="Member", value=f"{member.mention}\n`{member.id}`", inline=True)
+    embed.add_field(name="Moderator", value=f"{moderator.mention}", inline=True)
+    embed.add_field(name="Case", value=f"#{case_number}", inline=True)
+    if reason:
+        embed.add_field(name="Reason", value=reason, inline=False)
+    for name, value in (extra_fields or []):
+        embed.add_field(name=name, value=value, inline=False)
+    if dm_sent is not None:
+        embed.add_field(
+            name="DM Notice",
+            value="✅ Delivered" if dm_sent else "⚠️ Couldn't deliver — DMs may be disabled",
+            inline=False,
         )
+    embed.set_footer(text="BARC Moderation")
+    return embed
+
+
+async def _reply_result(interaction: discord.Interaction, result):
+    """result is a discord.Embed on success or a plain error string on failure."""
+    if isinstance(result, discord.Embed):
+        await interaction.followup.send(embed=result, ephemeral=True)
+    else:
+        await interaction.followup.send(result, ephemeral=True)
+
+
+async def _reply_result_text(ctx: commands.Context, result):
+    if isinstance(result, discord.Embed):
+        await ctx.reply(embed=result, mention_author=False)
+    else:
+        await ctx.reply(result, mention_author=False)
 
 
 # =====================================================================================
 # Core moderation actions — shared by the /slash commands AND the "-" text commands
 # below, so the logic (checks, DMs, logging, modlog post) only lives in one place.
-# Each returns (ok: bool, message: str).
+# Each returns (ok: bool, result), where result is a discord.Embed to show the
+# moderator on success, or a plain error string on failure.
 # =====================================================================================
 
 async def _core_ban(guild: discord.Guild, moderator: discord.abc.User, member: discord.Member, reason: str, delete_days: int = 0):
@@ -355,27 +483,29 @@ async def _core_ban(guild: discord.Guild, moderator: discord.abc.User, member: d
     if err:
         return False, err
 
+    # Grab the case number BEFORE banning/DMing, so it's already known in time to
+    # include it in the ban DM itself for the member's own reference.
+    case_number = await _log_action("ban", moderator.id, member.id, reason,
+                                     detail=f"Deleted messages from the last {delete_days} day(s)." if delete_days else "")
+
     # DM before banning — once they're banned there's a good chance the bot can no
     # longer reach their DMs (no shared server left), so this order matters.
-    dm_sent = await _try_dm(member, build_ban_dm(reason))
+    dm_sent = await _try_dm(member, build_ban_dm(reason, case_number))
 
     try:
-        await member.ban(reason=f"{reason} (by {moderator})", delete_message_seconds=delete_days * 86400)
+        await member.ban(reason=f"{reason} (by {moderator}) [Case #{case_number}]", delete_message_seconds=delete_days * 86400)
     except discord.Forbidden:
         return False, "❌ I don't have permission to ban that member."
     except Exception as e:
         logger.error(f"!!! [BBAN ERROR]: {e}")
         return False, "⚠️ Something went wrong banning that member."
 
-    await _log_action("ban", moderator.id, member.id, reason)
-    extra = f"Deleted messages from the last {delete_days} day(s)." if delete_days else ""
-    await _send_modlog("🟥 Ban", discord.Color.red(), moderator, member.id, reason, extra)
+    extra_fields = [("Messages Deleted", f"Last {delete_days} day(s)")] if delete_days else None
+    await _send_modlog("Ban", discord.Color.red(), moderator, member.id, reason,
+                        extra_fields[0][1] if extra_fields else "", case_number=case_number, target=member)
 
-    note = "" if dm_sent else " (couldn't DM them — DMs may be disabled)"
-    msg = f"✅ {member.mention} has been banned.{note}"
-    if delete_days:
-        msg += f"\n🗑️ Also deleted their messages from the last {delete_days} day(s)."
-    return True, msg
+    embed = _build_result_embed("ban", member, moderator, reason, case_number, dm_sent, extra_fields)
+    return True, embed
 
 
 async def _core_kick(guild: discord.Guild, moderator: discord.abc.User, member: discord.Member, reason: str):
@@ -390,9 +520,11 @@ async def _core_kick(guild: discord.Guild, moderator: discord.abc.User, member: 
         logger.error(f"!!! [BKICK ERROR]: {e}")
         return False, "⚠️ Something went wrong kicking that member."
 
-    await _log_action("kick", moderator.id, member.id, reason)
-    await _send_modlog("🟧 Kick", discord.Color.orange(), moderator, member.id, reason)
-    return True, f"✅ {member.mention} has been kicked."
+    case_number = await _log_action("kick", moderator.id, member.id, reason)
+    await _send_modlog("Kick", discord.Color.orange(), moderator, member.id, reason, case_number=case_number, target=member)
+
+    embed = _build_result_embed("kick", member, moderator, reason, case_number)
+    return True, embed
 
 
 async def _core_mute(guild: discord.Guild, moderator: discord.abc.User, member: discord.Member, minutes: int, reason: str):
@@ -408,13 +540,15 @@ async def _core_mute(guild: discord.Guild, moderator: discord.abc.User, member: 
         return False, "⚠️ Something went wrong muting that member."
 
     punishment = f"{minutes} minute mute"
-    dm_sent = await _try_dm(member, build_warn_dm(punishment, reason))
+    case_number = await _log_action("mute", moderator.id, member.id, reason, detail=punishment)
+    dm_sent = await _try_dm(member, build_warn_dm(punishment, reason, case_number))
     await _log_warning(member.id, moderator.id, punishment, reason)
-    await _log_action("mute", moderator.id, member.id, reason)
-    await _send_modlog("🟨 Mute", discord.Color.yellow(), moderator, member.id, reason, punishment)
+    await _send_modlog("Mute", discord.Color.gold(), moderator, member.id, reason, punishment, case_number=case_number, target=member)
 
-    note = "" if dm_sent else " (couldn't DM them — DMs may be disabled)"
-    return True, f"✅ {member.mention} has been muted for {minutes} minute(s).{note}"
+    expires = discord.utils.format_dt(datetime.now(timezone.utc) + timedelta(minutes=minutes), style="R")
+    extra_fields = [("Duration", punishment), ("Expires", expires)]
+    embed = _build_result_embed("mute", member, moderator, reason, case_number, dm_sent, extra_fields)
+    return True, embed
 
 
 async def _core_unmute(moderator: discord.abc.User, member: discord.Member):
@@ -428,9 +562,11 @@ async def _core_unmute(moderator: discord.abc.User, member: discord.Member):
         logger.error(f"!!! [BUNMUTE ERROR]: {e}")
         return False, "⚠️ Something went wrong unmuting that member."
 
-    await _log_action("unmute", moderator.id, member.id)
-    await _send_modlog("🟩 Unmute", discord.Color.green(), moderator, member.id)
-    return True, f"✅ {member.mention} has been unmuted."
+    case_number = await _log_action("unmute", moderator.id, member.id)
+    await _send_modlog("Unmute", discord.Color.green(), moderator, member.id, case_number=case_number, target=member)
+
+    embed = _build_result_embed("unmute", member, moderator, "", case_number)
+    return True, embed
 
 
 async def _core_unban(guild: discord.Guild, moderator: discord.abc.User, user_id_str: str, reason: str):
@@ -455,9 +591,31 @@ async def _core_unban(guild: discord.Guild, moderator: discord.abc.User, user_id
         logger.error(f"!!! [BUNBAN ERROR]: {e}")
         return False, "⚠️ Something went wrong unbanning that user."
 
-    await _log_action("unban", moderator.id, uid, reason)
-    await _send_modlog("🟩 Unban", discord.Color.green(), moderator, uid, reason)
-    return True, f"✅ <@{uid}> has been unbanned."
+    case_number = await _log_action("unban", moderator.id, uid, reason)
+
+    # Only a raw ID is guaranteed here (the user may not share a server with the
+    # bot anymore) — try to resolve a real discord.User for a nicer embed, but
+    # fall back to a bare mention if that lookup fails.
+    try:
+        target_user = await client.fetch_user(uid)
+    except Exception:
+        target_user = None
+
+    await _send_modlog("Unban", discord.Color.green(), moderator, uid, reason, case_number=case_number, target=target_user)
+
+    if target_user is not None:
+        embed = _build_result_embed("unban", target_user, moderator, reason, case_number)
+    else:
+        meta = _action_meta("unban")
+        embed = discord.Embed(title=f"{meta['emoji']} {meta['label']} — Case #{case_number}", color=meta["color"],
+                               timestamp=datetime.now(timezone.utc))
+        embed.add_field(name="Member", value=f"<@{uid}>\n`{uid}`", inline=True)
+        embed.add_field(name="Moderator", value=moderator.mention, inline=True)
+        embed.add_field(name="Case", value=f"#{case_number}", inline=True)
+        if reason:
+            embed.add_field(name="Reason", value=reason, inline=False)
+        embed.set_footer(text="BARC Moderation")
+    return True, embed
 
 
 def _build_warn_embed(member: discord.abc.User, history):
@@ -468,11 +626,183 @@ def _build_warn_embed(member: discord.abc.User, history):
     for i, w in enumerate(history, start=1):
         ts = w["created_at"].strftime("%Y-%m-%d %H:%M UTC")
         lines.append(f"**{i}.** `{ts}` — {w['punishment']} — {w['reason']} (by <@{w['moderator_id']}>)")
-    return discord.Embed(
-        title=f"Warnings — {member.display_name}",
+    embed = discord.Embed(
+        title=f"🟨 Warnings — {member.display_name}",
         description="\n".join(lines)[:4000],
-        color=discord.Color.yellow(),
+        color=discord.Color.gold(),
+        timestamp=datetime.now(timezone.utc),
     )
+    embed.set_thumbnail(url=member.display_avatar.url)
+    embed.set_footer(text=f"{len(history)} warning(s) shown — use /modlogs for full moderation history")
+    return embed
+
+
+# =====================================================================================
+# Pagination — a small Prev/Next view shared by /cases and /modlogs whenever there's
+# more than one page of results. Only the person who ran the command can page through
+# it (it's an ephemeral reply anyway, so nobody else can even see it); the buttons
+# disable themselves once the view times out so an old page doesn't look clickable.
+# =====================================================================================
+
+class CasePaginator(discord.ui.View):
+    def __init__(self, pages: list, invoker_id: int, timeout: float = 120):
+        super().__init__(timeout=timeout)
+        self.pages = pages
+        self.invoker_id = invoker_id
+        self.index = 0
+        self.interaction: discord.Interaction = None  # set by the caller for slash-command replies
+        self.message: discord.Message = None          # set by the caller for text-command replies
+        self._sync_buttons()
+
+    def _sync_buttons(self):
+        self.prev_button.disabled = self.index <= 0
+        self.next_button.disabled = self.index >= len(self.pages) - 1
+        self.page_label.label = f"Page {self.index + 1}/{len(self.pages)}"
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.invoker_id:
+            await interaction.response.send_message(
+                "❌ Only the person who ran this command can page through it.", ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="◀ Prev", style=discord.ButtonStyle.secondary)
+    async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.index -= 1
+        self._sync_buttons()
+        await interaction.response.edit_message(embed=self.pages[self.index], view=self)
+
+    @discord.ui.button(label="Page 1/1", style=discord.ButtonStyle.secondary, disabled=True)
+    async def page_label(self, interaction: discord.Interaction, button: discord.ui.Button):
+        pass  # display-only, always disabled — not actually clickable
+
+    @discord.ui.button(label="Next ▶", style=discord.ButtonStyle.secondary)
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.index += 1
+        self._sync_buttons()
+        await interaction.response.edit_message(embed=self.pages[self.index], view=self)
+
+    async def on_timeout(self):
+        for item in self.children:
+            item.disabled = True
+        try:
+            if self.interaction is not None:
+                await self.interaction.edit_original_response(view=self)
+            elif self.message is not None:
+                await self.message.edit(view=self)
+        except Exception:
+            pass
+
+
+async def _send_paginated(interaction: discord.Interaction, pages: list):
+    """For slash commands — replies to the deferred ephemeral interaction."""
+    if len(pages) == 1:
+        await interaction.followup.send(embed=pages[0], ephemeral=True)
+        return
+    view = CasePaginator(pages, interaction.user.id)
+    await interaction.followup.send(embed=pages[0], view=view, ephemeral=True)
+    view.interaction = interaction
+
+
+async def _send_paginated_text(ctx: commands.Context, pages: list):
+    """For "-" text commands — replies in-channel (not ephemeral; text commands can't be)."""
+    if len(pages) == 1:
+        await ctx.reply(embed=pages[0], mention_author=False)
+        return
+    view = CasePaginator(pages, ctx.author.id)
+    view.message = await ctx.reply(embed=pages[0], view=view, mention_author=False)
+
+
+def _build_cases_pages(cases: list, title: str, show_target: bool = True, per_page: int = 8) -> list:
+    """Compact case list — /cases. Each line is one case; several cases per page."""
+    if not cases:
+        return [discord.Embed(title=title, description="No cases logged yet.", color=discord.Color.blurple())]
+
+    chunks = [cases[i:i + per_page] for i in range(0, len(cases), per_page)]
+    pages = []
+    for page_num, chunk in enumerate(chunks, start=1):
+        lines = []
+        for c in chunk:
+            meta = _action_meta(c["action"])
+            ts = discord.utils.format_dt(c["created_at"], style="R")
+            reason = c.get("reason") or "No reason provided."
+            if len(reason) > 80:
+                reason = reason[:80] + "…"
+            target_part = f"<@{c['target_id']}> — " if show_target else ""
+            lines.append(f"**#{c['case_number']}** {meta['emoji']} **{meta['label']}** — {target_part}{reason}\n"
+                         f"By <@{c['moderator_id']}> • {ts}")
+        embed = discord.Embed(title=title, description="\n\n".join(lines), color=discord.Color.blurple())
+        embed.set_footer(text=f"Page {page_num}/{len(chunks)} • {len(cases)} case(s) shown (max 200)")
+        pages.append(embed)
+    return pages
+
+
+def _build_case_detail_embed(case: dict) -> discord.Embed:
+    """Full detail for one case — /case."""
+    meta = _action_meta(case["action"])
+    embed = discord.Embed(
+        title=f"{meta['emoji']} Case #{case['case_number']} — {meta['label']}",
+        color=meta["color"],
+        timestamp=case["created_at"],
+    )
+    embed.add_field(name="Member", value=f"<@{case['target_id']}>\n`{case['target_id']}`", inline=True)
+    embed.add_field(name="Moderator", value=f"<@{case['moderator_id']}>\n`{case['moderator_id']}`", inline=True)
+    embed.add_field(name="Action", value=f"{meta['emoji']} {meta['label']}", inline=True)
+    embed.add_field(name="Reason", value=case.get("reason") or "No reason provided.", inline=False)
+    if case.get("detail"):
+        embed.add_field(name="Details", value=case["detail"], inline=False)
+    embed.set_footer(text="BARC Moderation")
+    return embed
+
+
+def _build_modlogs_pages(member: discord.abc.User, actions: list, counts: dict, total: int, per_page: int = 4) -> list:
+    """Full-detail moderation history for one member — /modlogs. Every entry gets its
+    own field with the full reason, moderator, timestamp and any extra detail (mute
+    duration, ban delete_days, warned message preview, etc.), a few entries per page."""
+    summary = " • ".join(
+        f"{ACTION_META[k]['emoji']} {v} {ACTION_META[k]['label']}{'s' if v != 1 else ''}"
+        for k, v in counts.items() if v and k in ACTION_META
+    ) or "No actions logged."
+
+    if not actions:
+        embed = discord.Embed(
+            title=f"📁 Modlogs — {member.display_name}",
+            description=f"No moderation actions on record.\n\n**Total:** {total}",
+            color=discord.Color.blurple(),
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
+        embed.set_footer(text="BARC Moderation")
+        return [embed]
+
+    chunks = [actions[i:i + per_page] for i in range(0, len(actions), per_page)]
+    pages = []
+    for page_num, chunk in enumerate(chunks, start=1):
+        embed = discord.Embed(
+            title=f"📁 Modlogs — {member.display_name}",
+            description=f"**Summary:** {summary}\n**Total:** {total}",
+            color=discord.Color.blurple(),
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
+        for a in chunk:
+            meta = _action_meta(a["action"])
+            case_label = f"Case #{a['case_number']}" if a.get("case_number") else "Unnumbered case (logged before /cases existed)"
+            ts = discord.utils.format_dt(a["created_at"], style="f")
+            value_lines = [
+                f"**When:** {ts}",
+                f"**Moderator:** <@{a['moderator_id']}>",
+                f"**Reason:** {a.get('reason') or 'No reason provided.'}",
+            ]
+            if a.get("detail"):
+                value_lines.append(f"**Details:** {a['detail']}")
+            embed.add_field(
+                name=f"{meta['emoji']} {meta['label']} — {case_label}",
+                value="\n".join(value_lines)[:1024],
+                inline=False,
+            )
+        embed.set_footer(text=f"Page {page_num}/{len(chunks)} • {len(actions)} action(s) shown (max 200)")
+        pages.append(embed)
+    return pages
 
 
 # =====================================================================================
@@ -495,8 +825,8 @@ async def bban_command(
         await interaction.response.send_message(NO_PERM, ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True)
-    ok, msg = await _core_ban(interaction.guild, interaction.user, member, reason, delete_days)
-    await interaction.followup.send(msg, ephemeral=True)
+    ok, result = await _core_ban(interaction.guild, interaction.user, member, reason, delete_days)
+    await _reply_result(interaction, result)
 
 
 # =====================================================================================
@@ -510,8 +840,8 @@ async def bkick_command(interaction: discord.Interaction, member: discord.Member
         await interaction.response.send_message(NO_PERM, ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True)
-    ok, msg = await _core_kick(interaction.guild, interaction.user, member, reason)
-    await interaction.followup.send(msg, ephemeral=True)
+    ok, result = await _core_kick(interaction.guild, interaction.user, member, reason)
+    await _reply_result(interaction, result)
 
 
 # =====================================================================================
@@ -534,8 +864,8 @@ async def bmute_command(
         await interaction.response.send_message(NO_PERM, ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True)
-    ok, msg = await _core_mute(interaction.guild, interaction.user, member, minutes, reason)
-    await interaction.followup.send(msg, ephemeral=True)
+    ok, result = await _core_mute(interaction.guild, interaction.user, member, minutes, reason)
+    await _reply_result(interaction, result)
 
 
 # =====================================================================================
@@ -549,8 +879,8 @@ async def bunmute_command(interaction: discord.Interaction, member: discord.Memb
         await interaction.response.send_message(NO_PERM, ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True)
-    ok, msg = await _core_unmute(interaction.user, member)
-    await interaction.followup.send(msg, ephemeral=True)
+    ok, result = await _core_unmute(interaction.user, member)
+    await _reply_result(interaction, result)
 
 
 # =====================================================================================
@@ -564,8 +894,8 @@ async def bunban_command(interaction: discord.Interaction, user_id: str, reason:
         await interaction.response.send_message(NO_PERM, ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True)
-    ok, msg = await _core_unban(interaction.guild, interaction.user, user_id, reason)
-    await interaction.followup.send(msg, ephemeral=True)
+    ok, result = await _core_unban(interaction.guild, interaction.user, user_id, reason)
+    await _reply_result(interaction, result)
 
 
 # =====================================================================================
@@ -622,6 +952,65 @@ async def bwarn_command(interaction: discord.Interaction, member: discord.Member
         await interaction.followup.send(embed=result, ephemeral=True)
     else:
         await interaction.followup.send(result, ephemeral=True)
+
+
+# =====================================================================================
+# /cases — list moderation cases. With a member: only that member's cases. Without
+# one: the most recent cases server-wide. Paginated (8/page) when there's more than
+# one page's worth.
+# =====================================================================================
+
+@client.tree.command(name="cases", description="List moderation cases — a member's, or the most recent server-wide")
+@app_commands.describe(member="Only show this member's cases (optional — leave empty for the full recent case list)")
+async def cases_command(interaction: discord.Interaction, member: discord.Member = None):
+    if not _has_mod_role(interaction.user):
+        await interaction.response.send_message(NO_PERM, ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+
+    cases = await _get_cases(target_id=member.id if member else None, limit=200)
+    title = f"📁 Cases — {member.display_name}" if member else "📁 Recent Cases — All Members"
+    pages = _build_cases_pages(cases, title, show_target=member is None)
+    await _send_paginated(interaction, pages)
+
+
+# =====================================================================================
+# /case — full detail for a single case number (companion to /cases).
+# =====================================================================================
+
+@client.tree.command(name="case", description="View full detail for a single case number")
+@app_commands.describe(case_number="The case number to look up")
+async def case_command(interaction: discord.Interaction, case_number: app_commands.Range[int, 1]):
+    if not _has_mod_role(interaction.user):
+        await interaction.response.send_message(NO_PERM, ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+
+    case = await _get_case(case_number)
+    if case is None:
+        await interaction.followup.send(f"❌ No case #{case_number} found.", ephemeral=True)
+        return
+    await interaction.followup.send(embed=_build_case_detail_embed(case), ephemeral=True)
+
+
+# =====================================================================================
+# /modlogs — a member's ENTIRE moderation history in full detail (every ban, kick,
+# mute, unmute, unban and warn — reason, moderator, timestamp, and any extra detail
+# like mute duration or deleted-message range). Paginated (4 entries/page).
+# =====================================================================================
+
+@client.tree.command(name="modlogs", description="View a member's full moderation history in detail")
+@app_commands.describe(member="The member to check")
+async def modlogs_command(interaction: discord.Interaction, member: discord.Member):
+    if not _has_mod_role(interaction.user):
+        await interaction.response.send_message(NO_PERM, ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+
+    actions = await _get_all_actions(member.id, limit=200)
+    counts, total = await _get_modstats(member.id)
+    pages = _build_modlogs_pages(member, actions, counts, total)
+    await _send_paginated(interaction, pages)
 
 
 # =====================================================================================
@@ -691,8 +1080,8 @@ async def bban_text(ctx: commands.Context, member: discord.Member, *, reason: st
     if not _has_mod_role(ctx.author):
         await ctx.reply(NO_PERM, mention_author=False)
         return
-    ok, msg = await _core_ban(ctx.guild, ctx.author, member, reason)
-    await ctx.reply(msg, mention_author=False)
+    ok, result = await _core_ban(ctx.guild, ctx.author, member, reason)
+    await _reply_result_text(ctx, result)
 
 
 @client.command(name="bkick")
@@ -701,8 +1090,8 @@ async def bkick_text(ctx: commands.Context, member: discord.Member, *, reason: s
     if not _has_mod_role(ctx.author):
         await ctx.reply(NO_PERM, mention_author=False)
         return
-    ok, msg = await _core_kick(ctx.guild, ctx.author, member, reason)
-    await ctx.reply(msg, mention_author=False)
+    ok, result = await _core_kick(ctx.guild, ctx.author, member, reason)
+    await _reply_result_text(ctx, result)
 
 
 @client.command(name="bmute")
@@ -712,8 +1101,8 @@ async def bmute_text(ctx: commands.Context, member: discord.Member, minutes: int
         await ctx.reply(NO_PERM, mention_author=False)
         return
     minutes = max(1, min(minutes, 40320))
-    ok, msg = await _core_mute(ctx.guild, ctx.author, member, minutes, reason)
-    await ctx.reply(msg, mention_author=False)
+    ok, result = await _core_mute(ctx.guild, ctx.author, member, minutes, reason)
+    await _reply_result_text(ctx, result)
 
 
 @client.command(name="bunmute")
@@ -722,8 +1111,8 @@ async def bunmute_text(ctx: commands.Context, member: discord.Member):
     if not _has_mod_role(ctx.author):
         await ctx.reply(NO_PERM, mention_author=False)
         return
-    ok, msg = await _core_unmute(ctx.author, member)
-    await ctx.reply(msg, mention_author=False)
+    ok, result = await _core_unmute(ctx.author, member)
+    await _reply_result_text(ctx, result)
 
 
 @client.command(name="bunban")
@@ -732,8 +1121,8 @@ async def bunban_text(ctx: commands.Context, user_id: str, *, reason: str = "No 
     if not _has_mod_role(ctx.author):
         await ctx.reply(NO_PERM, mention_author=False)
         return
-    ok, msg = await _core_unban(ctx.guild, ctx.author, user_id, reason)
-    await ctx.reply(msg, mention_author=False)
+    ok, result = await _core_unban(ctx.guild, ctx.author, user_id, reason)
+    await _reply_result_text(ctx, result)
 
 
 @client.command(name="bwarn")
@@ -748,6 +1137,43 @@ async def bwarn_text(ctx: commands.Context, member: discord.Member):
         await ctx.reply(embed=result, mention_author=False)
     else:
         await ctx.reply(result, mention_author=False)
+
+
+@client.command(name="cases")
+async def cases_text(ctx: commands.Context, member: discord.Member = None):
+    """-cases [@member] — list moderation cases (a member's, or the most recent server-wide)."""
+    if not _has_mod_role(ctx.author):
+        await ctx.reply(NO_PERM, mention_author=False)
+        return
+    cases = await _get_cases(target_id=member.id if member else None, limit=200)
+    title = f"📁 Cases — {member.display_name}" if member else "📁 Recent Cases — All Members"
+    pages = _build_cases_pages(cases, title, show_target=member is None)
+    await _send_paginated_text(ctx, pages)
+
+
+@client.command(name="case")
+async def case_text(ctx: commands.Context, case_number: int):
+    """-case <number> — view full detail for a single case number."""
+    if not _has_mod_role(ctx.author):
+        await ctx.reply(NO_PERM, mention_author=False)
+        return
+    case = await _get_case(case_number)
+    if case is None:
+        await ctx.reply(f"❌ No case #{case_number} found.", mention_author=False)
+        return
+    await ctx.reply(embed=_build_case_detail_embed(case), mention_author=False)
+
+
+@client.command(name="modlogs")
+async def modlogs_text(ctx: commands.Context, member: discord.Member):
+    """-modlogs @member — view a member's full moderation history in detail."""
+    if not _has_mod_role(ctx.author):
+        await ctx.reply(NO_PERM, mention_author=False)
+        return
+    actions = await _get_all_actions(member.id, limit=200)
+    counts, total = await _get_modstats(member.id)
+    pages = _build_modlogs_pages(member, actions, counts, total)
+    await _send_paginated_text(ctx, pages)
 
 
 @client.event
