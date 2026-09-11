@@ -321,6 +321,23 @@ def has_role(user_id, role_ids):
     return any(r.id in role_ids for r in member.roles)
 
 
+def _guild_live_counts():
+    """Best-effort member/online counts for the public landing page's live indicator.
+    Never raises -- callers treat a None as "skip this number" rather than letting a
+    Discord/gateway hiccup take down the whole landing page. `online_count` needs the
+    presence intent; if that isn't enabled every member just reads as offline, so a
+    0 result falls back to showing `member_count` instead in the template."""
+    guild = botmod.client.get_guild(botmod.GUILD_ID)
+    if guild is None:
+        return None, None
+    member_count = guild.member_count or None
+    try:
+        online_count = sum(1 for m in guild.members if m.status != discord.Status.offline) or None
+    except Exception:
+        online_count = None
+    return member_count, online_count
+
+
 def discord_avatar_url(user_id, avatar_hash, size=128):
     if avatar_hash:
         ext = "gif" if avatar_hash.startswith("a_") else "png"
@@ -470,7 +487,7 @@ def staff_required(view):
 # =====================================================================================
 
 THEME_CSS = """
-  @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
 
   :root {
     color-scheme: dark; /* a facility built for night sessions — the theme stays dark everywhere */
@@ -482,19 +499,25 @@ THEME_CSS = """
     --accent: #35c6f2; --accent-rgb: 53,198,242; --accent-dim: #0f2a3a; --accent-strong: #8fe6ff;
     --gold: #d8b876; --gold-rgb: 216,184,118; --gold-dim: #2a2313;
     --danger: #ff5470; --warn: #ffb454; --info: #7c9cff;
-    --font-display: 'Oswald', sans-serif;
+    --live: #5cff9d; --live-rgb: 92,255,157;
+    --font-display: 'Plus Jakarta Sans', sans-serif;
     --font-body: 'IBM Plex Mono', monospace;
     --font-sans: 'Inter', 'Segoe UI', sans-serif;
-    --radius: 12px; --radius-sm: 8px;
+    --radius: 12px; --radius-sm: 8px; --radius-lg: 20px;
     --ease: cubic-bezier(.22,.9,.32,1);
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
   body {
     margin: 0; font-family: var(--font-sans); font-size: 15px; line-height: 1.55; color: var(--text); min-height: 100vh;
+    /* Mesh gradient (three soft, off-corner blobs in the theme's own colors) laid over
+       a faint fixed dot-grid, instead of a single flat radial fade — gives the dark
+       ground some depth and a technical texture without competing with any content. */
     background:
-      radial-gradient(900px 480px at 12% -8%, rgba(var(--accent-rgb),.10), transparent 60%),
-      radial-gradient(700px 420px at 108% 10%, rgba(var(--gold-rgb),.05), transparent 55%),
+      radial-gradient(1000px 620px at 6% -12%, rgba(var(--accent-rgb),.16), transparent 60%),
+      radial-gradient(820px 560px at 104% 4%, rgba(var(--gold-rgb),.11), transparent 55%),
+      radial-gradient(760px 480px at 46% 118%, rgba(var(--accent-rgb),.09), transparent 60%),
+      radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px) 0 0/32px 32px,
       var(--bg);
     opacity: 0; animation: page-in .5s var(--ease) forwards;
   }
@@ -505,8 +528,8 @@ THEME_CSS = """
   code { font-family: var(--font-body); font-size: .9em; }
   .muted { color: var(--text-dim); }
 
-  h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(28px,4.6vw,40px); line-height: 1.15; margin: 0 0 16px; color: var(--text); letter-spacing: .01em; }
-  h2 { font-family: var(--font-display); font-weight: 600; font-size: 21px; margin: 44px 0 16px; color: var(--text); letter-spacing: .01em; padding-bottom: 12px; border-bottom: 1px solid var(--line); position: relative; }
+  h1 { font-family: var(--font-display); font-weight: 800; font-size: clamp(28px,4.6vw,40px); line-height: 1.15; margin: 0 0 16px; color: var(--text); letter-spacing: -.01em; }
+  h2 { font-family: var(--font-display); font-weight: 700; font-size: 22px; margin: 44px 0 16px; color: var(--text); letter-spacing: -.005em; padding-bottom: 12px; border-bottom: 1px solid var(--line); position: relative; }
   h2::after { content: ''; position: absolute; left: 0; bottom: -1px; width: 46px; height: 2px; background: linear-gradient(90deg, var(--accent), transparent); }
   h2:first-child { margin-top: 0; }
   h3 { font-family: var(--font-sans); font-weight: 600; font-size: 15px; color: var(--text); margin: 0 0 10px; }
@@ -585,6 +608,97 @@ THEME_CSS = """
     .search-shell:focus-within { width: 100%; }
     .search-results { width: min(86vw,320px); }
   }
+
+  /* --- live indicator: a blinking dot + count for the public landing hero --- */
+  .live-pill { display: inline-flex; align-items: center; gap: 9px; padding: 7px 16px 7px 12px; border-radius: 999px; background: rgba(var(--live-rgb),.09); border: 1px solid rgba(var(--live-rgb),.28); color: #9dffc4; font-size: 13px; font-weight: 600; margin-bottom: 24px; }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--live); flex-shrink: 0; animation: live-pulse 2s ease-out infinite; }
+  @keyframes live-pulse { 0% { box-shadow: 0 0 0 0 rgba(var(--live-rgb),.55); } 70% { box-shadow: 0 0 0 9px rgba(var(--live-rgb),0); } 100% { box-shadow: 0 0 0 0 rgba(var(--live-rgb),0); } }
+
+  /* --- CTA button variants: a glowing gradient primary, a glassmorphism secondary --- */
+  .btn.glow { background: linear-gradient(120deg, var(--accent), var(--gold)); border-color: transparent; color: #04141c; box-shadow: 0 10px 34px -8px rgba(var(--accent-rgb),.6), inset 0 0 0 1px rgba(255,255,255,.14); }
+  .btn.glow:hover { background: linear-gradient(120deg, var(--accent-strong), var(--gold)); border-color: transparent; box-shadow: 0 14px 42px -6px rgba(var(--accent-rgb),.75), inset 0 0 0 1px rgba(255,255,255,.2); }
+  .btn.glass { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.16); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); color: var(--text); box-shadow: none; }
+  .btn.glass:hover { background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.32); box-shadow: none; }
+
+  /* --- Bento Grid: an asymmetrical card grid, used across the public landing page --- */
+  .bento { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: minmax(148px, auto); gap: 16px; }
+  .bento-card {
+    grid-column: span 1; position: relative; border-radius: var(--radius-lg); padding: 24px;
+    background: linear-gradient(165deg, rgba(255,255,255,.05), rgba(255,255,255,.015)), rgba(16,24,42,.55);
+    border: 1px solid rgba(255,255,255,.08); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    overflow: hidden; isolation: isolate; display: flex; flex-direction: column;
+    transition: transform .35s var(--ease), border-color .35s var(--ease), box-shadow .35s var(--ease);
+  }
+  .bento-card::before {
+    content: ''; position: absolute; inset: 0; z-index: -1; opacity: .8; pointer-events: none;
+    background: radial-gradient(360px 180px at 18% -10%, rgba(var(--accent-rgb),.14), transparent 65%);
+  }
+  .bento-card:hover { transform: translateY(-4px) scale(1.02); border-color: rgba(var(--accent-rgb),.45); box-shadow: 0 22px 50px rgba(2,6,14,.55), 0 0 40px -14px rgba(var(--accent-rgb),.5); }
+  .bento-card .bento-icon { display: inline-flex; color: var(--accent-strong); margin-bottom: 14px; transition: transform .35s var(--ease); }
+  .bento-card:hover .bento-icon { transform: rotate(10deg) scale(1.16); }
+  .bento-card h3 { font-family: var(--font-display); font-weight: 700; font-size: 16px; }
+  .bento-2x1 { grid-column: span 2; }
+  .bento-2x2 { grid-column: span 2; grid-row: span 2; }
+  .bento-4x1 { grid-column: span 4; }
+  .bento-card:nth-child(1) { transition-delay: .02s; }
+  .bento-card:nth-child(2) { transition-delay: .07s; }
+  .bento-card:nth-child(3) { transition-delay: .12s; }
+  .bento-card:nth-child(4) { transition-delay: .17s; }
+  .bento-card:nth-child(5) { transition-delay: .22s; }
+  .bento-card:nth-child(n+6) { transition-delay: .27s; }
+  @media (max-width: 900px) { .bento { grid-template-columns: repeat(2,1fr); } .bento-4x1 { grid-column: span 2; } }
+  @media (max-width: 600px) { .bento { grid-template-columns: 1fr; } .bento-2x1, .bento-2x2, .bento-4x1 { grid-column: span 1; } .bento-2x2 { grid-row: span 1; } }
+
+  .metric-label { color: var(--text-dim); font-size: 12.5px; font-weight: 500; }
+  .metric-value { font-family: var(--font-display); font-weight: 800; font-size: clamp(26px,3.6vw,34px); margin-top: 6px; display: block; color: var(--text); }
+
+  /* --- rank badges: replace plain bullet points with an icon chip + tag row --- */
+  .rank-badge-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .rank-badge-num { width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, var(--accent), var(--gold)); color: #04141c; font-family: var(--font-display); font-weight: 800; font-size: 15px; }
+  .rank-badge-role { font-family: var(--font-display); font-weight: 700; font-size: 16px; }
+  .tag-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
+  .tag { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px 6px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); color: var(--text-dim); font-size: 12.5px; font-weight: 500; transition: border-color .2s ease, color .2s ease, background .2s ease; }
+  .tag::before { content: '\\2713'; color: var(--accent-strong); font-weight: 700; font-size: 11px; }
+  .tag:hover { border-color: var(--accent-strong); color: var(--text); background: var(--accent-dim); }
+  .tag.muted { opacity: .65; border-style: dashed; }
+  .tag.muted::before { content: '+'; color: var(--text-dim); }
+
+  /* --- simulated Discord message: the bot replying to a slash command --- */
+  .bot-message { display: flex; gap: 13px; }
+  .bot-message .bm-avatar { width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, var(--accent), var(--gold)); color: #04141c; }
+  .bot-message .bm-body { flex: 1; min-width: 0; }
+  .bot-message .bm-name-row { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; flex-wrap: wrap; }
+  .bot-message .bm-name { font-weight: 700; font-size: 14px; color: var(--text); }
+  .bot-message .bm-tag { font-size: 10px; font-weight: 700; background: var(--accent); color: #04141c; padding: 1px 6px; border-radius: 4px; letter-spacing: .02em; }
+  .bot-message .bm-time { font-size: 11px; color: var(--text-dim); }
+  .bot-message .bm-cmd { font-size: 13px; color: var(--text-dim); margin-bottom: 10px; }
+  .bot-message .bm-cmd code { background: var(--surface-2); padding: 2px 7px; border-radius: 4px; color: var(--accent-strong); }
+  .bm-embed { border-left: 3px solid var(--accent); background: var(--surface-2); border-radius: 0 10px 10px 0; padding: 14px 16px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .bm-typing { display: inline-flex; gap: 4px; padding: 4px 0 12px; }
+  .bm-typing span { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); animation: bm-bounce 1.3s ease-in-out infinite; }
+  .bm-typing span:nth-child(2) { animation-delay: .15s; }
+  .bm-typing span:nth-child(3) { animation-delay: .3s; }
+  @keyframes bm-bounce { 0%,60%,100% { transform: translateY(0); opacity: .4; } 30% { transform: translateY(-4px); opacity: 1; } }
+
+  /* --- circular XP ring: drawn empty, filled by JS (from data-pct) once in view --- */
+  .xp-ring-track { stroke: var(--surface-2); }
+  .xp-ring-fill { stroke-linecap: round; transition: stroke-dashoffset 1.3s var(--ease); }
+  .xp-ring-label { font-family: var(--font-display); font-weight: 800; font-size: 15px; fill: var(--text); }
+  .xp-ring-sub { font-family: var(--font-sans); font-size: 8px; fill: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; }
+
+  /* --- shared accordion: the public FAQ and the staff escalation guide both use this,
+     so opening either only ever costs one click and shows exactly one answer at a time --- */
+  .accordion-item { border: 1px solid var(--line); background: rgba(16,24,42,.5); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-radius: var(--radius); margin: 10px 0; overflow: hidden; transition: border-color .2s ease; }
+  .accordion-item:hover { border-color: var(--line-bright); }
+  .accordion-item summary { cursor: pointer; padding: 16px 20px; font-weight: 600; color: var(--text); list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .accordion-item summary::-webkit-details-marker { display: none; }
+  .accordion-item summary .accordion-plus { flex-shrink: 0; color: var(--accent-strong); font-weight: 700; font-size: 19px; line-height: 1; transition: transform .25s var(--ease); }
+  .accordion-item[open] summary .accordion-plus { transform: rotate(45deg); }
+  .accordion-item[open] summary { color: var(--accent-strong); border-bottom: 1px solid var(--line); }
+  .accordion-panel { padding: 14px 20px 20px; color: var(--text-dim); line-height: 1.7; }
+  .accordion-panel code { color: var(--accent-strong); background: var(--surface-2); border-radius: 4px; padding: 2px 5px; }
 
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-track { background: var(--bg); }
@@ -746,16 +860,11 @@ PUBLIC_EXTRA_CSS = """
   section { padding: 64px 0; border-top: 1px solid var(--line); }
   .section-intro { margin: 0 0 24px; max-width: 640px; }
 
-  .level-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; transition: transform .2s var(--ease), border-color .2s var(--ease), box-shadow .2s var(--ease); }
-  .level-card:hover { transform: translateY(-3px); border-color: var(--line-bright); box-shadow: 0 14px 26px rgba(2,6,14,.4); }
-  .level-card .lvl-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
-  .level-card .lvl-num { font-family: var(--font-display); font-weight: 700; font-size: 19px; color: var(--gold); }
-  .level-card .lvl-role { font-weight: 600; font-size: 14px; }
-  .level-card ul { margin: 0; padding-left: 18px; color: var(--text-dim); font-size: 13.5px; line-height: 1.7; }
-  .role-card { transition: transform .2s var(--ease), border-color .2s var(--ease); }
-  .role-card h3 { margin: 0 0 8px; font-size: 15px; }
-  .role-card p { margin: 0; color: var(--text-dim); font-size: 13.5px; line-height: 1.6; }
+  .bento-card p { margin: 0; color: var(--text-dim); font-size: 13.5px; line-height: 1.6; }
+  .bento-card h3 { margin: 0 0 8px; }
   ul.plain { margin: 0; padding-left: 18px; color: var(--text-dim); font-size: 14px; line-height: 1.85; }
+  ul.plain li { margin-bottom: 6px; }
+  ul.plain li:last-child { margin-bottom: 0; }
   .chip { display: inline-block; background: var(--accent-dim); color: var(--accent-strong); border-radius: 999px; font-size: 13px; padding: 3px 10px; font-weight: 600; }
   footer { text-align: center; padding: 48px 20px 64px; color: var(--text-dim); font-size: 13px; border-top: 1px solid var(--line); }
 
@@ -2165,22 +2274,16 @@ FAQ_STYLE = """
 
 STAFF_GUIDE_TMPL = """
 <h1>Escalation Guide</h1>
-<p class="muted section-intro">Standard escalation path: <strong>Verbal (2–3)</strong> → Mute → Warn → Ban, unless a row says otherwise.</p>
+<p class="muted section-intro">Standard escalation path: <strong>Verbal (2–3)</strong> → Mute → Warn → Ban, unless an entry says otherwise. Click an offense to see its path.</p>
 
 <h2>Minor Offenses</h2>
-<div class="card"><table><tbody>
-{% for name, path in minor %}<tr><td>{{ name }}</td><td class="muted">{{ path }}</td></tr>{% endfor %}
-</tbody></table></div>
+{% for name, path in minor %}<details class="accordion-item"><summary>{{ name }}<span class="accordion-plus">+</span></summary><div class="accordion-panel">{{ path }}</div></details>{% endfor %}
 
 <h2>Major Offenses</h2>
-<div class="card"><table><tbody>
-{% for name, path in major %}<tr><td>{{ name }}</td><td class="muted">{{ path }}</td></tr>{% endfor %}
-</tbody></table></div>
+{% for name, path in major %}<details class="accordion-item"><summary>{{ name }}<span class="accordion-plus">+</span></summary><div class="accordion-panel">{{ path }}</div></details>{% endfor %}
 
 <h2>Special Cases &amp; Unique Rules</h2>
-<div class="card"><table><tbody>
-{% for name, path in special %}<tr><td>{{ name }}</td><td class="muted">{{ path }}</td></tr>{% endfor %}
-</tbody></table></div>
+{% for name, path in special %}<details class="accordion-item"><summary>{{ name }}<span class="accordion-plus">+</span></summary><div class="accordion-panel">{{ path }}</div></details>{% endfor %}
 
 <h2>Proof &amp; Logging</h2>
 <div class="card">
@@ -3684,6 +3787,7 @@ PUBLIC_LAYOUT = """<!doctype html>
   <div class="topbar-inner">
     <a class="brand" href="#top"><span><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 1L19 10L10 19L1 10L10 1Z" stroke="currentColor" stroke-width="1.6"/><path d="M10 7L13 10L10 13L7 10L10 7Z" fill="currentColor"/></svg></span> """ + SERVER_NAME.upper() + """</a>
     <nav class="toplinks">
+      <a href="#bot">The bot</a>
       <a href="#levels">Ranks &amp; rewards</a>
       <a href="#roles">Roles</a>
       <a href="#community">Community</a>
@@ -3714,7 +3818,7 @@ PUBLIC_LAYOUT = """<!doctype html>
   document.querySelectorAll('.search-shell').forEach(function (shell) {
     var input = shell.querySelector('input'), results = shell.querySelector('.search-results');
     if (!input || !results) return;
-    var targets = Array.prototype.slice.call(document.querySelectorAll('h1,h2,h3,.card,.stat,.level-card'));
+    var targets = Array.prototype.slice.call(document.querySelectorAll('h1,h2,h3,.card,.stat,.bento-card'));
     input.addEventListener('input', function () {
       var term = input.value.trim().toLowerCase(); results.innerHTML = '';
       if (!term) { results.classList.remove('open'); return; }
@@ -3807,7 +3911,7 @@ PUBLIC_LAYOUT = """<!doctype html>
   // Each top-level section fades and lifts into place the first time it crosses
   // into view — one orchestrated reveal per section, not per card, so scrolling
   // this long page still feels calm rather than busy.
-  var revealTargets = Array.prototype.slice.call(document.querySelectorAll('main > section'));
+  var revealTargets = Array.prototype.slice.call(document.querySelectorAll('main > section, .bento-card'));
   if (revealTargets.length && 'IntersectionObserver' in window && !reduceMotion) {
     revealTargets.forEach(function (el) { el.classList.add('reveal'); });
     var revealObserver = new IntersectionObserver(function (entries, obs) {
@@ -3817,6 +3921,59 @@ PUBLIC_LAYOUT = """<!doctype html>
     }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
     revealTargets.forEach(function (el) { revealObserver.observe(el); });
   }
+
+  // The bot-demo card's circular XP ring: starts empty, fills to its target percentage
+  // (read off data-pct) the first time it scrolls into view, rather than just appearing
+  // already-full — same "earn the number" feel as the counters below.
+  var xpRings = Array.prototype.slice.call(document.querySelectorAll('.xp-ring-fill'));
+  if (xpRings.length) {
+    xpRings.forEach(function (ring) {
+      var pct = parseFloat(ring.getAttribute('data-pct')) || 0;
+      var r = parseFloat(ring.getAttribute('r'));
+      var circumference = 2 * Math.PI * r;
+      ring.style.strokeDasharray = circumference.toFixed(2);
+      ring.style.strokeDashoffset = circumference.toFixed(2);
+      ring.dataset.targetOffset = (circumference * (1 - pct / 100)).toFixed(2);
+    });
+    if ('IntersectionObserver' in window && !reduceMotion) {
+      var ringObserver = new IntersectionObserver(function (entries, obs) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          var el = entry.target;
+          requestAnimationFrame(function () { el.style.strokeDashoffset = el.dataset.targetOffset; });
+          obs.unobserve(el);
+        });
+      }, { threshold: 0.4 });
+      xpRings.forEach(function (ring) { ringObserver.observe(ring); });
+    } else {
+      xpRings.forEach(function (ring) { ring.style.strokeDashoffset = ring.dataset.targetOffset; });
+    }
+  }
+
+  // Tally the member/online-now stats up from zero, same arcade-counter treatment the
+  // authenticated dashboard uses for its own numbers (kept as a separate copy here since
+  // this page and the dashboard render from two entirely different <script> blocks).
+  function animatePublicValue(el) {
+    var raw = el.textContent;
+    var matches = raw.match(/\\d[\\d,]*/g);
+    if (!matches || reduceMotion) return;
+    var targets = matches.map(function (m) { return parseInt(m.replace(/,/g, ''), 10); });
+    var duration = 650, startTime = null;
+    function frame(ts) {
+      if (startTime === null) startTime = ts;
+      var t = Math.min((ts - startTime) / duration, 1);
+      var eased = 1 - Math.pow(1 - t, 3);
+      var i = 0;
+      el.textContent = raw.replace(/\\d[\\d,]*/g, function () {
+        var current = Math.round(targets[i] * eased);
+        i++;
+        return current.toLocaleString('en-US');
+      });
+      if (t < 1) window.requestAnimationFrame(frame); else el.textContent = raw;
+    }
+    window.requestAnimationFrame(frame);
+  }
+  document.querySelectorAll('.metric-value').forEach(animatePublicValue);
 
   // Scrollspy: highlight whichever section is currently on screen in the top nav,
   // so there's some indication of where you are on this long, scroll-heavy page.
@@ -3859,14 +4016,19 @@ def public_page(title, body_template, **ctx):
 LANDING_BODY = """
 <div class="hero" id="top">
 <div class="hero-icon"><svg width="34" height="34" viewBox="0 0 20 20" fill="none"><path d="M10 1L19 10L10 19L1 10L10 1Z" stroke="currentColor" stroke-width="1.4"/><path d="M10 7L13 10L10 13L7 10L10 7Z" fill="currentColor"/></svg></div>
+{% if online_count %}
+<div class="live-pill"><span class="live-dot"></span>{{ "{:,}".format(online_count) }} online now</div>
+{% elif member_count %}
+<div class="live-pill"><span class="live-dot"></span>{{ "{:,}".format(member_count) }} members</div>
+{% endif %}
 <h1>""" + SERVER_NAME + """</h1>
 <p class="muted">Ranked duels, tryouts, and a community built around competitive play. Log in with Discord to check your ELO, queue for a match, or manage your tryout status — right from the browser.</p>
 <div class="actions">
-<a class="btn" href='""" + botmod.SUPPORT_SERVER_URL + """'>Support Discord server</a>
+<a class="btn glow" href='""" + botmod.SUPPORT_SERVER_URL + """'>Join the Discord server</a>
 {% if user %}
-<a class="btn secondary" href="{{ url_for('dashboard.home') }}">Open dashboard</a>
+<a class="btn glass" href="{{ url_for('dashboard.home') }}">Open dashboard</a>
 {% else %}
-<a class="btn secondary" href="{{ url_for('dashboard.login') }}">Log in with Discord</a>
+<a class="btn glass" href="{{ url_for('dashboard.login') }}">Log in with Discord</a>
 {% endif %}
 </div>
 <div class="features">
@@ -3876,12 +4038,62 @@ LANDING_BODY = """
 </div>
 </div>
 
+<section id="bot">
+<h2>Meet the bot</h2>
+<p class="muted section-intro">Every one of these lives inside Discord as a slash command — here's what a couple of them actually look like when you run them.</p>
+<div class="bento">
+
+  <div class="bento-card bento-2x2">
+    <div class="bento-icon"><svg width="20" height="20" viewBox="0 0 16 16" fill="none"><path d="M8 1L9.8 5.5L14.5 6L11 9.2L12 14L8 11.5L4 14L5 9.2L1.5 6L6.2 5.5L8 1Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></div>
+    <h3>/rank</h3>
+    <div class="bot-message">
+      <div class="bm-avatar"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 1L19 10L10 19L1 10L10 1Z" stroke="currentColor" stroke-width="1.5"/><path d="M10 7L13 10L10 13L7 10L10 7Z" fill="currentColor"/></svg></div>
+      <div class="bm-body">
+        <div class="bm-name-row"><span class="bm-name">""" + SERVER_NAME + """ Bot</span><span class="bm-tag">BOT</span><span class="bm-time">Today at 9:41 PM</span></div>
+        <div class="bm-cmd">used <code>/rank</code></div>
+        <div class="bm-embed">
+          <svg width="76" height="76" viewBox="0 0 88 88" style="flex-shrink:0;">
+            <circle class="xp-ring-track" cx="44" cy="44" r="36" fill="none" stroke-width="8"></circle>
+            <circle class="xp-ring-fill" data-pct="72" cx="44" cy="44" r="36" fill="none" stroke-width="8" stroke="var(--accent-strong)" transform="rotate(-90 44 44)"></circle>
+            <text x="44" y="41" text-anchor="middle" class="xp-ring-label">72%</text>
+            <text x="44" y="54" text-anchor="middle" class="xp-ring-sub">to Lvl 16</text>
+          </svg>
+          <div>
+            <div style="font-weight:700;">🔥 Godspeed · Level 15</div>
+            <div class="muted" style="font-size:13px;">4,120 / 5,700 XP · #38 on the server</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bento-card">
+    <div class="bento-icon"><svg width="20" height="20" viewBox="0 0 16 16" fill="none"><circle cx="6" cy="5" r="2.3" stroke="currentColor" stroke-width="1.4"/><path d="M1.6 13c.4-2.7 2.2-4 4.4-4s4 1.3 4.4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="11.5" cy="5.5" r="1.8" stroke="currentColor" stroke-width="1.3"/><path d="M9.8 8.3c1.7.2 3 1.3 3.3 3.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></div>
+    <div class="metric-label">Members</div>
+    <div class="metric-value">{{ "{:,}".format(member_count) if member_count else "—" }}</div>
+  </div>
+
+  <div class="bento-card">
+    <div class="bento-icon"><svg width="20" height="20" viewBox="0 0 16 16" fill="none"><path d="M1 8H4.2L6 3.5L9.5 12.5L11 8H15" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div class="metric-label">Online now</div>
+    <div class="metric-value">{{ "{:,}".format(online_count) if online_count else "—" }}</div>
+  </div>
+
+  <div class="bento-card">
+    <div class="bento-icon"><svg width="20" height="20" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.3" stroke="currentColor" stroke-width="1.4"/><path d="M8 4.5V8L10.5 9.7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></div>
+    <h3>Live matchmaking</h3>
+    <p>Queue solo, get matched, and duel it out in a private channel the bot creates just for that match.</p>
+  </div>
+
+</div>
+</section>
+
 <section id="levels">
 <h2>Ranks &amp; rewards</h2>
-<p class="muted section-intro">These are the role rewards you unlock gradually by staying active and reaching certain levels. Type <span class="chip">/rank</span> in bot commands to view your rank. Every checkpoint stacks — you keep all previous perks along with the new ones.</p>
+<p class="muted section-intro">Role rewards you unlock gradually by staying active and reaching certain levels. Type <span class="chip">/rank</span> to check yours — every checkpoint stacks, so you keep all previous perks along with the new ones.</p>
 
 <h3 class="subhead">XP boosts</h3>
-<div class="card">
+<div class="bento-card bento-4x1">
 <ul class="plain">
   <li>Boosting the server gives you a global 5% XP multiplier.</li>
   <li>Sending messages in booster chat gives you a 10% XP multiplier.</li>
@@ -3894,27 +4106,27 @@ LANDING_BODY = """
 </div>
 
 <h3 class="subhead">Level rewards</h3>
-<div class="grid">
-  <div class="level-card"><div class="lvl-head"><span class="lvl-num">05</span><span class="lvl-role">Demon Lord</span></div>
-    <ul><li>External sticker permission</li><li>Access to <span class="chip">#media</span></li><li>Access to create suggestions</li></ul></div>
-  <div class="level-card"><div class="lvl-head"><span class="lvl-num">10</span><span class="lvl-role">Ace Eater</span></div>
-    <ul><li>Unlocks sending images/GIFs outside media channels</li></ul></div>
-  <div class="level-card"><div class="lvl-head"><span class="lvl-num">15</span><span class="lvl-role">Godspeed</span></div>
-    <ul><li>Access to stream in voice channels</li><li>AFK command access</li></ul></div>
-  <div class="level-card"><div class="lvl-head"><span class="lvl-num">20</span><span class="lvl-role">Eren</span></div>
-    <ul><li>Access to General 2</li><li>Spoiler perms</li></ul></div>
-  <div class="level-card"><div class="lvl-head"><span class="lvl-num">25</span><span class="lvl-role">Slug Princess</span></div>
-    <ul><li>Ability to change nickname</li></ul></div>
-  <div class="level-card"><div class="lvl-head"><span class="lvl-num">30</span><span class="lvl-role">Beatrice</span></div>
-    <ul><li>Access to make polls</li><li>Embed permission</li></ul></div>
-  <div class="level-card"><div class="lvl-head"><span class="lvl-num">35</span><span class="lvl-role">Love Hashira</span></div>
-    <ul><li>Reaction perms</li></ul></div>
-  <div class="level-card"><div class="lvl-head"><span class="lvl-num">40</span><span class="lvl-role">Sorcerer King</span></div>
-    <ul><li>Immune to slowmode</li><li>Voice message perms in most channels</li><li class="muted">More to be added</li></ul></div>
-  <div class="level-card"><div class="lvl-head"><span class="lvl-num">—</span><span class="lvl-role">Unlockable Role</span></div>
-    <ul><li>No mention limit</li><li>Activity perms in some channels</li><li class="muted">More to be added</li></ul></div>
-  <div class="level-card"><div class="lvl-head"><span class="lvl-num">50</span><span class="lvl-role">Uta Queen</span></div>
-    <ul><li>Lockdown immunity</li><li>Access to the Meals channel</li><li>Shown separately on the member list</li><li class="muted">More to be added</li></ul></div>
+<div class="bento">
+  <div class="bento-card"><div class="rank-badge-head"><span class="rank-badge-num">05</span><span class="rank-badge-role">Demon Lord</span></div>
+    <div class="tag-row"><span class="tag">External stickers</span><span class="tag">#media access</span><span class="tag">Suggestions</span></div></div>
+  <div class="bento-card"><div class="rank-badge-head"><span class="rank-badge-num">10</span><span class="rank-badge-role">Ace Eater</span></div>
+    <div class="tag-row"><span class="tag">Images/GIFs anywhere</span></div></div>
+  <div class="bento-card"><div class="rank-badge-head"><span class="rank-badge-num">15</span><span class="rank-badge-role">Godspeed</span></div>
+    <div class="tag-row"><span class="tag">Voice streaming</span><span class="tag">AFK command</span></div></div>
+  <div class="bento-card"><div class="rank-badge-head"><span class="rank-badge-num">20</span><span class="rank-badge-role">Eren</span></div>
+    <div class="tag-row"><span class="tag">General 2 access</span><span class="tag">Spoiler perms</span></div></div>
+  <div class="bento-card"><div class="rank-badge-head"><span class="rank-badge-num">25</span><span class="rank-badge-role">Slug Princess</span></div>
+    <div class="tag-row"><span class="tag">Nickname changes</span></div></div>
+  <div class="bento-card"><div class="rank-badge-head"><span class="rank-badge-num">30</span><span class="rank-badge-role">Beatrice</span></div>
+    <div class="tag-row"><span class="tag">Create polls</span><span class="tag">Embed permission</span></div></div>
+  <div class="bento-card"><div class="rank-badge-head"><span class="rank-badge-num">35</span><span class="rank-badge-role">Love Hashira</span></div>
+    <div class="tag-row"><span class="tag">Reaction perms</span></div></div>
+  <div class="bento-card"><div class="rank-badge-head"><span class="rank-badge-num">40</span><span class="rank-badge-role">Sorcerer King</span></div>
+    <div class="tag-row"><span class="tag">Slowmode immune</span><span class="tag">Voice messages</span><span class="tag muted">More soon</span></div></div>
+  <div class="bento-card"><div class="rank-badge-head"><span class="rank-badge-num">—</span><span class="rank-badge-role">Unlockable Role</span></div>
+    <div class="tag-row"><span class="tag">No mention limit</span><span class="tag">Activity perms</span><span class="tag muted">More soon</span></div></div>
+  <div class="bento-card"><div class="rank-badge-head"><span class="rank-badge-num">50</span><span class="rank-badge-role">Uta Queen</span></div>
+    <div class="tag-row"><span class="tag">Lockdown immunity</span><span class="tag">#meals access</span><span class="tag">Member-list flair</span><span class="tag muted">More soon</span></div></div>
 </div>
 </section>
 
@@ -3922,54 +4134,52 @@ LANDING_BODY = """
 <h2>Server Roles</h2>
 
 <h3 class="subhead" style="margin-top:0;">Server management</h3>
-<div class="grid">
-  <div class="role-card card"><h3>Owner</h3><p>The highest authority of the server — manages everything, makes final decisions, oversees all operations, and ensures the community runs smoothly.</p></div>
-  <div class="role-card card"><h3>Co-owner</h3><p>Assists the owner in managing the entire server, oversees all staff operations, handles major decisions, and ensures everything runs smoothly.</p></div>
-  <div class="role-card card"><h3>Manager</h3><p>Oversees the entire server, keeping it fun, clean, and active.</p></div>
-  <div class="role-card card"><h3>Head of Staff</h3><p>Oversees the entire server and staff team.</p></div>
-  <div class="role-card card"><h3>Senior Administrator</h3><p>Supervises admins and moderators, manages high-level server operations, and assists in major decision-making.</p></div>
-  <div class="role-card card"><h3>Administrator</h3><p>Oversees the moderation team and works with the moderator team.</p></div>
-  <div class="role-card card"><h3>Senior Moderator</h3><p>Ensures the server is safe and enjoyable for all members.</p></div>
-  <div class="role-card card"><h3>Moderator</h3><p>Ensures the server is safe and enjoyable for all members by moderating the chat.</p></div>
-  <div class="role-card card"><h3>Junior Moderator</h3><p>Individuals on trial to become full-fledged moderators.</p></div>
+<div class="bento">
+  <div class="bento-card"><h3>Owner</h3><p>The highest authority of the server — manages everything, makes final decisions, oversees all operations, and ensures the community runs smoothly.</p></div>
+  <div class="bento-card"><h3>Co-owner</h3><p>Assists the owner in managing the entire server, oversees all staff operations, handles major decisions, and ensures everything runs smoothly.</p></div>
+  <div class="bento-card"><h3>Manager</h3><p>Oversees the entire server, keeping it fun, clean, and active.</p></div>
+  <div class="bento-card"><h3>Head of Staff</h3><p>Oversees the entire server and staff team.</p></div>
+  <div class="bento-card"><h3>Senior Administrator</h3><p>Supervises admins and moderators, manages high-level server operations, and assists in major decision-making.</p></div>
+  <div class="bento-card"><h3>Administrator</h3><p>Oversees the moderation team and works with the moderator team.</p></div>
+  <div class="bento-card"><h3>Senior Moderator</h3><p>Ensures the server is safe and enjoyable for all members.</p></div>
+  <div class="bento-card"><h3>Moderator</h3><p>Ensures the server is safe and enjoyable for all members by moderating the chat.</p></div>
+  <div class="bento-card"><h3>Junior Moderator</h3><p>Individuals on trial to become full-fledged moderators.</p></div>
 </div>
 
 <h3 class="subhead">Helper team</h3>
-<div class="grid">
-  <div class="role-card card"><h3>Lead Helper</h3><p>Experienced members of the Question Helper team who assist and help newer helpers. They lead by example and keep things running smoothly within the helper group.</p></div>
-  <div class="role-card card"><h3>Question Helper</h3><p>Question Helpers assist with server questions, game mechanics, and anything else members need help with — quickly and accurately.</p></div>
+<div class="bento">
+  <div class="bento-card"><h3>Lead Helper</h3><p>Experienced members of the Question Helper team who assist and help newer helpers. They lead by example and keep things running smoothly within the helper group.</p></div>
+  <div class="bento-card"><h3>Question Helper</h3><p>Question Helpers assist with server questions, game mechanics, and anything else members need help with — quickly and accurately.</p></div>
 </div>
 <p class="muted" style="margin-top:16px;font-size:13px;"><strong style="color:var(--text);">Staff role requirement:</strong> to become a staff member for """ + SERVER_NAME + """, you must patiently wait for applications from time to time.</p>
 </section>
 
 <section id="community">
 <h2>Community Roles</h2>
-<div class="grid">
-  <div class="role-card card"><h3>GameNight Host</h3><p>Responsible for hosting game nights, engaging members with fun activities, managing lobbies, and ensuring everyone has a great time.</p></div>
-  <div class="role-card card"><h3>Movie Night Host</h3><p>Hosts movie nights, handles movie suggestions, sets up watch parties, and ensures smooth streaming for all members.</p></div>
-  <div class="role-card card"><h3>Server Booster</h3><p>Supports the server by boosting it. Perks: nickname permissions, pic perms, external emote &amp; sticker permissions, a custom role, access to the exclusive booster chat, and 1.5x more XP from chatting.</p></div>
-  <div class="role-card card"><h3>Content Creator</h3><p>Officially recognized for the content they make. Requirements: at least one video uploaded in the past month, and 500+ subscribers/followers.</p></div>
-  <div class="role-card card"><h3>Artist</h3><p>Artists deemed talented by staff can showcase their artwork in the server. Contact a staff member for your art piece to be reviewed and approved.</p></div>
+<div class="bento">
+  <div class="bento-card"><h3>GameNight Host</h3><p>Responsible for hosting game nights, engaging members with fun activities, managing lobbies, and ensuring everyone has a great time.</p></div>
+  <div class="bento-card"><h3>Movie Night Host</h3><p>Hosts movie nights, handles movie suggestions, sets up watch parties, and ensures smooth streaming for all members.</p></div>
+  <div class="bento-card"><h3>Server Booster</h3><p>Supports the server by boosting it. Perks: nickname permissions, pic perms, external emote &amp; sticker permissions, a custom role, access to the exclusive booster chat, and 1.5x more XP from chatting.</p></div>
+  <div class="bento-card"><h3>Content Creator</h3><p>Officially recognized for the content they make. Requirements: at least one video uploaded in the past month, and 500+ subscribers/followers.</p></div>
+  <div class="bento-card"><h3>Artist</h3><p>Artists deemed talented by staff can showcase their artwork in the server. Contact a staff member for your art piece to be reviewed and approved.</p></div>
 </div>
 </section>
 
 <section id="faq">
 <h2>FAQ</h2>
-<p class="muted section-intro">You can find various information about the server itself here.</p>
-<div class="grid">
-  <div class="card">
-    <strong>How do I become a Question Helper?</strong>
-    <p class="muted" style="margin-bottom:0;">The Question Helper team is primarily composed of individuals that actively partake in answering questions within the questions channel, and the requirements are similar to Banner Helpers, however with the added requirement of being knowledgeable about topics related to the game itself. They are likewise handpicked.</p>
-  </div>
-  <div class="card">
-    <strong>How do I get the Artist / Community Showcase role?</strong>
-    <p class="muted" style="margin-bottom:0;">Please head to <span class="chip">#server-inquiries</span> to learn more about this.</p>
-  </div>
-  <div class="card">
-    <strong>How do I become staff?</strong>
-    <p class="muted" style="margin-bottom:0;">Get handpicked by the Owner, or the best way is to apply in <span class="chip">#applications</span>.</p>
-  </div>
-</div>
+<p class="muted section-intro">A few common questions about the server itself.</p>
+<details class="accordion-item">
+  <summary>How do I become a Question Helper?<span class="accordion-plus">+</span></summary>
+  <div class="accordion-panel">The Question Helper team is primarily composed of individuals that actively partake in answering questions within the questions channel, and the requirements are similar to Banner Helpers, however with the added requirement of being knowledgeable about topics related to the game itself. They are likewise handpicked.</div>
+</details>
+<details class="accordion-item">
+  <summary>How do I get the Artist / Community Showcase role?<span class="accordion-plus">+</span></summary>
+  <div class="accordion-panel">Please head to <span class="chip">#server-inquiries</span> to learn more about this.</div>
+</details>
+<details class="accordion-item">
+  <summary>How do I become staff?<span class="accordion-plus">+</span></summary>
+  <div class="accordion-panel">Get handpicked by the Owner, or the best way is to apply in <span class="chip">#applications</span>.</div>
+</details>
 </section>
 
 <footer>More info gets added here over time — check back for updates.</footer>
@@ -3977,7 +4187,8 @@ LANDING_BODY = """
 
 
 def public_landing():
-    return public_page("Home", LANDING_BODY)
+    member_count, online_count = _guild_live_counts()
+    return public_page("Home", LANDING_BODY, member_count=member_count, online_count=online_count)
 
 
 # =====================================================================================
