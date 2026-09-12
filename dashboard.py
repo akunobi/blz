@@ -611,8 +611,9 @@ THEME_CSS = """
 
   /* --- live indicator: a blinking dot + count for the public landing hero --- */
   .live-pill { display: inline-flex; align-items: center; gap: 9px; padding: 7px 16px 7px 12px; border-radius: 999px; background: rgba(var(--live-rgb),.09); border: 1px solid rgba(var(--live-rgb),.28); color: #9dffc4; font-size: 13px; font-weight: 600; margin-bottom: 24px; }
-  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--live); flex-shrink: 0; animation: live-pulse 2s ease-out infinite; }
-  @keyframes live-pulse { 0% { box-shadow: 0 0 0 0 rgba(var(--live-rgb),.55); } 70% { box-shadow: 0 0 0 9px rgba(var(--live-rgb),0); } 100% { box-shadow: 0 0 0 0 rgba(var(--live-rgb),0); } }
+  .live-dot { position: relative; width: 8px; height: 8px; border-radius: 50%; background: var(--live); flex-shrink: 0; }
+  .live-dot::after { content: ''; position: absolute; inset: -4px; border-radius: 50%; border: 1.5px solid var(--live); animation: live-pulse 2s ease-out infinite; }
+  @keyframes live-pulse { 0% { transform: scale(.35); opacity: .7; } 100% { transform: scale(1.9); opacity: 0; } }
 
   /* --- CTA button variants: a glowing gradient primary, a glassmorphism secondary --- */
   .btn.glow { background: linear-gradient(120deg, var(--accent), var(--gold)); border-color: transparent; color: #04141c; box-shadow: 0 10px 34px -8px rgba(var(--accent-rgb),.6), inset 0 0 0 1px rgba(255,255,255,.14); }
@@ -623,17 +624,22 @@ THEME_CSS = """
   /* --- Bento Grid: an asymmetrical card grid, used across the public landing page --- */
   .bento { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: minmax(148px, auto); gap: 16px; }
   .bento-card {
+    /* No backdrop-filter here on purpose: real-time backdrop blur is one of the most
+       GPU-expensive things CSS can do, and this page can have 30+ of these on screen
+       at once — thirty live gaussian blurs is what caused the lag. A solid-ish tinted
+       background with a gradient sheen baked in gets ~95% of the same look for near
+       zero compositing cost, and stays legible without content blurring unpredictably
+       behind it. */
     grid-column: span 1; position: relative; border-radius: var(--radius-lg); padding: 24px;
-    background: linear-gradient(165deg, rgba(255,255,255,.05), rgba(255,255,255,.015)), rgba(16,24,42,.55);
-    border: 1px solid rgba(255,255,255,.08); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-    overflow: hidden; isolation: isolate; display: flex; flex-direction: column;
+    background:
+      radial-gradient(360px 180px at 18% -10%, rgba(var(--accent-rgb),.16), transparent 65%),
+      linear-gradient(165deg, rgba(255,255,255,.05), rgba(255,255,255,.015)),
+      rgba(16,24,42,.78);
+    border: 1px solid rgba(255,255,255,.08);
+    overflow: hidden; display: flex; flex-direction: column;
     transition: transform .35s var(--ease), border-color .35s var(--ease), box-shadow .35s var(--ease);
   }
-  .bento-card::before {
-    content: ''; position: absolute; inset: 0; z-index: -1; opacity: .8; pointer-events: none;
-    background: radial-gradient(360px 180px at 18% -10%, rgba(var(--accent-rgb),.14), transparent 65%);
-  }
-  .bento-card:hover { transform: translateY(-4px) scale(1.02); border-color: rgba(var(--accent-rgb),.45); box-shadow: 0 22px 50px rgba(2,6,14,.55), 0 0 40px -14px rgba(var(--accent-rgb),.5); }
+  .bento-card:hover { transform: translateY(-4px) scale(1.02); border-color: rgba(var(--accent-rgb),.45); box-shadow: 0 16px 32px rgba(2,6,14,.5); }
   .bento-card .bento-icon { display: inline-flex; color: var(--accent-strong); margin-bottom: 14px; transition: transform .35s var(--ease); }
   .bento-card:hover .bento-icon { transform: rotate(10deg) scale(1.16); }
   .bento-card h3 { font-family: var(--font-display); font-weight: 700; font-size: 16px; }
@@ -690,7 +696,7 @@ THEME_CSS = """
 
   /* --- shared accordion: the public FAQ and the staff escalation guide both use this,
      so opening either only ever costs one click and shows exactly one answer at a time --- */
-  .accordion-item { border: 1px solid var(--line); background: rgba(16,24,42,.5); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-radius: var(--radius); margin: 10px 0; overflow: hidden; transition: border-color .2s ease; }
+  .accordion-item { border: 1px solid var(--line); background: rgba(16,24,42,.72); border-radius: var(--radius); margin: 10px 0; overflow: hidden; transition: border-color .2s ease; }
   .accordion-item:hover { border-color: var(--line-bright); }
   .accordion-item summary { cursor: pointer; padding: 16px 20px; font-weight: 600; color: var(--text); list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .accordion-item summary::-webkit-details-marker { display: none; }
