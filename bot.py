@@ -36,6 +36,13 @@ logger = logging.getLogger('blz-bot')
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 # --- CORE CONFIG ---
+# Everything below (except GUILD_ID itself) is a DEFAULT — dashboard.py's admin-only
+# "Bot Settings" page lets root/admins change any of these channel IDs and role-ID sets
+# from the browser, persists the change in Mongo, and reassigns the module attribute
+# right here at runtime. Every place elsewhere in this file that reads one of these
+# does so as a bare module-level global at call time (not a value captured once at
+# import), so a dashboard save takes effect on the very next command with no restart —
+# see dashboard.py's "BOT SETTINGS" section for exactly what gets overwritten and why.
 GUILD_ID = 1538589344368164905          # Server
 QUEUE_CHANNEL_ID = 1539158063116984361  # Channel where the permanent matchmaking embed lives
 DUEL_CATEGORY_ID = 1539157638925918238  # Category where private duel channels are created
@@ -1326,7 +1333,13 @@ def build_friendly_draw_result_text(p1, p2, rounds, score, summary):
     return "\n".join(lines)
 
 
-async def post_result(guild: discord.Guild, text: str, channel_id: int = RESULTS_CHANNEL_ID):
+async def post_result(guild: discord.Guild, text: str, channel_id: int = None):
+    # channel_id defaults to None (not RESULTS_CHANNEL_ID directly) so the dashboard's
+    # Bot Settings page can change RESULTS_CHANNEL_ID at runtime and have it actually
+    # take effect here -- a literal default value is bound once, at import time, and
+    # would never see a later reassignment of the module-level constant.
+    if channel_id is None:
+        channel_id = RESULTS_CHANNEL_ID
     channel = guild.get_channel(channel_id)
     if channel is None:
         try:
