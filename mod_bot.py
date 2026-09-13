@@ -1,9 +1,9 @@
 # mod_bot.py — BARC Moderation Bot: /bban, /bkick, /bmute, /bunmute, /bunban, /bwarn,
-# /cases, /case, /modlogs, /modtstas, /modstats
+# /cases, /case, /modlogs, /modlb, /modstats
 # + context menus: Quick Mute (on a member), Warn Message (on a message)
 # + every one of the commands above ALSO works as a text command with the "-" prefix
 #   (e.g. "-bban @user spamming" works exactly like "/bban"), plus the original
-#   quick text commands -a (avatar) and -s (stats leaderboard, alias for -modtstas).
+#   quick text commands -a (avatar) and -s (stats leaderboard, alias for -modlb).
 #   Text versions skip the ban's optional delete_days — use /bban for that.
 #
 # Every logged action (ban/kick/mute/unmute/unban/warn) gets a permanent, sequential
@@ -114,7 +114,7 @@ async def _get_warnings(user_id: int):
 
 
 # --- MOD ACTIONS LOG (one doc per ban/kick/mute/unmute/unban/warn, powers /cases,
-# /case, /modlogs, the admin dashboard's Moderation Panel, and /modtstas) ---
+# /case, /modlogs, the admin dashboard's Moderation Panel, and /modlb) ---
 actions_col = db["mod_actions"]  # {case_number, action, moderator_id, target_id, reason, detail, created_at}
 actions_col.create_index([("moderator_id", ASCENDING)])
 actions_col.create_index([("target_id", ASCENDING), ("created_at", DESCENDING)])
@@ -1042,14 +1042,49 @@ async def modlogs_command(interaction: discord.Interaction, member: discord.Memb
 
 
 # =====================================================================================
-# /modtstas — moderation leaderboard (also available as the quick "-s" text command)
+# Leaderboard user-select — a dropdown attached to /modlb (and its "-s"/"-modlb" text
+# equivalents) so anyone can pick a moderator right off the leaderboard and instantly
+# see that moderator's full /modstats breakdown, without having to run /modstats
+# separately. The result is sent ephemerally to whoever made the selection, so it
+# doesn't spam the channel. Like CasePaginator above, it disables itself on timeout.
 # =====================================================================================
 
-@client.tree.command(name="modtstas", description="View the moderation leaderboard")
-async def modtstas_command(interaction: discord.Interaction):
+class LeaderboardView(discord.ui.View):
+    def __init__(self, timeout: float = 180):
+        super().__init__(timeout=timeout)
+        self.interaction: discord.Interaction = None  # set by the caller for slash-command replies
+        self.message: discord.Message = None          # set by the caller for text-command replies
+
+    @discord.ui.select(cls=discord.ui.UserSelect, placeholder="View a moderator's full stats…")
+    async def user_select(self, interaction: discord.Interaction, select: discord.ui.UserSelect):
+        target = select.values[0]
+        await interaction.response.defer(ephemeral=True)
+        counts, total = await _get_modstats(target.id)
+        await interaction.followup.send(embed=_build_modstats_embed(target, counts, total), ephemeral=True)
+
+    async def on_timeout(self):
+        for item in self.children:
+            item.disabled = True
+        try:
+            if self.interaction is not None:
+                await self.interaction.edit_original_response(view=self)
+            elif self.message is not None:
+                await self.message.edit(view=self)
+        except Exception:
+            pass
+
+
+# =====================================================================================
+# /modlb — moderation leaderboard (also available as the quick "-s" text command)
+# =====================================================================================
+
+@client.tree.command(name="modlb", description="View the moderation leaderboard")
+async def modlb_command(interaction: discord.Interaction):
     await interaction.response.defer()
     rows = await _get_leaderboard()
-    await interaction.followup.send(embed=_build_leaderboard_embed(rows))
+    view = LeaderboardView()
+    await interaction.followup.send(embed=_build_leaderboard_embed(rows), view=view)
+    view.interaction = interaction
 
 
 # =====================================================================================
@@ -1068,7 +1103,7 @@ async def modstats_command(interaction: discord.Interaction, member: discord.Mem
 # =====================================================================================
 # Text commands (prefix "-") — every slash command above also works this way, e.g.
 # "-bban @user spamming" does the same thing as "/bban". Plus the original quick
-# commands -a (avatar) and -s (stats leaderboard, same as -modtstas).
+# commands -a (avatar) and -s (stats leaderboard, same as -modlb).
 # =====================================================================================
 
 @client.command(name="a")
@@ -1082,16 +1117,18 @@ async def quick_avatar(ctx: commands.Context, member: discord.Member = None):
 
 @client.command(name="s")
 async def quick_stats(ctx: commands.Context):
-    """-s — shows the moderation leaderboard (same as -modtstas)."""
+    """-s — shows the moderation leaderboard (same as -modlb)."""
     rows = await _get_leaderboard()
-    await ctx.reply(embed=_build_leaderboard_embed(rows), mention_author=False)
+    view = LeaderboardView()
+    view.message = await ctx.reply(embed=_build_leaderboard_embed(rows), view=view, mention_author=False)
 
 
-@client.command(name="modtstas")
-async def modtstas_text(ctx: commands.Context):
-    """-modtstas — shows the moderation leaderboard (same as -s)."""
+@client.command(name="modlb")
+async def modlb_text(ctx: commands.Context):
+    """-modlb — shows the moderation leaderboard (same as -s)."""
     rows = await _get_leaderboard()
-    await ctx.reply(embed=_build_leaderboard_embed(rows), mention_author=False)
+    view = LeaderboardView()
+    view.message = await ctx.reply(embed=_build_leaderboard_embed(rows), view=view, mention_author=False)
 
 
 @client.command(name="modstats")
