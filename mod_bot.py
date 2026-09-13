@@ -1045,7 +1045,7 @@ async def modlogs_command(interaction: discord.Interaction, member: discord.Memb
 # /bstats — moderation leaderboard (also available as the quick "-s" text command)
 # =====================================================================================
 
-@client.tree.command(name="bstats", description="View the moderation leaderboard")
+@client.tree.command(name="modstats", description="View the moderation leaderboard")
 async def bstats_command(interaction: discord.Interaction):
     await interaction.response.defer()
     rows = await _get_leaderboard()
@@ -1082,14 +1082,14 @@ async def quick_avatar(ctx: commands.Context, member: discord.Member = None):
 
 @client.command(name="s")
 async def quick_stats(ctx: commands.Context):
-    """-s — shows the moderation leaderboard (same as -bstats)."""
+    """-s — shows the moderation leaderboard (same as -modstats)."""
     rows = await _get_leaderboard()
     await ctx.reply(embed=_build_leaderboard_embed(rows), mention_author=False)
 
 
-@client.command(name="bstats")
+@client.command(name="modstats")
 async def bstats_text(ctx: commands.Context):
-    """-bstats — shows the moderation leaderboard (same as -s)."""
+    """-modstats — shows the moderation leaderboard (same as -s)."""
     rows = await _get_leaderboard()
     await ctx.reply(embed=_build_leaderboard_embed(rows), mention_author=False)
 
