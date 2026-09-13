@@ -46,10 +46,17 @@ if not TOKEN:
 GUILD_ID = main_bot.GUILD_ID
 db = main_bot.db
 
+# MOD_ROLE_IDS and MODLOG_CHANNEL_ID below are DEFAULTS — dashboard.py's admin-only "Bot
+# Settings" page (Moderation Bot -> Staff+ Roles / Modlog Channel) lets root/admins change
+# either one from the browser. That page persists the change in Mongo and reassigns the
+# module attribute right here at runtime; every function in this file that reads
+# MOD_ROLE_IDS or MODLOG_CHANNEL_ID does so as a bare module-level global at call time, so
+# a dashboard save takes effect on the very next command — no restart needed.
 MOD_ROLE_IDS = {
     1538589345991360527,
     1539303279195062313,
-}  # Members with either role can use all /b... commands and both context menus
+}  # "Staff+" — members with any of these roles can use all /b... commands and both
+   # context menus, plus the dashboard's Moderation DMs page.
 
 SUPPORT_SERVER_URL = "https://discord.gg/FZmjTSBpSZ"  # Used in ban/warn DMs
 MODLOG_CHANNEL_ID = 1546607743174049922  # Every mod action gets posted here
@@ -206,52 +213,73 @@ async def _get_modstats(moderator_id: int):
     return await asyncio.to_thread(_get_modstats_sync, moderator_id)
 
 
-# Single source of truth for how each action type is displayed — emoji, label, embed
-# color — reused everywhere: modlog posts, confirmation embeds, /cases, /case, /modlogs.
+# Single source of truth for how each action type is displayed — label + embed color —
+# reused everywhere: modlog posts, confirmation embeds, /cases, /case, /modlogs.
 ACTION_META = {
-    "ban":    {"emoji": "🟥", "label": "Ban",    "color": discord.Color.red()},
-    "kick":   {"emoji": "🟧", "label": "Kick",   "color": discord.Color.orange()},
-    "mute":   {"emoji": "🟨", "label": "Mute",   "color": discord.Color.gold()},
-    "unmute": {"emoji": "🟩", "label": "Unmute", "color": discord.Color.green()},
-    "unban":  {"emoji": "🟩", "label": "Unban",  "color": discord.Color.green()},
-    "warn":   {"emoji": "🟨", "label": "Warn",   "color": discord.Color.gold()},
+    "ban":    {"label": "Ban",    "color": discord.Color.red()},
+    "kick":   {"label": "Kick",   "color": discord.Color.orange()},
+    "mute":   {"label": "Mute",   "color": discord.Color.gold()},
+    "unmute": {"label": "Unmute", "color": discord.Color.green()},
+    "unban":  {"label": "Unban",  "color": discord.Color.green()},
+    "warn":   {"label": "Warn",   "color": discord.Color.gold()},
 }
 
 
 def _action_meta(action: str) -> dict:
-    return ACTION_META.get(action, {"emoji": "⬜", "label": action.title(), "color": discord.Color.greyple()})
+    return ACTION_META.get(action, {"label": action.title(), "color": discord.Color.greyple()})
+
+
+# Display name used in the branded footer every moderation embed gets — see
+# _brand_footer() below.
+SERVER_NAME = "Blazing Lock"
+
+
+def _guild_icon_url() -> str | None:
+    guild = client.get_guild(GUILD_ID)
+    if guild is not None and guild.icon is not None:
+        return guild.icon.url
+    return None
+
+
+def _brand_footer(embed: discord.Embed, extra: str = None) -> discord.Embed:
+    """Applies the standard footer to a moderation embed: the server name plus the
+    server's own icon, which Discord always renders as a small circle next to footer
+    text. `extra` (a case number, page count, etc.) is appended after a separator when
+    given. Used everywhere instead of a plain "BARC Moderation" text footer so every
+    embed the moderation bot sends is clearly and consistently branded."""
+    embed.set_footer(text=f"{SERVER_NAME} • {extra}" if extra else SERVER_NAME, icon_url=_guild_icon_url())
+    return embed
 
 
 def _build_modstats_embed(member: discord.abc.User, counts: dict, total: int) -> discord.Embed:
     embed = discord.Embed(
-        title=f"📊 Mod Stats — {member.display_name}",
+        title="Moderation Stats",
+        description=f"Action breakdown for {member.mention}",
         color=discord.Color.blurple(),
         timestamp=datetime.now(timezone.utc),
     )
     embed.set_thumbnail(url=member.display_avatar.url)
     if total == 0:
-        embed.description = "No moderation actions logged yet."
-        return embed
+        embed.add_field(name="Total Actions", value="0", inline=False)
+        return _brand_footer(embed)
     for key, meta in ACTION_META.items():
         if counts.get(key):
-            embed.add_field(name=f"{meta['emoji']} {meta['label']}s", value=f"**{counts[key]}**", inline=True)
-    embed.set_footer(text=f"Total actions: {total}")
-    return embed
+            embed.add_field(name=f"{meta['label']}s", value=str(counts[key]), inline=True)
+    for key, count in counts.items():
+        if key not in ACTION_META and count:
+            embed.add_field(name=key.title(), value=str(count), inline=True)
+    embed.add_field(name="Total", value=f"**{total}**", inline=True)
+    return _brand_footer(embed)
 
 
 def _build_leaderboard_embed(rows) -> discord.Embed:
-    embed = discord.Embed(title="📊 Moderation Leaderboard", color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
+    embed = discord.Embed(title="Moderation Leaderboard", color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
     if not rows:
         embed.description = "No moderation actions logged yet."
-        return embed
-    medals = ["🥇", "🥈", "🥉"]
-    lines = []
-    for i, row in enumerate(rows):
-        prefix = medals[i] if i < 3 else f"`{i + 1}.`"
-        lines.append(f"{prefix} <@{row['_id']}> — **{row['count']}** action(s)")
+        return _brand_footer(embed)
+    lines = [f"`#{i:>2}`  <@{row['_id']}> — **{row['count']}** action(s)" for i, row in enumerate(rows, start=1)]
     embed.description = "\n".join(lines)
-    embed.set_footer(text=f"Top {len(rows)} moderator(s)")
-    return embed
+    return _brand_footer(embed, f"Top {len(rows)} moderator(s)")
 
 
 # --- DISCORD BOT SETUP ---
@@ -305,7 +333,7 @@ async def _send_modlog(
         embed.add_field(name="Reason", value=reason, inline=False)
     if extra:
         embed.add_field(name="Details", value=extra, inline=False)
-    embed.set_footer(text=f"Case #{case_number}" if case_number else "BARC Moderation")
+    _brand_footer(embed, f"Case #{case_number}" if case_number else None)
     try:
         await channel.send(embed=embed)
     except Exception as e:
@@ -434,7 +462,7 @@ def _build_result_embed(
     which case number to reference later, and whether the DM notice actually landed."""
     meta = _action_meta(action)
     embed = discord.Embed(
-        title=f"{meta['emoji']} {meta['label']} — Case #{case_number}",
+        title=f"{meta['label']} — Case #{case_number}",
         color=meta["color"],
         timestamp=datetime.now(timezone.utc),
     )
@@ -449,11 +477,10 @@ def _build_result_embed(
     if dm_sent is not None:
         embed.add_field(
             name="DM Notice",
-            value="✅ Delivered" if dm_sent else "⚠️ Couldn't deliver — DMs may be disabled",
+            value="Delivered" if dm_sent else "Couldn't deliver — DMs may be disabled",
             inline=False,
         )
-    embed.set_footer(text="BARC Moderation")
-    return embed
+    return _brand_footer(embed)
 
 
 async def _reply_result(interaction: discord.Interaction, result):
@@ -611,14 +638,14 @@ async def _core_unban(guild: discord.Guild, moderator: discord.abc.User, user_id
         embed = _build_result_embed("unban", target_user, moderator, reason, case_number)
     else:
         meta = _action_meta("unban")
-        embed = discord.Embed(title=f"{meta['emoji']} {meta['label']} — Case #{case_number}", color=meta["color"],
+        embed = discord.Embed(title=f"{meta['label']} — Case #{case_number}", color=meta["color"],
                                timestamp=datetime.now(timezone.utc))
         embed.add_field(name="Member", value=f"<@{uid}>\n`{uid}`", inline=True)
         embed.add_field(name="Moderator", value=moderator.mention, inline=True)
         embed.add_field(name="Case", value=f"#{case_number}", inline=True)
         if reason:
             embed.add_field(name="Reason", value=reason, inline=False)
-        embed.set_footer(text="BARC Moderation")
+        _brand_footer(embed)
     return True, embed
 
 
@@ -631,14 +658,13 @@ def _build_warn_embed(member: discord.abc.User, history):
         ts = w["created_at"].strftime("%Y-%m-%d %H:%M UTC")
         lines.append(f"**{i}.** `{ts}` — {w['punishment']} — {w['reason']} (by <@{w['moderator_id']}>)")
     embed = discord.Embed(
-        title=f"🟨 Warnings — {member.display_name}",
+        title=f"Warnings — {member.display_name}",
         description="\n".join(lines)[:4000],
         color=discord.Color.gold(),
         timestamp=datetime.now(timezone.utc),
     )
     embed.set_thumbnail(url=member.display_avatar.url)
-    embed.set_footer(text=f"{len(history)} warning(s) shown — use /modlogs for full moderation history")
-    return embed
+    return _brand_footer(embed, f"{len(history)} warning(s) shown — use /modlogs for full history")
 
 
 # =====================================================================================
@@ -721,7 +747,7 @@ async def _send_paginated_text(ctx: commands.Context, pages: list):
 def _build_cases_pages(cases: list, title: str, show_target: bool = True, per_page: int = 8) -> list:
     """Compact case list — /cases. Each line is one case; several cases per page."""
     if not cases:
-        return [discord.Embed(title=title, description="No cases logged yet.", color=discord.Color.blurple())]
+        return [_brand_footer(discord.Embed(title=title, description="No cases logged yet.", color=discord.Color.blurple()))]
 
     chunks = [cases[i:i + per_page] for i in range(0, len(cases), per_page)]
     pages = []
@@ -734,10 +760,10 @@ def _build_cases_pages(cases: list, title: str, show_target: bool = True, per_pa
             if len(reason) > 80:
                 reason = reason[:80] + "…"
             target_part = f"<@{c['target_id']}> — " if show_target else ""
-            lines.append(f"**#{c['case_number']}** {meta['emoji']} **{meta['label']}** — {target_part}{reason}\n"
+            lines.append(f"**#{c['case_number']}** · **{meta['label']}** — {target_part}{reason}\n"
                          f"By <@{c['moderator_id']}> • {ts}")
         embed = discord.Embed(title=title, description="\n\n".join(lines), color=discord.Color.blurple())
-        embed.set_footer(text=f"Page {page_num}/{len(chunks)} • {len(cases)} case(s) shown (max 200)")
+        _brand_footer(embed, f"Page {page_num}/{len(chunks)} • {len(cases)} case(s) shown (max 200)")
         pages.append(embed)
     return pages
 
@@ -746,18 +772,17 @@ def _build_case_detail_embed(case: dict) -> discord.Embed:
     """Full detail for one case — /case."""
     meta = _action_meta(case["action"])
     embed = discord.Embed(
-        title=f"{meta['emoji']} Case #{case['case_number']} — {meta['label']}",
+        title=f"Case #{case['case_number']} — {meta['label']}",
         color=meta["color"],
         timestamp=case["created_at"],
     )
     embed.add_field(name="Member", value=f"<@{case['target_id']}>\n`{case['target_id']}`", inline=True)
     embed.add_field(name="Moderator", value=f"<@{case['moderator_id']}>\n`{case['moderator_id']}`", inline=True)
-    embed.add_field(name="Action", value=f"{meta['emoji']} {meta['label']}", inline=True)
+    embed.add_field(name="Action", value=meta["label"], inline=True)
     embed.add_field(name="Reason", value=case.get("reason") or "No reason provided.", inline=False)
     if case.get("detail"):
         embed.add_field(name="Details", value=case["detail"], inline=False)
-    embed.set_footer(text="BARC Moderation")
-    return embed
+    return _brand_footer(embed)
 
 
 def _build_modlogs_pages(member: discord.abc.User, actions: list, counts: dict, total: int, per_page: int = 4) -> list:
@@ -765,25 +790,24 @@ def _build_modlogs_pages(member: discord.abc.User, actions: list, counts: dict, 
     own field with the full reason, moderator, timestamp and any extra detail (mute
     duration, ban delete_days, warned message preview, etc.), a few entries per page."""
     summary = " • ".join(
-        f"{ACTION_META[k]['emoji']} {v} {ACTION_META[k]['label']}{'s' if v != 1 else ''}"
+        f"{v} {ACTION_META[k]['label']}{'s' if v != 1 else ''}"
         for k, v in counts.items() if v and k in ACTION_META
     ) or "No actions logged."
 
     if not actions:
         embed = discord.Embed(
-            title=f"📁 Modlogs — {member.display_name}",
+            title=f"Modlogs — {member.display_name}",
             description=f"No moderation actions on record.\n\n**Total:** {total}",
             color=discord.Color.blurple(),
         )
         embed.set_thumbnail(url=member.display_avatar.url)
-        embed.set_footer(text="BARC Moderation")
-        return [embed]
+        return [_brand_footer(embed)]
 
     chunks = [actions[i:i + per_page] for i in range(0, len(actions), per_page)]
     pages = []
     for page_num, chunk in enumerate(chunks, start=1):
         embed = discord.Embed(
-            title=f"📁 Modlogs — {member.display_name}",
+            title=f"Modlogs — {member.display_name}",
             description=f"**Summary:** {summary}\n**Total:** {total}",
             color=discord.Color.blurple(),
         )
@@ -800,11 +824,11 @@ def _build_modlogs_pages(member: discord.abc.User, actions: list, counts: dict, 
             if a.get("detail"):
                 value_lines.append(f"**Details:** {a['detail']}")
             embed.add_field(
-                name=f"{meta['emoji']} {meta['label']} — {case_label}",
+                name=f"{meta['label']} — {case_label}",
                 value="\n".join(value_lines)[:1024],
                 inline=False,
             )
-        embed.set_footer(text=f"Page {page_num}/{len(chunks)} • {len(actions)} action(s) shown (max 200)")
+        _brand_footer(embed, f"Page {page_num}/{len(chunks)} • {len(actions)} action(s) shown (max 200)")
         pages.append(embed)
     return pages
 
