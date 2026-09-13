@@ -244,12 +244,12 @@ mod_actions_col = botmod.db["mod_actions"]  # {case_number, action, moderator_id
 mod_warnings_col = botmod.db["warnings"]    # {user_id, moderator_id, punishment, reason, created_at}
 
 MOD_ACTION_LABELS = {  # action -> (display label, .pill CSS class)
-    "ban": ("🟥 Ban", "denied"),
-    "kick": ("🟧 Kick", "pending"),
-    "mute": ("🟨 Mute", "pending"),
-    "unmute": ("🟩 Unmute", "approved"),
-    "unban": ("🟩 Unban", "approved"),
-    "warn": ("🟨 Warn", "pending"),
+    "ban": ("Ban", "denied"),
+    "kick": ("Kick", "pending"),
+    "mute": ("Mute", "pending"),
+    "unmute": ("Unmute", "approved"),
+    "unban": ("Unban", "approved"),
+    "warn": ("Warn", "pending"),
 }
 
 
@@ -361,6 +361,20 @@ def display_name_for(user_id, fallback=None):
     if member is not None:
         return member.display_name
     return fallback or f"User {user_id}"
+
+
+def guild_icon_url(size=128):
+    """The server's own icon — Discord (and the .guild-icon/.avatar-sm CSS classes here)
+    always render an icon_url as a circle, which is what gives the moderation pages
+    their branded 'server icon in a circle' look. Returns None if the bot isn't
+    connected yet or the server has no icon set."""
+    guild = botmod.client.get_guild(botmod.GUILD_ID)
+    if guild is not None and guild.icon is not None:
+        try:
+            return str(guild.icon.replace(size=size))
+        except Exception:
+            return str(guild.icon)
+    return None
 
 
 def _player_row(user_id):
@@ -794,6 +808,38 @@ LAYOUT_EXTRA_CSS = """
   .tabs a { padding: 8px 16px; border-radius: 999px; color: var(--text-dim); font-size: 13px; font-weight: 500; position: relative; z-index: 1; transition: color .2s ease; }
   .tabs a:hover { color: var(--text); text-decoration: none; }
   .tabs a.active { background: var(--accent); color: #04141c; }
+
+  /* Panel heading with a circular server icon — used on pages tied to the moderation
+     bot (Moderation Panel, Moderation DMs) so the brand is unmistakable at a glance. */
+  .panel-heading { display: flex; align-items: center; gap: 16px; margin-bottom: 6px; }
+  .panel-heading .guild-icon { width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--line-bright); flex-shrink: 0; }
+  .panel-heading h1 { margin-bottom: 2px; }
+  .panel-heading p { margin: 0; }
+
+  /* Moderator leaderboard — ranked rows with avatar, a proportional bar relative to the
+     top moderator's count, and an aligned total. */
+  .leaderboard { display: flex; flex-direction: column; gap: 4px; }
+  .leaderboard-row { display: grid; grid-template-columns: 30px 26px 1fr 140px 44px; align-items: center; gap: 12px; padding: 9px 4px; border-radius: var(--radius-sm); transition: background .15s ease; }
+  .leaderboard-row:hover { background: var(--surface-2); }
+  .leaderboard-row .lb-rank { font-family: var(--font-display); font-weight: 800; color: var(--text-dim); text-align: center; font-size: 13px; }
+  .leaderboard-row.top-1 .lb-rank { color: var(--gold); font-size: 15px; }
+  .leaderboard-row.top-2 .lb-rank { color: var(--accent-strong); }
+  .leaderboard-row.top-3 .lb-rank { color: var(--accent); }
+  .leaderboard-row .lb-name { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .leaderboard-row .lb-bar { background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; height: 9px; overflow: hidden; }
+  .leaderboard-row .lb-bar > div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--gold)); border-radius: 999px; }
+  .leaderboard-row .lb-count { font-family: var(--font-display); font-weight: 700; color: var(--text); text-align: right; font-size: 14px; }
+  @media (max-width: 620px) { .leaderboard-row { grid-template-columns: 24px 22px 1fr 44px; } .leaderboard-row .lb-bar { display: none; } }
+
+  /* Role picker — used on Bot Settings for choosing which Discord roles get a given
+     permission (Staff+ roles, ELO staff, tryout staff, etc). */
+  .role-picker { display: flex; flex-wrap: wrap; gap: 8px; max-height: 250px; overflow-y: auto; padding: 4px 2px; }
+  .role-chip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); font-size: 13px; font-weight: 500; cursor: pointer; transition: border-color .15s ease, background .15s ease, color .15s ease; user-select: none; }
+  .role-chip:hover { border-color: var(--line-bright); }
+  .role-chip input { width: auto; margin: 0; accent-color: var(--accent); }
+  .role-chip:has(input:checked) { border-color: var(--accent-strong); background: var(--accent-dim); color: var(--accent-strong); }
+  .settings-section { margin-bottom: 8px; }
+  .settings-section .muted { display: block; margin: -8px 0 14px; font-size: 12.5px; }
 """
 
 # Public-landing-page-only additions: the top bar, hero, FAQ/level/role sections.
@@ -1165,12 +1211,13 @@ def home():
   <a class="card" href="{{ url_for('dashboard.economy_leaderboard') }}"><strong>📈 Coin Leaderboard</strong><br><span class="muted">See the richest players</span></a>
   {% if is_staff_addelo %}<a class="card" href="{{ url_for('dashboard.tryouts_in') }}"><strong>🟢 Manage IN</strong><br><span class="muted">Excuse tryouters from quota</span></a>{% endif %}
   {% if is_staff_addelo %}<a class="card" href="{{ url_for('dashboard.elo_settings') }}"><strong>🎨 ELO Card Settings</strong><br><span class="muted">Accent color &amp; banner</span></a>{% endif %}
-  {% if is_moderator %}<a class="card" href="{{ url_for('dashboard.moderation') }}"><strong>🟥 Moderation DMs</strong><br><span class="muted">Send ban/warn notices</span></a>{% endif %}
+  {% if is_moderator %}<a class="card" href="{{ url_for('dashboard.moderation') }}"><strong>Moderation DMs</strong><br><span class="muted">Send ban/warn notices</span></a>{% endif %}
   {% if show_staff %}<a class="card" href="{{ url_for('dashboard.staff_home') }}"><strong>🔒 Staff</strong><br><span class="muted">Announcements, FAQ, escalation guide &amp; sheet</span></a>{% endif %}
   {% if is_admin %}<a class="card" href="{{ url_for('dashboard.admin_ep_manager') }}"><strong>📋 EP Manager</strong><br><span class="muted">Admin-only: edit tryouters' EP, with a permanent log</span></a>{% endif %}
   {% if is_admin %}<a class="card" href="{{ url_for('dashboard.admin_elo_manager') }}"><strong>🏆 ELO Manager</strong><br><span class="muted">Admin-only: edit any player's ELO, with a permanent log</span></a>{% endif %}
   {% if is_admin %}<a class="card" href="{{ url_for('dashboard.admin_access') }}"><strong>🛡️ Manage Admins</strong><br><span class="muted">Escalate or revoke admin/staff access</span></a>{% endif %}
-  {% if is_admin %}<a class="card" href="{{ url_for('dashboard.admin_moderation') }}"><strong>🚨 Moderation Panel</strong><br><span class="muted">Admin-only: action logs, who's muted right now, and per-user history</span></a>{% endif %}
+  {% if is_admin %}<a class="card" href="{{ url_for('dashboard.admin_moderation') }}"><strong>Moderation Panel</strong><br><span class="muted">Admin-only: action logs, who's muted right now, and per-user history</span></a>{% endif %}
+  {% if is_admin %}<a class="card" href="{{ url_for('dashboard.admin_bot_settings') }}"><strong>Bot Settings</strong><br><span class="muted">Admin-only: Staff+ roles and configuration for both bots</span></a>{% endif %}
 </div>""",
                 elo=row.elo, rank_name=rank_name, rank_emoji=rank_emoji, pct=pct, progress_label=progress_label,
                 balance=econ_doc["balance"], is_tryouter=is_tryouter, ep=ep, quota_ep_target=botmod.TRYOUT_QUOTA_EP,
@@ -1475,7 +1522,7 @@ ADMIN_ACCESS_TMPL = """
 <h1>Manage Admins</h1>
 <p class="muted">Anyone who has ever logged in to the dashboard shows up below. Root admins (the 3 built-in accounts) are always admins and can't be changed here. Everyone else can be escalated to admin, or individually granted the Staff section, with one click.</p>
 
-<div class="linkrow"><a href="{{ url_for('dashboard.admin_ep_manager') }}">📋 EP Manager</a><a href="{{ url_for('dashboard.admin_elo_manager') }}">🏆 ELO Manager</a><a href="{{ url_for('dashboard.admin_moderation') }}">🚨 Moderation Panel</a></div>
+<div class="linkrow"><a href="{{ url_for('dashboard.admin_bot_settings') }}">Bot Settings</a><a href="{{ url_for('dashboard.admin_ep_manager') }}">📋 EP Manager</a><a href="{{ url_for('dashboard.admin_elo_manager') }}">🏆 ELO Manager</a><a href="{{ url_for('dashboard.admin_moderation') }}">Moderation Panel</a></div>
 
 <div class="card">
 <h2 style="margin-top:0;">Root Admins</h2>
@@ -1611,6 +1658,258 @@ def admin_staff_action(uid, action):
     else:
         flash(f"{uid} {'now has' if grant else 'no longer has'} staff access.", "success")
     return redirect(url_for("dashboard.admin_access"))
+
+
+# =====================================================================================
+# BOT SETTINGS — root/admin-only configuration for BOTH Discord bots. The headline
+# feature here is "Staff+ Roles": which Discord roles get to use the moderation bot
+# (/bban, /bkick, /bmute, /bwarn, etc. plus the dashboard's Moderation DMs page),
+# editable from the browser instead of being hardcoded in mod_bot.py. The same page
+# also covers the handful of channel IDs and staff-role sets bot.py itself uses.
+#
+# Persisted in Mongo (bot_settings_col) so it survives a restart/redeploy. Every value
+# is ALSO pushed straight onto the live bot.py / mod_bot.py module objects the moment
+# it's saved (see _apply_bot_settings below) -- both bots read these back out as plain
+# module-level globals at call time, not values captured once at import, so a save
+# here takes effect on the very next command with no restart needed.
+# =====================================================================================
+
+bot_settings_col = botmod.db["bot_settings"]
+
+# The bots' own hardcoded values, captured once, right here, before anything below
+# ever gets a chance to overwrite them. A fresh database (no settings document saved
+# yet) starts from this, and "Reset to Defaults" resets back to it.
+DEFAULT_BOT_SETTINGS = {
+    "mod_role_ids": sorted(modbot.MOD_ROLE_IDS),
+    "modlog_channel_id": modbot.MODLOG_CHANNEL_ID,
+    "queue_channel_id": botmod.QUEUE_CHANNEL_ID,
+    "duel_category_id": botmod.DUEL_CATEGORY_ID,
+    "results_channel_id": botmod.RESULTS_CHANNEL_ID,
+    "tryout_results_channel_id": botmod.TRYOUT_RESULTS_CHANNEL_ID,
+    "tryout_host_stats_channel_id": botmod.TRYOUT_HOST_STATS_CHANNEL_ID,
+    "elo_command_channel_id": botmod.ELO_COMMAND_CHANNEL_ID,
+    "economy_channel_id": botmod.ECONOMY_CHANNEL_ID,
+    "quota_report_channel_id": botmod.QUOTA_REPORT_CHANNEL_ID,
+    "elo_staff_role_ids": sorted(botmod.ADDELO_ROLE_ID),
+    "tryout_staff_role_ids": sorted(botmod.TDONE_ALLOWED_ROLE_IDS),
+    "viewt_panel_role_ids": sorted(botmod.VIEWT_EXCLUDE_PANEL_ROLE_IDS),
+}
+
+
+def _current_bot_settings():
+    """Saved settings doc (if any) merged over the factory defaults, so a doc saved
+    before some new setting existed still works fine -- missing keys just fall back."""
+    doc = bot_settings_col.find_one({"_id": "config"}) or {}
+    return {**DEFAULT_BOT_SETTINGS, **{k: v for k, v in doc.items() if k != "_id"}}
+
+
+def _apply_bot_settings(values):
+    """Pushes a settings dict onto bot.py's and mod_bot.py's own module-level globals.
+    Both bots read these back out as bare names at call time (never captured into a
+    closure or a default-argument value -- the one place that used to do that,
+    post_result()'s channel_id default in bot.py, was changed specifically so this
+    works), so reassigning the attribute here is all it takes for the change to apply
+    immediately, with no bot restart required."""
+    modbot.MOD_ROLE_IDS = set(values["mod_role_ids"])
+    modbot.MODLOG_CHANNEL_ID = values["modlog_channel_id"]
+
+    botmod.QUEUE_CHANNEL_ID = values["queue_channel_id"]
+    botmod.DUEL_CATEGORY_ID = values["duel_category_id"]
+    botmod.RESULTS_CHANNEL_ID = values["results_channel_id"]
+    botmod.TRYOUT_RESULTS_CHANNEL_ID = values["tryout_results_channel_id"]
+    botmod.TRYOUT_HOST_STATS_CHANNEL_ID = values["tryout_host_stats_channel_id"]
+    botmod.ELO_COMMAND_CHANNEL_ID = values["elo_command_channel_id"]
+    botmod.ECONOMY_CHANNEL_ID = values["economy_channel_id"]
+    botmod.QUOTA_REPORT_CHANNEL_ID = values["quota_report_channel_id"]
+
+    botmod.ADDELO_ROLE_ID = set(values["elo_staff_role_ids"])
+    botmod.TDONE_ALLOWED_ROLE_IDS = set(values["tryout_staff_role_ids"])
+    # TRYOUT_QUOTA_ROLE_IDS was bound to the SAME set object as TDONE_ALLOWED_ROLE_IDS
+    # at import time (see bot.py) -- rebinding TDONE_ALLOWED_ROLE_IDS above does not
+    # change what TRYOUT_QUOTA_ROLE_IDS points to, since it's a separate name, so it's
+    # kept in sync explicitly here.
+    botmod.TRYOUT_QUOTA_ROLE_IDS = botmod.TDONE_ALLOWED_ROLE_IDS
+    botmod.VIEWT_EXCLUDE_PANEL_ROLE_IDS = set(values["viewt_panel_role_ids"])
+
+
+# Apply whatever's already saved (or the defaults, on a fresh database) as soon as this
+# module loads, so both bots start out reflecting the dashboard's settings from their
+# very first command after boot -- not just after the first save made from this page.
+_apply_bot_settings(_current_bot_settings())
+
+
+ADMIN_BOT_SETTINGS_TMPL = """
+{% macro role_picker(field_name, selected) %}
+{% if roles %}
+<div class="role-picker">
+  {% for r in roles %}
+  <label class="role-chip"><input type="checkbox" name="{{ field_name }}" value="{{ r.id }}" {% if r.id in selected %}checked{% endif %}><span>{{ r.name }}</span></label>
+  {% endfor %}
+</div>
+{% else %}<p class="empty">Bot isn't connected — can't look up roles right now.</p>{% endif %}
+{% endmacro %}
+{% macro channel_select(field_name, selected_id, options) %}
+{% if options %}
+<select name="{{ field_name }}">
+  {% for c in options %}<option value="{{ c.id }}" {% if c.id == selected_id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+</select>
+{% else %}<p class="empty">Bot isn't connected — can't look up channels right now.</p>{% endif %}
+{% endmacro %}
+
+<h1>Bot Settings</h1>
+<p class="muted">Root/admin-only. Configuration for both Discord bots — changes apply immediately, no restart needed.</p>
+<div class="linkrow"><a href="{{ url_for('dashboard.admin_access') }}">🛡️ Manage Admins</a><a href="{{ url_for('dashboard.admin_moderation') }}">Moderation Panel</a></div>
+
+{% if not guild_connected %}
+<div class="card"><p class="empty" style="padding:8px 0;">The Discord bot isn't connected right now, so roles and channels can't be looked up by name. You can still view what's currently saved below, but saving is disabled until the bot reconnects.</p></div>
+{% endif %}
+
+<form method="post" action="{{ url_for('dashboard.admin_bot_settings_save') }}">
+<input type="hidden" name="csrf_token" value="{{ csrf }}">
+
+<h2>Moderation Bot</h2>
+<div class="settings-section">
+<div class="card">
+<h3>Staff+ Roles</h3>
+<span class="muted">Members with any of these roles can use every /b… moderation command (ban, kick, mute, unmute, unban, warn) and the dashboard's Moderation DMs page.</span>
+{{ role_picker('mod_role_ids', current.mod_role_ids) }}
+</div>
+</div>
+<div class="settings-section">
+<div class="card">
+<h3>Modlog Channel</h3>
+<span class="muted">Every ban, kick, mute, unmute, unban and warning gets posted here.</span>
+{{ channel_select('modlog_channel_id', current.modlog_channel_id, text_channels) }}
+</div>
+</div>
+
+<h2>Main Bot</h2>
+<div class="settings-section">
+<div class="card">
+<h3>Channels</h3>
+<span class="muted">Where each of the main bot's features post or operate.</span>
+<div class="row">
+  <div class="field"><label>Matchmaking Queue Channel</label>{{ channel_select('queue_channel_id', current.queue_channel_id, text_channels) }}</div>
+  <div class="field"><label>Duel Category</label>{{ channel_select('duel_category_id', current.duel_category_id, categories) }}</div>
+  <div class="field"><label>Match Results Channel</label>{{ channel_select('results_channel_id', current.results_channel_id, text_channels) }}</div>
+</div>
+<div class="row">
+  <div class="field"><label>Tryout Results Channel</label>{{ channel_select('tryout_results_channel_id', current.tryout_results_channel_id, text_channels) }}</div>
+  <div class="field"><label>Tryout Host Stats Channel</label>{{ channel_select('tryout_host_stats_channel_id', current.tryout_host_stats_channel_id, text_channels) }}</div>
+  <div class="field"><label>Quota Report Channel</label>{{ channel_select('quota_report_channel_id', current.quota_report_channel_id, text_channels) }}</div>
+</div>
+<div class="row">
+  <div class="field"><label>ELO Command Channel</label>{{ channel_select('elo_command_channel_id', current.elo_command_channel_id, text_channels) }}</div>
+  <div class="field"><label>Economy Command Channel</label>{{ channel_select('economy_channel_id', current.economy_channel_id, text_channels) }}</div>
+</div>
+</div>
+</div>
+
+<div class="settings-section">
+<div class="card">
+<h3>ELO Staff Roles</h3>
+<span class="muted">Can use /addelo, /in, /endin, /resetelocolor, and their dashboard equivalents.</span>
+{{ role_picker('elo_staff_role_ids', current.elo_staff_role_ids) }}
+</div>
+</div>
+
+<div class="settings-section">
+<div class="card">
+<h3>Tryout Staff Roles</h3>
+<span class="muted">Can run /tdone. Weekly tryout quota applies to exactly these roles.</span>
+{{ role_picker('tryout_staff_role_ids', current.tryout_staff_role_ids) }}
+</div>
+</div>
+
+<div class="settings-section">
+<div class="card">
+<h3>Tryout Panel Roles</h3>
+<span class="muted">Can use the /viewt exclude/include panel.</span>
+{{ role_picker('viewt_panel_role_ids', current.viewt_panel_role_ids) }}
+</div>
+</div>
+
+<button class="btn success" {% if not guild_connected %}disabled{% endif %}>Save Settings</button>
+</form>
+
+<form method="post" action="{{ url_for('dashboard.admin_bot_settings_reset') }}" style="margin-top:14px;" onsubmit="return confirm('Reset every setting above back to its original default?');">
+<input type="hidden" name="csrf_token" value="{{ csrf }}">
+<button class="btn small secondary">Reset to Defaults</button>
+</form>"""
+
+
+@dash_bp.route("/admin/bot-settings")
+@admin_required
+def admin_bot_settings():
+    guild = botmod.client.get_guild(botmod.GUILD_ID)
+    if guild is not None:
+        roles = sorted((r for r in guild.roles if not r.is_default()), key=lambda r: r.position, reverse=True)
+        text_channels = sorted(guild.text_channels, key=lambda c: c.position)
+        categories = sorted(guild.categories, key=lambda c: c.position)
+    else:
+        roles, text_channels, categories = [], [], []
+    return page("Bot Settings", ADMIN_BOT_SETTINGS_TMPL, current=_current_bot_settings(),
+                roles=roles, text_channels=text_channels, categories=categories,
+                guild_connected=guild is not None)
+
+
+@dash_bp.route("/admin/bot-settings/save", methods=["POST"])
+@admin_required
+def admin_bot_settings_save():
+    _check_csrf()
+    guild = botmod.client.get_guild(botmod.GUILD_ID)
+    if guild is None:
+        flash("The bot isn't connected right now — settings weren't changed.", "error")
+        return redirect(url_for("dashboard.admin_bot_settings"))
+
+    valid_role_ids = {r.id for r in guild.roles if not r.is_default()}
+    valid_channel_ids = {c.id for c in guild.text_channels}
+    valid_category_ids = {c.id for c in guild.categories}
+    current = _current_bot_settings()
+
+    def _roles(field):
+        submitted = {int(v) for v in request.form.getlist(field) if v.strip().isdigit()}
+        submitted &= valid_role_ids
+        # An empty submission almost always means the admin's browser sent no checked
+        # boxes rather than "please remove every role" -- keep the previous selection
+        # in that case so moderation access can't be wiped out by an empty POST.
+        return sorted(submitted) if submitted else current[field]
+
+    def _channel(field, valid_ids):
+        raw = request.form.get(field, "").strip()
+        if raw.isdigit() and int(raw) in valid_ids:
+            return int(raw)
+        return current[field]
+
+    new_values = {
+        "mod_role_ids": _roles("mod_role_ids"),
+        "modlog_channel_id": _channel("modlog_channel_id", valid_channel_ids),
+        "queue_channel_id": _channel("queue_channel_id", valid_channel_ids),
+        "duel_category_id": _channel("duel_category_id", valid_category_ids),
+        "results_channel_id": _channel("results_channel_id", valid_channel_ids),
+        "tryout_results_channel_id": _channel("tryout_results_channel_id", valid_channel_ids),
+        "tryout_host_stats_channel_id": _channel("tryout_host_stats_channel_id", valid_channel_ids),
+        "elo_command_channel_id": _channel("elo_command_channel_id", valid_channel_ids),
+        "economy_channel_id": _channel("economy_channel_id", valid_channel_ids),
+        "quota_report_channel_id": _channel("quota_report_channel_id", valid_channel_ids),
+        "elo_staff_role_ids": _roles("elo_staff_role_ids"),
+        "tryout_staff_role_ids": _roles("tryout_staff_role_ids"),
+        "viewt_panel_role_ids": _roles("viewt_panel_role_ids"),
+    }
+    bot_settings_col.update_one({"_id": "config"}, {"$set": new_values}, upsert=True)
+    _apply_bot_settings(new_values)
+    flash("Bot settings saved and applied — no restart needed.", "success")
+    return redirect(url_for("dashboard.admin_bot_settings"))
+
+
+@dash_bp.route("/admin/bot-settings/reset", methods=["POST"])
+@admin_required
+def admin_bot_settings_reset():
+    _check_csrf()
+    bot_settings_col.delete_one({"_id": "config"})
+    _apply_bot_settings(DEFAULT_BOT_SETTINGS)
+    flash("Bot settings reset to their original defaults.", "success")
+    return redirect(url_for("dashboard.admin_bot_settings"))
 
 
 # =====================================================================================
@@ -1839,9 +2138,24 @@ ADMIN_LOG_TMPL = """
 # =====================================================================================
 
 ADMIN_MODERATION_TMPL = """
-<h1>🚨 Moderation Panel</h1>
-<p class="muted">Admin-only. Everything logged by the moderation bot's /bban, /bkick, /bmute, /bunmute, /bunban, /bwarn, /cases, /case and /modlogs commands (and the Quick Mute / Warn Message context menus), plus who's muted right now.</p>
-<div class="linkrow"><a href="{{ url_for('dashboard.admin_access') }}">🛡️ Manage Admins</a><a href="{{ url_for('dashboard.admin_ep_manager') }}">📋 EP Manager</a><a href="{{ url_for('dashboard.admin_elo_manager') }}">🏆 ELO Manager</a><a href="{{ url_for('dashboard.admin_moderation_docs') }}">📖 Command Docs</a></div>
+<div class="panel-heading">
+  {% if guild_icon_url %}<img src="{{ guild_icon_url }}" alt="" class="guild-icon">{% endif %}
+  <div>
+    <h1>Moderation Panel</h1>
+    <p class="muted">Admin-only. Everything logged by the moderation bot's /bban, /bkick, /bmute, /bunmute, /bunban, /bwarn, /cases, /case and /modlogs commands (and the Quick Mute / Warn Message context menus), plus who's muted right now.</p>
+  </div>
+</div>
+<div class="linkrow"><a href="{{ url_for('dashboard.admin_access') }}">🛡️ Manage Admins</a><a href="{{ url_for('dashboard.admin_bot_settings') }}">Bot Settings</a><a href="{{ url_for('dashboard.admin_ep_manager') }}">📋 EP Manager</a><a href="{{ url_for('dashboard.admin_elo_manager') }}">🏆 ELO Manager</a><a href="{{ url_for('dashboard.admin_moderation_docs') }}">📖 Command Docs</a></div>
+
+<h2>Overview</h2>
+<div class="grid">
+<div class="stat"><span class="label">Total Actions</span><span class="value">{{ totals.all }}</span></div>
+<div class="stat"><span class="label">Bans</span><span class="value">{{ totals.ban }}</span></div>
+<div class="stat"><span class="label">Kicks</span><span class="value">{{ totals.kick }}</span></div>
+<div class="stat"><span class="label">Mutes</span><span class="value">{{ totals.mute }}</span></div>
+<div class="stat"><span class="label">Warns</span><span class="value">{{ totals.warn }}</span></div>
+<div class="stat"><span class="label">Currently Muted</span><span class="value">{{ active_mutes|length }}</span></div>
+</div>
 
 <div class="grid">
 <div class="card">
@@ -1881,14 +2195,20 @@ ADMIN_MODERATION_TMPL = """
 {% else %}<p class="empty">Nobody is currently muted.</p>{% endif %}
 </div>
 
-<h2>Top Moderators (all time)</h2>
+<h2>Moderator Leaderboard <span class="muted" style="font-size:12.5px;font-weight:500;">(all time)</span></h2>
 <div class="card">
 {% if leaderboard_rows %}
-<table><thead><tr><th>Moderator</th><th>Actions logged</th></tr></thead><tbody>
+<div class="leaderboard">
 {% for r in leaderboard_rows %}
-<tr><td>{{ r.name }} <span class="muted">({{ r._id }})</span></td><td>{{ r.count }}</td></tr>
+<div class="leaderboard-row{% if loop.index <= 3 %} top-{{ loop.index }}{% endif %}">
+  <span class="lb-rank">#{{ loop.index }}</span>
+  <img src="{{ r.avatar }}" alt="" class="avatar-sm" style="width:26px;height:26px;margin-right:0;">
+  <span class="lb-name">{{ r.name }} <span class="muted">({{ r._id }})</span></span>
+  <div class="lb-bar"><div style="width:{{ r.pct }}%;"></div></div>
+  <span class="lb-count">{{ r.count }}</span>
+</div>
 {% endfor %}
-</tbody></table>
+</div>
 {% else %}<p class="empty">No moderation actions logged yet.</p>{% endif %}
 </div>
 
@@ -1958,13 +2278,23 @@ def admin_moderation():
         {"$sort": {"count": -1}},
         {"$limit": 10},
     ]))
+    max_count = max((r["count"] for r in leaderboard_rows), default=0)
     for r in leaderboard_rows:
         r["name"] = display_name_for(r["_id"])
+        r["avatar"] = member_avatar_url(r["_id"])
+        r["pct"] = round((r["count"] / max_count) * 100) if max_count else 0
+
+    totals_agg = list(mod_actions_col.aggregate([{"$group": {"_id": "$action", "count": {"$sum": 1}}}]))
+    totals = {row["_id"]: row["count"] for row in totals_agg}
+    totals["all"] = sum(totals.values())
+    for key in ("ban", "kick", "mute", "warn"):
+        totals.setdefault(key, 0)
 
     return page("Moderation Panel", ADMIN_MODERATION_TMPL,
                 active_mutes=active_mutes, bot_connected=bot_connected,
                 actions=actions, action_filter=action_filter, action_types=MOD_ACTION_LABELS,
-                leaderboard_rows=leaderboard_rows, highlight_id=highlight_id, limit=ADMIN_LOG_LIMIT)
+                leaderboard_rows=leaderboard_rows, totals=totals, guild_icon_url=guild_icon_url(size=64),
+                highlight_id=highlight_id, limit=ADMIN_LOG_LIMIT)
 
 
 @dash_bp.route("/admin/moderation/unmute/<int:uid>", methods=["POST"])
@@ -2017,7 +2347,7 @@ ADMIN_MODERATION_USER_TMPL = """
 
 {% if currently_muted %}
 <div class="card">
-<p style="margin:0;"><span class="pill pending">🟨 Currently muted</span> until {{ currently_muted.until.strftime('%Y-%m-%d %H:%M:%S') }} UTC</p>
+<p style="margin:0;"><span class="pill pending">Currently muted</span> until {{ currently_muted.until.strftime('%Y-%m-%d %H:%M:%S') }} UTC</p>
 <form class="inline" method="post" action="{{ url_for('dashboard.admin_moderation_unmute', uid=target_id) }}" style="margin-top:12px;">
   <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small danger">Unmute now</button>
 </form>
@@ -2176,7 +2506,7 @@ MOD_COMMAND_DOCS = [
 
 ADMIN_MOD_DOCS_TMPL = """
 <div class="linkrow"><a href="{{ url_for('dashboard.admin_moderation') }}">← Moderation Panel</a></div>
-<h1>📖 Moderation Command Docs</h1>
+<h1>Moderation Command Docs</h1>
 <p class="muted section-intro">Every command the moderation bot registers — what it does, its syntax, and its "-" text-command equivalent where it has one.</p>
 {% for title, note, commands in docs %}
 <section class="faq-section">
@@ -3654,8 +3984,13 @@ def matchmaking_leave():
 # =====================================================================================
 
 MODERATION_TMPL = """
-<h1>🟥 Moderation DMs</h1>
-<p class="muted">{% if can_live %}You have full access.{% elif can_test %}You have test-role access — DMs still send for real.{% endif %}</p>
+<div class="panel-heading">
+  {% if guild_icon_url %}<img src="{{ guild_icon_url }}" alt="" class="guild-icon">{% endif %}
+  <div>
+    <h1>Moderation DMs</h1>
+    <p class="muted">{% if can_live %}You have full access.{% elif can_test %}You have test-role access — DMs still send for real.{% endif %}</p>
+  </div>
+</div>
 <div class="grid">
 <div class="card">
 <h2 style="margin-top:0;">Ban Notice</h2>
@@ -3701,7 +4036,7 @@ def moderation():
     can_test = False  # no separate "test role" tier exists anymore — see MOD_ROLE_IDS in mod_bot.py
     if not can_live:
         abort(403)
-    return page("Moderation DMs", MODERATION_TMPL, can_live=can_live, can_test=can_test)
+    return page("Moderation DMs", MODERATION_TMPL, can_live=can_live, can_test=can_test, guild_icon_url=guild_icon_url(size=64))
 
 
 @dash_bp.route("/moderation/ban", methods=["POST"])
