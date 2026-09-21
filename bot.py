@@ -928,7 +928,7 @@ TRYOUT_POSITION_OPTIONS = [
     ("GK", "gk"),
 ]
 
-TRYOUT_REGION_OPTIONS = ["NA", "EU", "SEA", "OCE", "SA", "Other"]
+TRYOUT_REGION_OPTIONS = ["NA", "EU", "ASIA/SEA", "OCE", "SA", "Other"]
 
 
 def _encode_position_marker(label: str, position_key: str) -> str:
