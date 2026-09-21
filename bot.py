@@ -49,6 +49,8 @@ DUEL_CATEGORY_ID = 1539157638925918238  # Category where private duel channels a
 RESULTS_CHANNEL_ID = 1538589354790887452  # Channel where ranked/friendly results are posted
 TRYOUT_RESULTS_CHANNEL_ID = 1538589355176890403  # Channel where /tdone tryout results are posted
 TRYOUT_HOST_STATS_CHANNEL_ID = 1538867672937275475  # Channel where per-host tryout tallies are posted
+TRYOUT_APPLICATION_CHANNEL_ID = 1538589355176890401  # Channel where the permanent "Start Tryout Application" embed lives
+TRYOUT_CLIPS_CHANNEL_ID = 1551607426304708679  # Private staff channel where submitted clip applications are posted for review
 ELO_COMMAND_CHANNEL_ID = 1538589353800900626  # Only channel where /elo can be used
 ADDELO_ROLE_ID = {1538589345991360527, 1539303279195062313}  # Roles that can use /addelo, /in,
                                                               # /endin, /resetelocolor, and their
@@ -200,6 +202,18 @@ tryout_quota_col = db["tryout_quota"]  # Per-tryouter EP: {_id: user_id,
 quota_state_col = db["quota_state"]  # Single doc tracking the last processed weekly reset
 tryout_in_col = db["tryout_in"]  # Per-tryouter IN (excused) status + /in cooldown
 tryout_excluded_col = db["tryout_excluded"]  # Members manually excluded from /viewt: {_id: user_id}
+tryout_applications_col = db["tryout_applications"]  # Player-submitted tryout applications (clip + info),
+                                                      # awaiting or after review:
+                                                      # {_id, player_id, player_tag, roblox_username, position_key,
+                                                      #  position_label, region, clip_url, status ("pending"/"completed"),
+                                                      #  submitted_at, channel_id, message_id, host_id, result_id,
+                                                      #  completed_at}
+tryout_results_col = db["tryout_results"]  # Full history of every completed tryout result (from /tdone AND the
+                                            # automated application flow below), one doc per tryout, searchable
+                                            # by player_id via /tryouthistory:
+                                            # {_id, player_id, player_tag, host_id, position_key, position_label,
+                                            #  ratings: [[name, value], ...], overall, rank_name, feedback,
+                                            #  roblox_username, region, clip_url, application_id, created_at}
 roblox_accounts_col = db["roblox_accounts"]  # Linked Roblox accounts, set by the dashboard's "Login with
                                               # Roblox" OAuth flow: {_id: discord_user_id, roblox_id,
                                               # username, avatar_url, groups: [{id, name}], linked_at}
@@ -210,6 +224,9 @@ economy_col = db["economy"]  # Per-user coins, inventory, and cooldowns for the 
 players_col.create_index([("elo", DESCENDING)])
 economy_col.create_index([("balance", DESCENDING)])
 duel_history_col.create_index([("player_low", ASCENDING), ("player_high", ASCENDING), ("mode", ASCENDING), ("created_at", DESCENDING)])
+tryout_applications_col.create_index([("player_id", ASCENDING), ("status", ASCENDING)])
+tryout_applications_col.create_index([("message_id", ASCENDING)])
+tryout_results_col.create_index([("player_id", ASCENDING), ("created_at", DESCENDING)])
 
 
 @dataclass
@@ -324,6 +341,87 @@ async def get_tryout_host_total(user_id: int) -> int:
     """All-time count of tryouts a member has hosted (i.e. whether/how much they've
     moderated tryouts) — used by /userinfo."""
     return await asyncio.to_thread(_get_tryout_host_total_sync, user_id)
+
+
+# --- Automated tryout applications (clip submissions) + full result history -----------
+
+def _create_tryout_application_sync(doc: dict):
+    return tryout_applications_col.insert_one(doc).inserted_id
+
+
+async def create_tryout_application(doc: dict):
+    """Inserts a new pending application doc and returns its Mongo _id."""
+    return await asyncio.to_thread(_create_tryout_application_sync, doc)
+
+
+def _set_application_message_sync(app_id, message_id: int):
+    tryout_applications_col.update_one({"_id": app_id}, {"$set": {"message_id": message_id}})
+
+
+async def set_application_message(app_id, message_id: int):
+    """Records the #tryout-clips message id once the application embed has been posted,
+    so the 'Generate Tryout Result' button on that exact message can look itself up later."""
+    await asyncio.to_thread(_set_application_message_sync, app_id, message_id)
+
+
+def _get_pending_application_sync(user_id: int):
+    return tryout_applications_col.find_one({"player_id": user_id, "status": "pending"})
+
+
+async def get_pending_application(user_id: int):
+    """Used to block a player from submitting a second application while one is still
+    awaiting review."""
+    return await asyncio.to_thread(_get_pending_application_sync, user_id)
+
+
+def _get_application_by_message_sync(message_id: int):
+    return tryout_applications_col.find_one({"message_id": message_id})
+
+
+async def get_application_by_message(message_id: int):
+    """Looks up the application tied to the #tryout-clips message a host clicked
+    'Generate Tryout Result' on."""
+    return await asyncio.to_thread(_get_application_by_message_sync, message_id)
+
+
+def _mark_application_completed_sync(app_id, result_id, host_id: int):
+    tryout_applications_col.update_one(
+        {"_id": app_id},
+        {"$set": {
+            "status": "completed", "result_id": result_id, "host_id": host_id,
+            "completed_at": datetime.now(timezone.utc),
+        }},
+    )
+
+
+async def mark_application_completed(app_id, result_id, host_id: int):
+    await asyncio.to_thread(_mark_application_completed_sync, app_id, result_id, host_id)
+
+
+def _save_tryout_result_sync(doc: dict):
+    return tryout_results_col.insert_one(doc).inserted_id
+
+
+async def save_tryout_result(doc: dict):
+    """Records a completed tryout (from /tdone OR the automated application flow) into
+    permanent, searchable history — used by /tryouthistory."""
+    return await asyncio.to_thread(_save_tryout_result_sync, doc)
+
+
+def _get_tryout_history_sync(user_id: int, limit: int):
+    return list(tryout_results_col.find({"player_id": user_id}).sort("created_at", DESCENDING).limit(limit))
+
+
+async def get_tryout_history(user_id: int, limit: int = 10):
+    return await asyncio.to_thread(_get_tryout_history_sync, user_id, limit)
+
+
+def _count_tryout_history_sync(user_id: int) -> int:
+    return tryout_results_col.count_documents({"player_id": user_id})
+
+
+async def count_tryout_history(user_id: int) -> int:
+    return await asyncio.to_thread(_count_tryout_history_sync, user_id)
 
 
 # --- Linked Roblox accounts (set by the dashboard's "Login with Roblox" flow) ----------
@@ -811,6 +909,306 @@ POSITION_STATS = {
     "cm": {"label": "CM", "stats": ["Passing", "Vision", "Defending", "Positioning"]},
     "gk": {"label": "GK", "stats": ["Saves", "Positioning", "1v1", "Distribution"]},
 }
+
+
+# =====================================================================================
+# AUTOMATED TRYOUT APPLICATIONS — players self-submit a clip through a Discord form
+# instead of waiting for a live manual tryout. See TryoutApplicationStartView /
+# TryoutResultModal (updated below) for the full flow: apply -> #tryout-clips ->
+# "Generate Tryout Result" -> same rating modal /tdone uses -> result + role + history.
+# =====================================================================================
+
+# (label shown to the applicant, position_key used for stats/ranking). CF and Wing share
+# one stats table (see POSITION_STATS["cf_wing"]) but are offered as separate choices so
+# the application/result correctly says "CF" or "Wing" rather than the generic grouping.
+TRYOUT_POSITION_OPTIONS = [
+    ("CF", "cf_wing"),
+    ("Wing", "cf_wing"),
+    ("CM", "cm"),
+    ("GK", "gk"),
+]
+
+TRYOUT_REGION_OPTIONS = ["NA", "EU", "SEA", "OCE", "SA", "Other"]
+
+
+def _encode_position_marker(label: str, position_key: str) -> str:
+    return f"{label}||{position_key}"
+
+
+def _decode_position_marker(marker: str):
+    label, _, position_key = marker.partition("||")
+    return label, position_key
+
+
+def build_tryout_application_embed(applicant: discord.abc.User, roblox_username: str, position_label: str,
+                                    region: str, clip_url: str, status: str, color: int = 0xF1C40F) -> discord.Embed:
+    embed = discord.Embed(title="📋 New Tryout Application", color=color)
+    embed.set_thumbnail(url=applicant.display_avatar.url)
+    embed.add_field(name="Discord", value=f"{applicant.mention}\n`{applicant} — {applicant.id}`", inline=False)
+    embed.add_field(name="Roblox Username", value=roblox_username, inline=True)
+    embed.add_field(name="Position", value=position_label, inline=True)
+    embed.add_field(name="Region", value=region, inline=True)
+    embed.add_field(name="Gameplay Clip", value=f"[Open Clip]({clip_url})", inline=False)
+    embed.add_field(name="Status", value=status, inline=False)
+    embed.set_footer(text="Tryout host: review the clip above, then click \"Generate Tryout Result\".")
+    return embed
+
+
+def build_tryout_application_panel_embed() -> discord.Embed:
+    lines = [
+        "Want to try out? Click **Start Tryout Application** below and submit your gameplay "
+        "clip — no need to wait for a host to be free.",
+        "",
+        "**You'll be asked for:**",
+        "• Position (CF / Wing / CM / GK)",
+        "• Region",
+        "• Roblox username",
+        "• A link to your gameplay clip (YouTube, Medal, Streamable, etc.)",
+        "",
+        "A tryout host will review your clip and post your result once it's graded.",
+    ]
+    embed = discord.Embed(title="🎬 Tryout Applications", description="\n".join(lines), color=0xE63946)
+    embed.set_footer(text="Your Discord account is attached automatically — no need to include it.")
+    return embed
+
+
+class TryoutRegionSelectView(discord.ui.View):
+    def __init__(self, applicant_id: int, position_key: str, position_label: str):
+        super().__init__(timeout=300)
+        self.applicant_id = applicant_id
+        self.position_key = position_key
+        self.position_label = position_label
+
+    @discord.ui.select(
+        placeholder="Select your region...",
+        min_values=1, max_values=1,
+        options=[discord.SelectOption(label=r) for r in TRYOUT_REGION_OPTIONS],
+    )
+    async def select_region(self, interaction: discord.Interaction, select: discord.ui.Select):
+        if interaction.user.id != self.applicant_id:
+            await interaction.response.send_message("❌ This isn't your application.", ephemeral=True)
+            return
+        modal = TryoutApplicationModal(
+            applicant=interaction.user, position_key=self.position_key,
+            position_label=self.position_label, region=select.values[0],
+        )
+        await interaction.response.send_modal(modal)
+
+
+class TryoutPositionSelectView(discord.ui.View):
+    def __init__(self, applicant_id: int):
+        super().__init__(timeout=300)
+        self.applicant_id = applicant_id
+
+    @discord.ui.select(
+        placeholder="Select the position you're trying out for...",
+        min_values=1, max_values=1,
+        options=[
+            discord.SelectOption(label=label, value=_encode_position_marker(label, key))
+            for label, key in TRYOUT_POSITION_OPTIONS
+        ],
+    )
+    async def select_position(self, interaction: discord.Interaction, select: discord.ui.Select):
+        if interaction.user.id != self.applicant_id:
+            await interaction.response.send_message("❌ This isn't your application.", ephemeral=True)
+            return
+        position_label, position_key = _decode_position_marker(select.values[0])
+        await interaction.response.edit_message(
+            content=f"**Step 2/3 — Region**\nPosition: **{position_label}**. Now select your region:",
+            view=TryoutRegionSelectView(self.applicant_id, position_key, position_label),
+        )
+
+
+class TryoutApplicationModal(discord.ui.Modal, title="Tryout Application"):
+    roblox_username_input = discord.ui.TextInput(
+        label="Roblox Username", placeholder="Your exact Roblox username", max_length=50, required=True,
+    )
+    clip_input = discord.ui.TextInput(
+        label="Gameplay Clip Link", placeholder="https://... (YouTube, Medal, Streamable, etc.)",
+        max_length=300, required=True,
+    )
+
+    def __init__(self, applicant: discord.abc.User, position_key: str, position_label: str, region: str):
+        super().__init__()
+        self.applicant = applicant
+        self.position_key = position_key
+        self.position_label = position_label
+        self.region = region
+
+    async def on_submit(self, interaction: discord.Interaction):
+        roblox_username = self.roblox_username_input.value.strip()
+        clip_url = self.clip_input.value.strip()
+
+        if not clip_url.lower().startswith(("http://", "https://")):
+            await interaction.response.send_message(
+                "❌ That doesn't look like a valid link. Please run the application again with a direct clip URL.",
+                ephemeral=True,
+            )
+            return
+
+        # Guard against a second application slipping in while this one was mid-flow.
+        if await get_pending_application(self.applicant.id):
+            await interaction.response.send_message(
+                "⚠️ You already have a pending tryout application. Please wait for a host to review it.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        guild = interaction.guild
+        channel = guild.get_channel(TRYOUT_CLIPS_CHANNEL_ID) if guild else None
+        if channel is None and guild:
+            try:
+                channel = await guild.fetch_channel(TRYOUT_CLIPS_CHANNEL_ID)
+            except Exception as e:
+                logger.error(f"!!! [TRYOUT CLIPS CHANNEL] {TRYOUT_CLIPS_CHANNEL_ID} not found: {e}")
+        if channel is None:
+            await interaction.followup.send(
+                "❌ Couldn't reach the tryout clips channel. Please contact an admin.", ephemeral=True
+            )
+            return
+
+        app_id = await create_tryout_application({
+            "player_id": self.applicant.id,
+            "player_tag": str(self.applicant),
+            "roblox_username": roblox_username,
+            "position_key": self.position_key,
+            "position_label": self.position_label,
+            "region": self.region,
+            "clip_url": clip_url,
+            "status": "pending",
+            "submitted_at": datetime.now(timezone.utc),
+            "channel_id": TRYOUT_CLIPS_CHANNEL_ID,
+        })
+
+        embed = build_tryout_application_embed(
+            applicant=self.applicant, roblox_username=roblox_username, position_label=self.position_label,
+            region=self.region, clip_url=clip_url, status="🟡 Pending Review",
+        )
+
+        try:
+            msg = await channel.send(
+                content=clip_url, embed=embed, view=GenerateResultView(),
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+            await set_application_message(app_id, msg.id)
+        except Exception as e:
+            logger.error(f"!!! [TRYOUT APPLICATION POST ERROR]: {e}")
+            await interaction.followup.send(
+                "❌ Couldn't post your application. Please contact an admin.", ephemeral=True
+            )
+            return
+
+        await interaction.followup.send(
+            "✅ Your tryout application has been submitted! A host will review your clip soon.", ephemeral=True
+        )
+
+
+class TryoutApplicationStartView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Start Tryout Application", style=discord.ButtonStyle.primary, emoji="📋",
+                        custom_id="blz_tryout_apply_start")
+    async def start_application(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if await get_pending_application(interaction.user.id):
+            await interaction.response.send_message(
+                "⚠️ You already have a pending tryout application. Please wait for a host to review it "
+                "before submitting another.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(
+            "**Step 1/3 — Position**\nWhich position are you trying out for?",
+            view=TryoutPositionSelectView(interaction.user.id),
+            ephemeral=True,
+        )
+
+
+class GenerateResultView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Generate Tryout Result", style=discord.ButtonStyle.success, emoji="🎬",
+                        custom_id="blz_tryout_generate_result")
+    async def generate_result(self, interaction: discord.Interaction, button: discord.ui.Button):
+        member_roles = getattr(interaction.user, "roles", [])
+        if not any(r.id in TDONE_ALLOWED_ROLE_IDS for r in member_roles):
+            await interaction.response.send_message("❌ You don't have permission to do this.", ephemeral=True)
+            return
+
+        application = await get_application_by_message(interaction.message.id)
+        if application is None:
+            await interaction.response.send_message(
+                "❌ Couldn't find the application data for this clip (it may predate this feature) — "
+                "use /tdone manually instead.",
+                ephemeral=True,
+            )
+            return
+
+        if application.get("status") == "completed":
+            await interaction.response.send_message(
+                "⚠️ This tryout already has a result. Use /tdone manually if it needs to be redone.",
+                ephemeral=True,
+            )
+            return
+
+        guild = interaction.guild
+        player = guild.get_member(application["player_id"]) if guild else None
+        if player is None and guild:
+            try:
+                player = await guild.fetch_member(application["player_id"])
+            except Exception:
+                player = None
+
+        if player is None:
+            await interaction.response.send_message(
+                "❌ Couldn't find that player in the server anymore (they may have left) — "
+                "the result can't be generated automatically.",
+                ephemeral=True,
+            )
+            return
+
+        modal = TryoutResultModal(
+            player=player, host=interaction.user, position_key=application["position_key"],
+            position_label_override=application.get("position_label"), application_doc=application,
+        )
+        await interaction.response.send_modal(modal)
+
+
+tryout_application_panel_message: discord.Message | None = None
+
+
+async def ensure_tryout_application_panel():
+    """Publish the permanent tryout-application embed if it's not already in the channel
+    (mirrors ensure_matchmaking_panel)."""
+    global tryout_application_panel_message
+
+    channel = client.get_channel(TRYOUT_APPLICATION_CHANNEL_ID)
+    if channel is None:
+        try:
+            channel = await client.fetch_channel(TRYOUT_APPLICATION_CHANNEL_ID)
+        except Exception as e:
+            logger.error(f"!!! [TRYOUT APPLICATION PANEL] Channel {TRYOUT_APPLICATION_CHANNEL_ID} not found: {e}")
+            return
+
+    try:
+        async for msg in channel.history(limit=30):
+            if msg.author.id == client.user.id and msg.components:
+                tryout_application_panel_message = msg
+                logger.info(f">>> [TRYOUT APPLICATION PANEL] Already published in #{channel.name}")
+                return
+
+        tryout_application_panel_message = await channel.send(
+            embed=build_tryout_application_panel_embed(), view=TryoutApplicationStartView()
+        )
+        logger.info(f">>> [TRYOUT APPLICATION PANEL] Published in #{channel.name}")
+    except discord.Forbidden:
+        logger.error(f"!!! [TRYOUT APPLICATION PANEL] Missing permissions in #{channel.name}")
+    except Exception as e:
+        logger.error(f"!!! [TRYOUT APPLICATION PANEL] Error: {e}")
 
 
 def build_tryout_result_text(player: discord.Member, host: discord.abc.User, position_label: str,
@@ -2194,13 +2592,20 @@ async def ensure_matchmaking_panel():
 # =====================================================================================
 
 class TryoutResultModal(discord.ui.Modal):
-    def __init__(self, player: discord.Member, host: discord.abc.User, position_key: str):
+    def __init__(self, player: discord.Member, host: discord.abc.User, position_key: str,
+                 position_label_override: str = None, application_doc: dict = None):
         config = POSITION_STATS[position_key]
-        super().__init__(title=f"Tryout Result — {config['label']}")
+        position_label = position_label_override or config["label"]
+        super().__init__(title=f"Tryout Result — {position_label}")
         self.player = player
         self.host = host
         self.position_key = position_key
-        self.position_label = config["label"]
+        self.position_label = position_label
+        # Set only when this modal was opened via the "Generate Tryout Result" button on an
+        # automated clip application (as opposed to a manual /tdone) — carries the
+        # roblox_username/region/clip_url/_id needed to save full history and close out
+        # the application once the result is posted.
+        self.application_doc = application_doc
 
         self.stat_inputs = []
         for stat_name in config["stats"]:
@@ -2283,7 +2688,57 @@ class TryoutResultModal(discord.ui.Modal):
 
             await increment_quota_ep(self.host.id)  # +1 EP toward this host's weekly tryout quota
 
-            confirmation = f"✅ Tryout result posted in <#{TRYOUT_RESULTS_CHANNEL_ID}>."
+            # --- Save this tryout into permanent, searchable history (/tryouthistory) ------
+            result_doc = {
+                "player_id": self.player.id,
+                "player_tag": str(self.player),
+                "host_id": self.host.id,
+                "position_key": self.position_key,
+                "position_label": self.position_label,
+                "ratings": [[name, value] for name, value in ratings],
+                "overall": overall,
+                "rank_name": tier_name,
+                "feedback": self.feedback_input.value.strip(),
+                "created_at": datetime.now(timezone.utc),
+            }
+            if self.application_doc:
+                result_doc.update({
+                    "roblox_username": self.application_doc.get("roblox_username"),
+                    "region": self.application_doc.get("region"),
+                    "clip_url": self.application_doc.get("clip_url"),
+                    "application_id": self.application_doc.get("_id"),
+                })
+            result_id = await save_tryout_result(result_doc)
+
+            # --- If this came from an automated clip application, close it out -------------
+            if self.application_doc:
+                await mark_application_completed(self.application_doc["_id"], result_id, self.host.id)
+                try:
+                    clips_channel = interaction.guild.get_channel(self.application_doc["channel_id"])
+                    if clips_channel is None:
+                        clips_channel = await interaction.guild.fetch_channel(self.application_doc["channel_id"])
+                    clip_message = await clips_channel.fetch_message(self.application_doc["message_id"])
+
+                    completed_embed = clip_message.embeds[0] if clip_message.embeds else None
+                    if completed_embed:
+                        status_value = f"✅ Completed by {self.host.mention} — {overall}/10 ({rank_display})"
+                        for i, f in enumerate(completed_embed.fields):
+                            if f.name == "Status":
+                                completed_embed.set_field_at(i, name="Status", value=status_value, inline=False)
+                                break
+                        else:
+                            completed_embed.add_field(name="Status", value=status_value, inline=False)
+                        completed_embed.color = 0x2ECC71
+
+                    disabled_view = GenerateResultView()
+                    for child in disabled_view.children:
+                        child.disabled = True
+                        child.label = "Result Generated"
+                    await clip_message.edit(embed=completed_embed, view=disabled_view)
+                except Exception as e:
+                    logger.error(f"!!! [TRYOUT APPLICATION MESSAGE UPDATE ERROR]: {e}")
+
+            confirmation = f"✅ Tryout result posted in <#{TRYOUT_RESULTS_CHANNEL_ID}> and saved to their history."
             if role_note:
                 confirmation += role_note
             await interaction.followup.send(confirmation, ephemeral=True)
@@ -2310,6 +2765,49 @@ async def tdone_command(interaction: discord.Interaction, player: discord.Member
 
     modal = TryoutResultModal(player=player, host=interaction.user, position_key=position.value)
     await interaction.response.send_modal(modal)
+
+
+@client.tree.command(name="tryouthistory", description="View a player's past tryout results")
+@app_commands.describe(player="The player to look up (leave empty to check yourself)")
+async def tryouthistory_command(interaction: discord.Interaction, player: discord.Member = None):
+    await interaction.response.defer()
+
+    target = player or interaction.user
+    history = await get_tryout_history(target.id, limit=10)
+    if not history:
+        await interaction.followup.send(
+            f"📭 {target.mention} has no tryout history yet.", allowed_mentions=discord.AllowedMentions.none()
+        )
+        return
+
+    embed = discord.Embed(title=f"📜 Tryout History — {target.display_name}", color=0x3498DB)
+    embed.set_thumbnail(url=target.display_avatar.url)
+
+    for doc in history:
+        created_at = doc.get("created_at")
+        date_str = f"<t:{int(created_at.replace(tzinfo=timezone.utc).timestamp())}:D>" if created_at else "Unknown date"
+        host_id = doc.get("host_id")
+        host_mention = f"<@{host_id}>" if host_id else "Unknown"
+        value_lines = [
+            f"**Rank:** {doc.get('rank_name') or 'Unranked'}",
+            f"**Host:** {host_mention}",
+            f"**Date:** {date_str}",
+        ]
+        if doc.get("roblox_username"):
+            value_lines.insert(0, f"**Roblox:** {doc['roblox_username']}")
+        if doc.get("region"):
+            value_lines.insert(1 if doc.get("roblox_username") else 0, f"**Region:** {doc['region']}")
+        embed.add_field(
+            name=f"{doc.get('position_label', '?')} — {doc.get('overall', '?')}/10",
+            value="\n".join(value_lines),
+            inline=False,
+        )
+
+    total = await count_tryout_history(target.id)
+    if total > len(history):
+        embed.set_footer(text=f"Showing {len(history)} most recent of {total} total tryouts.")
+
+    await interaction.followup.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
 
 
 # =====================================================================================
@@ -3366,6 +3864,8 @@ async def on_ready():
         client.add_view(MatchmakingView())
         client.add_view(DuelControlsView())
         client.add_view(ExcludeTryouterView())
+        client.add_view(TryoutApplicationStartView())
+        client.add_view(GenerateResultView())
         logger.info(">>> [MATCHMAKING] Persistent views registered")
     except Exception as e:
         logger.error(f"!!! [VIEW REGISTER]: {e}")
@@ -3384,6 +3884,12 @@ async def on_ready():
         await ensure_matchmaking_panel()
     except Exception as e:
         logger.error(f"!!! [MATCHMAKING PANEL ON READY]: {e}")
+
+    # Publish (or refresh) the automated tryout-application panel
+    try:
+        await ensure_tryout_application_panel()
+    except Exception as e:
+        logger.error(f"!!! [TRYOUT APPLICATION PANEL ON READY]: {e}")
 
     # Start the queue-timeout sweeper (guarded so reconnects don't spawn duplicate loops)
     if not queue_timeout_check.is_running():
