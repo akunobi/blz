@@ -65,6 +65,96 @@ VIEWT_EXCLUDE_PANEL_ROLE_IDS = {         # Only members with one of these roles 
     1539303279195062313,
     1538589345991360527,
 }
+
+# --- SECONDARY GUILDS (automated tryout-clip-application flow only) -----------------
+# Guilds besides GUILD_ID that get ONLY the "submit a clip" panel -> staff review ->
+# result flow (TryoutApplicationStartView / GenerateResultView / TryoutResultModal
+# below). Nothing else in this file (matchmaking, /elo, economy, quotas, /tdone, etc.)
+# runs in these guilds. Slash commands are never synced to them either — on_ready only
+# calls client.tree.sync(guild=...) for GUILD_ID, so a guild that's only listed here
+# simply never receives any "/" command; the panel's button and modals still work since
+# message components aren't part of the command tree. Add another guild the same way.
+SECONDARY_TRYOUT_GUILDS = {
+    1355062394463715348: {
+        "application_channel_id": 1552036669564260422,  # "Start Tryout Application" panel lives here
+        "clips_channel_id": 1552037079259812053,         # Submitted clips are posted here for host review
+        "results_channel_id": 1355062395566948454,       # Finished tryout result is posted here
+        # No role IDs given for this server yet, so "review_role_ids" is left empty and
+        # can_review_tryout_clips() below falls back to members with Administrator/Manage
+        # Server permission for "Generate Tryout Result". Fill this set in with the actual
+        # staff role ID(s) for this server to lock review down the same way TDONE_ALLOWED_
+        # ROLE_IDS does for the main guild.
+        "review_role_ids": set(),
+        # This server's own "Blaze Strikers – Striker Ranking System" / "GK Rank System"
+        # rank-to-role tables (same (min, max, tier_name, role_id) shape as STRIKER_RANKS /
+        # GK_RANKS below, just with this server's role IDs). Selected automatically by
+        # get_position_rank()/get_position_rank_role_ids() whenever a result is generated
+        # in this guild, so rank roles now get assigned correctly here too.
+        "striker_ranks": [
+            (4.6, 4.8, "Rookie Striker", 1355062394514182181),
+            (4.9, 5.1, "Rookie Striker", 1355062394514182182),
+            (5.2, 5.4, "Rookie Striker", 1355062394514182183),
+            (5.5, 5.7, "Amateur Striker", 1355062394530824222),
+            (5.8, 6.0, "Amateur Striker", 1355062394530824223),
+            (6.1, 6.3, "Amateur Striker", 1355062394530824224),
+            (6.4, 6.6, "Elite", 1355062394530824225),
+            (6.7, 6.9, "Elite", 1355062394530824226),
+            (7.0, 7.2, "Elite", 1355062394530824227),
+            (7.3, 7.5, "Prodigy", 1355062394530824228),
+            (7.6, 7.8, "Prodigy", 1355062394530824229),
+            (7.9, 8.1, "Prodigy", 1355062394530824230),
+            (8.2, 8.4, "New Gen XI", 1355062394530824231),
+            (8.5, 8.7, "New Gen XI", 1355062394539343892),
+            (8.8, 9.0, "New Gen XI", 1355062394539343893),
+            (9.1, 9.3, "World Class", 1355062394539343894),
+            (9.4, 9.6, "World Class", 1355062394539343895),
+            (9.7, 10.0, "World Class", 1355062394539343896),
+        ],
+        "gk_ranks": [
+            (9.5, 10.0, "S+ Tier", 1359086272907317351),
+            (9.0, 9.4, "S Tier", 1359086401181712404),
+            (8.5, 8.9, "A Tier", 1359086538155360419),
+            (8.0, 8.4, "B Tier", 1359086607570964620),
+            (7.0, 7.9, "C Tier", 1359086641129586770),
+            (float("-inf"), 6.9, "D Tier", 1359191717655478322),
+        ],
+        # Top-of-ladder roles, granted manually by staff (not tied to a numeric range),
+        # mirroring how the main guild leaves its Vanguard/Monarch-equivalent roles out of
+        # STRIKER_RANKS above. Kept here only for reference:
+        #   1393734858815307806 — top 5 players in the club (5 per region)
+        #   1435194014335762523 — top 1 player in the server, one per region
+    },
+}
+
+
+def get_tryout_flow_channel_ids(guild_id: int):
+    """(application_channel_id, clips_channel_id, results_channel_id) for the main guild's
+    existing TRYOUT_* constants, or a SECONDARY_TRYOUT_GUILDS entry. (None, None, None) for
+    an unrecognized guild."""
+    if guild_id == GUILD_ID:
+        return TRYOUT_APPLICATION_CHANNEL_ID, TRYOUT_CLIPS_CHANNEL_ID, TRYOUT_RESULTS_CHANNEL_ID
+    cfg = SECONDARY_TRYOUT_GUILDS.get(guild_id)
+    if cfg is None:
+        return None, None, None
+    return cfg["application_channel_id"], cfg["clips_channel_id"], cfg["results_channel_id"]
+
+
+def can_review_tryout_clips(member) -> bool:
+    """Whether `member` may click "Generate Tryout Result". Main guild: unchanged —
+    requires a TDONE_ALLOWED_ROLE_IDS role. A SECONDARY_TRYOUT_GUILDS guild: its own
+    'review_role_ids' if any are set, otherwise anyone with Administrator/Manage Server."""
+    guild = getattr(member, "guild", None)
+    if guild is None or guild.id == GUILD_ID:
+        allowed_role_ids = TDONE_ALLOWED_ROLE_IDS
+    else:
+        cfg = SECONDARY_TRYOUT_GUILDS.get(guild.id, {})
+        allowed_role_ids = cfg.get("review_role_ids") or set()
+        if not allowed_role_ids:
+            perms = getattr(member, "guild_permissions", None)
+            return bool(perms and (perms.administrator or perms.manage_guild))
+    return any(r.id in allowed_role_ids for r in getattr(member, "roles", []))
+
+
 ECONOMY_CHANNEL_ID = 1543393700539801671  # Only channel where economy/game commands can be used
 SUPPORT_SERVER_URL = "https://discord.gg/FZmjTSBpSZ"  # Used by dashboard.py's public "Support
                                                        # Discord server" link. (Ban/warn DM
@@ -855,10 +945,17 @@ STRIKER_RANKS = [
 STRIKER_RANK_ROLE_IDS = {role_id for _, _, _, role_id in STRIKER_RANKS}
 
 
-def get_striker_rank(overall: float):
+def get_striker_rank(overall: float, guild_id: int = None):
     """Returns (tier_name, role_id) for the sub-rank whose range contains `overall`,
-    or (None, None) if it falls below 4.6 (there's no tier for that yet)."""
-    for lo, hi, tier_name, role_id in STRIKER_RANKS:
+    or (None, None) if it falls below 4.6 (there's no tier for that yet). Uses the given
+    guild's own "striker_ranks" table from SECONDARY_TRYOUT_GUILDS when one exists,
+    otherwise falls back to the main guild's STRIKER_RANKS."""
+    table = STRIKER_RANKS
+    if guild_id is not None and guild_id != GUILD_ID:
+        cfg = SECONDARY_TRYOUT_GUILDS.get(guild_id)
+        if cfg and cfg.get("striker_ranks"):
+            table = cfg["striker_ranks"]
+    for lo, hi, tier_name, role_id in table:
         if lo <= overall <= hi:
             return tier_name, role_id
     return None, None
@@ -882,23 +979,37 @@ GK_RANKS = [
 GK_RANK_ROLE_IDS = {role_id for _, _, _, role_id in GK_RANKS}
 
 
-def get_gk_rank(overall: float):
+def get_gk_rank(overall: float, guild_id: int = None):
     """Returns (tier_name, role_id) for the GK tier whose range contains `overall`.
-    D Tier catches everything at or below 6.9, so this always returns a match."""
-    for lo, hi, tier_name, role_id in GK_RANKS:
+    D Tier catches everything at or below 6.9, so this always returns a match. Uses the
+    given guild's own "gk_ranks" table from SECONDARY_TRYOUT_GUILDS when one exists,
+    otherwise falls back to the main guild's GK_RANKS."""
+    table = GK_RANKS
+    if guild_id is not None and guild_id != GUILD_ID:
+        cfg = SECONDARY_TRYOUT_GUILDS.get(guild_id)
+        if cfg and cfg.get("gk_ranks"):
+            table = cfg["gk_ranks"]
+    for lo, hi, tier_name, role_id in table:
         if lo <= overall <= hi:
             return tier_name, role_id
     return None, None
 
 
-def get_position_rank(position_key: str, overall: float):
-    """Routes to the right rank table (GK vs. everyone else) for a tryout position."""
+def get_position_rank(position_key: str, overall: float, guild_id: int = None):
+    """Routes to the right rank table (GK vs. everyone else) for a tryout position, in the
+    given guild (main guild or a SECONDARY_TRYOUT_GUILDS entry)."""
     if position_key == "gk":
-        return get_gk_rank(overall)
-    return get_striker_rank(overall)
+        return get_gk_rank(overall, guild_id)
+    return get_striker_rank(overall, guild_id)
 
 
-def get_position_rank_role_ids(position_key: str):
+def get_position_rank_role_ids(position_key: str, guild_id: int = None):
+    if guild_id is not None and guild_id != GUILD_ID:
+        cfg = SECONDARY_TRYOUT_GUILDS.get(guild_id)
+        if cfg and cfg.get("striker_ranks"):
+            gk_ids = {role_id for _, _, _, role_id in cfg.get("gk_ranks", [])} or GK_RANK_ROLE_IDS
+            striker_ids = {role_id for _, _, _, role_id in cfg["striker_ranks"]}
+            return gk_ids if position_key == "gk" else striker_ids
     return GK_RANK_ROLE_IDS if position_key == "gk" else STRIKER_RANK_ROLE_IDS
 
 
@@ -1057,12 +1168,16 @@ class TryoutApplicationModal(discord.ui.Modal, title="Tryout Application"):
         await interaction.response.defer(ephemeral=True)
 
         guild = interaction.guild
-        channel = guild.get_channel(TRYOUT_CLIPS_CHANNEL_ID) if guild else None
-        if channel is None and guild:
+        # Resolve which clips-review channel to post to based on which guild this
+        # application was submitted in — the main guild's TRYOUT_CLIPS_CHANNEL_ID, or the
+        # matching SECONDARY_TRYOUT_GUILDS entry's clips channel.
+        _, clips_channel_id, _ = get_tryout_flow_channel_ids(guild.id) if guild else (None, None, None)
+        channel = guild.get_channel(clips_channel_id) if (guild and clips_channel_id) else None
+        if channel is None and guild and clips_channel_id:
             try:
-                channel = await guild.fetch_channel(TRYOUT_CLIPS_CHANNEL_ID)
+                channel = await guild.fetch_channel(clips_channel_id)
             except Exception as e:
-                logger.error(f"!!! [TRYOUT CLIPS CHANNEL] {TRYOUT_CLIPS_CHANNEL_ID} not found: {e}")
+                logger.error(f"!!! [TRYOUT CLIPS CHANNEL] {clips_channel_id} not found: {e}")
         if channel is None:
             await interaction.followup.send(
                 "❌ Couldn't reach the tryout clips channel. Please contact an admin.", ephemeral=True
@@ -1079,7 +1194,7 @@ class TryoutApplicationModal(discord.ui.Modal, title="Tryout Application"):
             "clip_url": clip_url,
             "status": "pending",
             "submitted_at": datetime.now(timezone.utc),
-            "channel_id": TRYOUT_CLIPS_CHANNEL_ID,
+            "channel_id": clips_channel_id,
         })
 
         embed = build_tryout_application_embed(
@@ -1134,8 +1249,7 @@ class GenerateResultView(discord.ui.View):
     @discord.ui.button(label="Generate Tryout Result", style=discord.ButtonStyle.success, emoji="🎬",
                         custom_id="blz_tryout_generate_result")
     async def generate_result(self, interaction: discord.Interaction, button: discord.ui.Button):
-        member_roles = getattr(interaction.user, "roles", [])
-        if not any(r.id in TDONE_ALLOWED_ROLE_IDS for r in member_roles):
+        if not can_review_tryout_clips(interaction.user):
             await interaction.response.send_message("❌ You don't have permission to do this.", ephemeral=True)
             return
 
@@ -1178,30 +1292,28 @@ class GenerateResultView(discord.ui.View):
         await interaction.response.send_modal(modal)
 
 
-tryout_application_panel_message: discord.Message | None = None
+tryout_application_panel_messages: dict[int, discord.Message] = {}  # guild_id -> panel message
 
 
-async def ensure_tryout_application_panel():
-    """Publish the permanent tryout-application embed if it's not already in the channel
-    (mirrors ensure_matchmaking_panel)."""
-    global tryout_application_panel_message
-
-    channel = client.get_channel(TRYOUT_APPLICATION_CHANNEL_ID)
+async def _ensure_tryout_application_panel_in(guild_id: int, channel_id: int):
+    """Publishes (or finds) the permanent tryout-application embed in one guild's
+    application channel. Shared by the main guild and every SECONDARY_TRYOUT_GUILDS entry."""
+    channel = client.get_channel(channel_id)
     if channel is None:
         try:
-            channel = await client.fetch_channel(TRYOUT_APPLICATION_CHANNEL_ID)
+            channel = await client.fetch_channel(channel_id)
         except Exception as e:
-            logger.error(f"!!! [TRYOUT APPLICATION PANEL] Channel {TRYOUT_APPLICATION_CHANNEL_ID} not found: {e}")
+            logger.error(f"!!! [TRYOUT APPLICATION PANEL] Channel {channel_id} not found: {e}")
             return
 
     try:
         async for msg in channel.history(limit=30):
             if msg.author.id == client.user.id and msg.components:
-                tryout_application_panel_message = msg
+                tryout_application_panel_messages[guild_id] = msg
                 logger.info(f">>> [TRYOUT APPLICATION PANEL] Already published in #{channel.name}")
                 return
 
-        tryout_application_panel_message = await channel.send(
+        tryout_application_panel_messages[guild_id] = await channel.send(
             embed=build_tryout_application_panel_embed(), view=TryoutApplicationStartView()
         )
         logger.info(f">>> [TRYOUT APPLICATION PANEL] Published in #{channel.name}")
@@ -1209,6 +1321,15 @@ async def ensure_tryout_application_panel():
         logger.error(f"!!! [TRYOUT APPLICATION PANEL] Missing permissions in #{channel.name}")
     except Exception as e:
         logger.error(f"!!! [TRYOUT APPLICATION PANEL] Error: {e}")
+
+
+async def ensure_tryout_application_panel():
+    """Publish the permanent tryout-application embed if it's not already there, in the
+    main guild's TRYOUT_APPLICATION_CHANNEL_ID AND every SECONDARY_TRYOUT_GUILDS channel
+    (mirrors ensure_matchmaking_panel, but across multiple guilds)."""
+    await _ensure_tryout_application_panel_in(GUILD_ID, TRYOUT_APPLICATION_CHANNEL_ID)
+    for guild_id, cfg in SECONDARY_TRYOUT_GUILDS.items():
+        await _ensure_tryout_application_panel_in(guild_id, cfg["application_channel_id"])
 
 
 def build_tryout_result_text(player: discord.Member, host: discord.abc.User, position_label: str,
@@ -2642,8 +2763,9 @@ class TryoutResultModal(discord.ui.Modal):
             ratings.append((stat_name, value))
 
         overall = round(sum(v for _, v in ratings) / len(ratings), 1)
-        tier_name, role_id = get_position_rank(self.position_key, overall)
-        rank_role_pool = get_position_rank_role_ids(self.position_key)
+        result_guild_id = interaction.guild.id if interaction.guild else None
+        tier_name, role_id = get_position_rank(self.position_key, overall, result_guild_id)
+        rank_role_pool = get_position_rank_role_ids(self.position_key, result_guild_id)
 
         role_note = ""
         new_role = None
@@ -2678,15 +2800,26 @@ class TryoutResultModal(discord.ui.Modal):
             feedback=self.feedback_input.value.strip(),
         )
 
+        # Resolve which results channel to post to based on which guild this result is
+        # being generated in — the main guild's TRYOUT_RESULTS_CHANNEL_ID, or the matching
+        # SECONDARY_TRYOUT_GUILDS entry's results channel.
+        guild_id = interaction.guild.id if interaction.guild else GUILD_ID
+        _, _, results_channel_id = get_tryout_flow_channel_ids(guild_id)
+        if results_channel_id is None:
+            results_channel_id = TRYOUT_RESULTS_CHANNEL_ID  # safety net for an unrecognized guild
+
         try:
             await interaction.response.defer(ephemeral=True)
-            await post_result(interaction.guild, text, channel_id=TRYOUT_RESULTS_CHANNEL_ID)
+            await post_result(interaction.guild, text, channel_id=results_channel_id)
 
-            today_count, total_count = await record_tryout_host(self.host.id)
-            host_stats_text = build_tryout_host_stats_text(self.host, today_count, total_count)
-            await post_result(interaction.guild, host_stats_text, channel_id=TRYOUT_HOST_STATS_CHANNEL_ID)
+            # Host tallies/quota are a main-guild "Tryouters" staff feature — secondary
+            # guilds have no TRYOUT_HOST_STATS_CHANNEL_ID or quota system configured.
+            if guild_id == GUILD_ID:
+                today_count, total_count = await record_tryout_host(self.host.id)
+                host_stats_text = build_tryout_host_stats_text(self.host, today_count, total_count)
+                await post_result(interaction.guild, host_stats_text, channel_id=TRYOUT_HOST_STATS_CHANNEL_ID)
 
-            await increment_quota_ep(self.host.id)  # +1 EP toward this host's weekly tryout quota
+                await increment_quota_ep(self.host.id)  # +1 EP toward this host's weekly tryout quota
 
             # --- Save this tryout into permanent, searchable history (/tryouthistory) ------
             result_doc = {
@@ -2738,7 +2871,7 @@ class TryoutResultModal(discord.ui.Modal):
                 except Exception as e:
                     logger.error(f"!!! [TRYOUT APPLICATION MESSAGE UPDATE ERROR]: {e}")
 
-            confirmation = f"✅ Tryout result posted in <#{TRYOUT_RESULTS_CHANNEL_ID}> and saved to their history."
+            confirmation = f"✅ Tryout result posted in <#{results_channel_id}> and saved to their history."
             if role_note:
                 confirmation += role_note
             await interaction.followup.send(confirmation, ephemeral=True)
